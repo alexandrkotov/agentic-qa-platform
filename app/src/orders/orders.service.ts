@@ -1,0 +1,48 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateOrderDto } from './dto/create-order.dto';
+
+@Injectable()
+export class OrdersService {
+  constructor(private prisma: PrismaService) {}
+
+  async create(dto: CreateOrderDto) {
+    const productIds = dto.items.map((i) => i.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+    });
+
+    if (products.length !== new Set(productIds).size) {
+      throw new BadRequestException('One or more products not found');
+    }
+
+    const priceMap = new Map(products.map((p) => [p.id, p.price]));
+
+    return this.prisma.order.create({
+      data: {
+        customerId: dto.customerId,
+        items: {
+          create: dto.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: priceMap.get(item.productId)!,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  }
+
+  findAll() {
+    return this.prisma.order.findMany({ include: { items: true } });
+  }
+
+  async findOne(id: number) {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!order) throw new NotFoundException(`Order ${id} not found`);
+    return order;
+  }
+}

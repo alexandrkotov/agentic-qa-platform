@@ -18,6 +18,7 @@ model Customer {
   email     String   @unique
   name      String
   createdAt DateTime @default(now())
+  orders    Order[]
 }
 
 model Product {
@@ -25,4 +26,29 @@ model Product {
   name      String
   price     Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
+  orderItems OrderItem[]
+}
+
+enum OrderStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model Order {
+  id         Int         @id @default(autoincrement())
+  customerId Int
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  status     OrderStatus @default(DRAFT)
+  items      OrderItem[]
+  createdAt  DateTime    @default(now())
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
 }
