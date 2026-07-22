@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { OrderStatus } from '../../generated/prisma/enums';
 
 @Injectable()
 export class OrdersService {
@@ -44,5 +45,23 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException(`Order ${id} not found`);
     return order;
+  }
+
+  async updateStatus(id: number, status: OrderStatus) {
+  const order = await this.findOne(id);
+
+  if (order.status === status) {
+    throw new BadRequestException(`Order is already ${status}`);
+  }
+
+  return this.prisma.$transaction([
+    this.prisma.order.update({
+      where: { id },
+      data: { status },
+    }),
+    this.prisma.orderStatusHistory.create({
+      data: { orderId: id, status },
+    }),
+  ]);
   }
 }
