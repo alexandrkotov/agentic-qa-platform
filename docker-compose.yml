@@ -11,6 +11,15 @@ services:
     environment:
       DATABASE_URL: postgres://user:pass@db:5432/testdb
 
+  frontend:
+    build: ./frontend
+    ports: ["5173:5173"]
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - app
+
   db:
     image: postgres:16
     environment:
