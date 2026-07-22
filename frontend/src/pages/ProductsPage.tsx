@@ -9,6 +9,10 @@ export function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+
   async function loadProducts() {
     setLoading(true);
     try {
@@ -35,6 +39,34 @@ export function ProductsPage() {
       await loadProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create product');
+    }
+  }
+
+  function startEdit(p: Product) {
+    setEditingId(p.id);
+    setEditName(p.name);
+    setEditPrice(parseFloat(p.price).toString());
+  }
+
+  async function handleSave(id: number) {
+    setError(null);
+    try {
+      await api.patch<Product>(`/products/${id}`, { name: editName, price: parseFloat(editPrice) });
+      setEditingId(null);
+      await loadProducts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update product');
+    }
+  }
+
+  async function handleDelete(id: number) {
+    if (!window.confirm('Delete this product?')) return;
+    setError(null);
+    try {
+      await api.delete(`/products/${id}`);
+      await loadProducts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete product');
     }
   }
 
@@ -80,16 +112,73 @@ export function ProductsPage() {
               <th className="py-2">ID</th>
               <th className="py-2">Name</th>
               <th className="py-2">Price</th>
+              <th className="py-2"></th>
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => (
-              <tr key={p.id} className="border-b border-slate-800">
-                <td className="py-2">{p.id}</td>
-                <td className="py-2">{p.name}</td>
-                <td className="py-2">${parseFloat(p.price).toFixed(2)}</td>
-              </tr>
-            ))}
+            {products.map((p) =>
+              editingId === p.id ? (
+                <tr key={p.id} className="border-b border-slate-800">
+                  <td className="py-2 pr-2">{p.id}</td>
+                  <td className="py-2 pr-2">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="bg-slate-700 border border-slate-600 rounded px-2 py-1 w-full"
+                    />
+                  </td>
+                  <td className="py-2 pr-2">
+                    <input
+                      type="number"
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      min="0"
+                      step="0.01"
+                      className="bg-slate-700 border border-slate-600 rounded px-2 py-1 w-24"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSave(p.id)}
+                        className="bg-green-700 hover:bg-green-600 text-xs px-2 py-1 rounded"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="bg-slate-600 hover:bg-slate-500 text-xs px-2 py-1 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={p.id} className="border-b border-slate-800">
+                  <td className="py-2">{p.id}</td>
+                  <td className="py-2">{p.name}</td>
+                  <td className="py-2">${parseFloat(p.price).toFixed(2)}</td>
+                  <td className="py-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => startEdit(p)}
+                        className="text-blue-400 hover:text-blue-300 text-xs px-2 py-1"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        className="text-red-400 hover:text-red-300 text-xs px-2 py-1"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       )}

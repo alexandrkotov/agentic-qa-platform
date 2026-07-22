@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from '../../generated/prisma/enums';
@@ -48,20 +48,48 @@ export class OrdersService {
   }
 
   async updateStatus(id: number, status: OrderStatus) {
-  const order = await this.findOne(id);
-
-  if (order.status === status) {
-    throw new BadRequestException(`Order is already ${status}`);
+    const order = await this.findOne(id);
+    if (order.status === status) {
+      throw new BadRequestException(`Order is already ${status}`);
+    }
+    return this.prisma.$transaction([
+      this.prisma.order.update({ where: { id }, data: { status } }),
+      this.prisma.orderStatusHistory.create({ data: { orderId: id, status } }),
+    ]);
   }
 
-  return this.prisma.$transaction([
-    this.prisma.order.update({
+  async remove(id: number) {
+    const order = await this.findOne(id);
+    if (order.status !== 'DRAFT') {
+      throw new ConflictException(`Cannot delete order ${id}: only DRAFT orders can be deleted`);
+    }
+    return this.prisma.order.delete({ where: { id } });
+  }
+
+  async updateItems(id: number, items: { productId: number; quantity: number }[]) {
+    const order = await this.findOne(id);
+    if (order.status !== 'DRAFT') {
+      throw new ConflictException(`Cannot edit order ${id}: only DRAFT orders can be edited`);
+    }
+    const productIds = items.map((i) => i.productId);
+    const products = await this.prisma.product.findMany({ where: { id: { in: productIds } } });
+    if (products.length !== new Set(productIds).size) {
+      throw new BadRequestException('One or more products not found');
+    }
+    const priceMap = new Map(products.map((p) => [p.id, p.price]));
+    await this.prisma.orderItem.deleteMany({ where: { orderId: id } });
+    return this.prisma.order.update({
       where: { id },
-      data: { status },
-    }),
-    this.prisma.orderStatusHistory.create({
-      data: { orderId: id, status },
-    }),
-  ]);
+      data: {
+        items: {
+          create: items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: priceMap.get(item.productId)!,
+          })),
+        },
+      },
+      include: { items: true },
+    });
   }
 }

@@ -19,6 +19,8 @@ export function OrdersPage() {
 
     const [expandedHistory, setExpandedHistory] = useState<Map<number, OrderStatusHistory[]>>(new Map());
     const [historyLoading, setHistoryLoading] = useState<Set<number>>(new Set());
+    const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
+    const [editItems, setEditItems] = useState<DraftItem[]>([]);
 
     async function loadAll() {
         setLoading(true);
@@ -78,6 +80,42 @@ export function OrdersPage() {
             await loadAll();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to submit order');
+        }
+    }
+
+    async function handleDeleteOrder(id: number) {
+        if (!window.confirm('Delete this draft order?')) return;
+        setError(null);
+        try {
+            await api.delete(`/orders/${id}`);
+            await loadAll();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete order');
+        }
+    }
+
+    function startEditOrder(order: Order) {
+        setEditingOrderId(order.id);
+        setEditItems(order.items.map((i) => ({
+            productId: String(i.productId),
+            quantity: String(i.quantity),
+        })));
+    }
+
+    async function handleSaveOrder(id: number) {
+        setError(null);
+        try {
+            await api.patch(`/orders/${id}/items`, {
+                customerId: 0,
+                items: editItems.map((i) => ({
+                    productId: parseInt(i.productId),
+                    quantity: parseInt(i.quantity),
+                })),
+            });
+            setEditingOrderId(null);
+            await loadAll();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to update order');
         }
     }
 
@@ -225,8 +263,74 @@ export function OrdersPage() {
                                             Submit
                                         </button>
                                     )}
+                                    {order.status === 'DRAFT' && (
+                                        <button
+                                            onClick={() => startEditOrder(order)}
+                                            className="bg-blue-700 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded"
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
+                                    {order.status === 'DRAFT' && (
+                                        <button
+                                            onClick={() => handleDeleteOrder(order.id)}
+                                            className="bg-red-700 hover:bg-red-600 text-white text-xs px-3 py-1 rounded"
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                 </div>
                             </div>
+                            {editingOrderId === order.id ? (
+                                <div className="space-y-2 mt-2">
+                                    {editItems.map((item, i) => (
+                                        <div key={i} className="flex gap-2">
+                                            <select
+                                                value={item.productId}
+                                                onChange={(e) => setEditItems(editItems.map((ei, idx) =>
+                                                    idx === i ? { ...ei, productId: e.target.value } : ei))}
+                                                className="bg-slate-700 border border-slate-600 rounded px-2 py-1 flex-1"
+                                            >
+                                                {products.map((p) => (
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.name} (${parseFloat(p.price).toFixed(2)})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={item.quantity}
+                                                onChange={(e) => setEditItems(editItems.map((ei, idx) =>
+                                                    idx === i ? { ...ei, quantity: e.target.value } : ei))}
+                                                className="bg-slate-700 border border-slate-600 rounded px-2 py-1 w-20"
+                                            />
+                                            {editItems.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))}
+                                                    className="text-red-400 hover:text-red-300 px-2"
+                                                >✕</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditItems([...editItems, { productId: String(products[0]?.id ?? ''), quantity: '1' }])}
+                                        className="text-sm text-blue-400 hover:text-blue-300"
+                                    >+ Add item</button>
+                                    <div className="flex gap-2 mt-1">
+                                        <button
+                                            onClick={() => handleSaveOrder(order.id)}
+                                            className="bg-green-700 hover:bg-green-600 text-xs px-3 py-1 rounded"
+                                        >Save</button>
+                                        <button
+                                            onClick={() => setEditingOrderId(null)}
+                                            className="bg-slate-600 hover:bg-slate-500 text-xs px-3 py-1 rounded"
+                                        >Cancel</button>
+                                    </div>
+                                </div>
+                            ) : (
                             <table className="w-full text-sm text-left">
                                 <thead>
                                     <tr className="text-slate-500 text-xs">
@@ -251,6 +355,7 @@ export function OrdersPage() {
                                     ))}
                                 </tbody>
                             </table>
+                            )}
                             <div className="mt-3 border-t border-slate-700 pt-2">
                                 <button
                                     onClick={() => toggleHistory(order.id)}
