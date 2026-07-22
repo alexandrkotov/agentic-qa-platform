@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -28,6 +28,12 @@ export class CustomersService {
 
   async remove(id: number) {
     await this.findOne(id);
+    const orderCount = await this.prisma.order.count({ where: { customerId: id } });
+    if (orderCount > 0) {
+      throw new ConflictException(
+        `Cannot delete customer ${id}: they have ${orderCount} order(s)`,
+      );
+    }
     return this.prisma.customer.delete({ where: { id } });
   }
 }

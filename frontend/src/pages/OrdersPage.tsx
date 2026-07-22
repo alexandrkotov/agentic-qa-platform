@@ -106,7 +106,6 @@ export function OrdersPage() {
         setError(null);
         try {
             await api.patch(`/orders/${id}/items`, {
-                customerId: 0,
                 items: editItems.map((i) => ({
                     productId: parseInt(i.productId),
                     quantity: parseInt(i.quantity),

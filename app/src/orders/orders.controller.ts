@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/commo
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 
 @Controller('orders')
 export class OrdersController {
@@ -28,7 +29,7 @@ export class OrdersController {
   }
 
   @Patch(':id/items')
-  updateItems(@Param('id') id: string, @Body() dto: CreateOrderDto) {
+  updateItems(@Param('id') id: string, @Body() dto: UpdateOrderItemsDto) {
     return this.ordersService.updateItems(+id, dto.items);
   }
 
