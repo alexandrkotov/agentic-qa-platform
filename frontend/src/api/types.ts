@@ -22,10 +22,18 @@ export interface OrderItem {
   unitPrice: string;
 }
 
+export interface OrderStatusHistory {
+  id: number;
+  orderId: number;
+  status: OrderStatus;
+  changedAt: string;
+}
+
 export interface Order {
   id: number;
   customerId: number;
   status: OrderStatus;
   items: OrderItem[];
+  history?: OrderStatusHistory[]; // present only when fetched via GET /orders/:id
   createdAt: string;
 }
