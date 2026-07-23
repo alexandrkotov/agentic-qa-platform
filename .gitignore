@@ -4,4 +4,4 @@ build/
 .env
 *.log
 .DS_Store
-agent-service/reports/
+agent-service/reports/agent-service/.playwright-mcp/
