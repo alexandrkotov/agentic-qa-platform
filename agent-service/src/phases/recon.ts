@@ -12,8 +12,9 @@ import { config } from '../config.ts';
 /** Playwright MCP — headless browser for UI exploration */
 const playwrightMcp: McpServerConfig = {
   name: 'playwright',
-  command: 'npx',
-  args: ['-y', '@playwright/mcp@latest', '--headless'],
+  // Use local binary so the Chromium installed via `playwright install chromium` is found
+  command: './node_modules/.bin/playwright-mcp',
+  args: ['--headless', '--browser', 'chromium'],
 };
 
 /** Postgres MCP — direct database access */

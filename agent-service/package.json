@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.112.5",
     "@modelcontextprotocol/sdk": "^1.15.0",
     "@openai/agents": "^0.13.5",
+    "@playwright/mcp": "^0.0.78",
     "dotenv": "^16.6.1",
     "zod": "^4.4.3"
   },
