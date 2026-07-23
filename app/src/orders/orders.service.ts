@@ -50,10 +50,24 @@ export class OrdersService {
     return order;
   }
 
+  // Orders move through a one-way lifecycle: DRAFT -> SUBMITTED.
+  // SUBMITTED is a fixed business event (see remove()/updateItems() below),
+  // so no status may transition out of it.
+  private static readonly ALLOWED_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+    [OrderStatus.DRAFT]: [OrderStatus.SUBMITTED],
+    [OrderStatus.SUBMITTED]: [],
+  };
+
   async updateStatus(id: number, status: OrderStatus) {
     const order = await this.findOne(id);
     if (order.status === status) {
       throw new BadRequestException(`Order is already ${status}`);
+    }
+    const allowed = OrdersService.ALLOWED_STATUS_TRANSITIONS[order.status] ?? [];
+    if (!allowed.includes(status)) {
+      throw new ConflictException(
+        `Cannot transition order ${id} from ${order.status} to ${status}`,
+      );
     }
     return this.prisma.$transaction([
       this.prisma.order.update({ where: { id }, data: { status } }),
