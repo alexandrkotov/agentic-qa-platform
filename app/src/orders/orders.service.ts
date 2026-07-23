@@ -29,6 +29,9 @@ export class OrdersService {
             unitPrice: priceMap.get(item.productId)!,
           })),
         },
+        history: {
+          create: { status: OrderStatus.DRAFT },
+        },
       },
       include: { items: true },
     });
