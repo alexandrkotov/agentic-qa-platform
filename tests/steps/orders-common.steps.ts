@@ -1,14 +1,18 @@
 import { createBdd } from 'playwright-bdd';
 import { expect } from '@playwright/test';
-import { orderCtx, resetOrderCtx } from '../support/orderCtx';
+import { orderCtx } from '../support/orderCtx';
 
-const { Given, Before } = createBdd();
+const { Given } = createBdd();
 
 const BASE = 'http://localhost:3000';
 
-Before({ tags: '@orders_items or @orders_status or @orders_validation' }, async () => {
-  resetOrderCtx();
-});
+// No Before() here on purpose — each of orders-items/orders-status/orders-
+// validation's own Before() calls resetOrderCtx() itself (see those files).
+// A shared cross-domain Before() used to live here too, which meant every
+// orders-* scenario ran two registered Before hooks (this one + its own
+// domain's) — functionally fine (different work, same tag match) but showed
+// up as two blank, indistinguishable "Before" rows in the Cucumber HTML
+// report. Collapsed to one registration per domain instead.
 
 function uniqueEmail() {
   return `order-test-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`;

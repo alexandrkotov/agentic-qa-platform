@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import { createBdd } from 'playwright-bdd';
 import { db, ensureDbConnected } from '../support/db';
-import { orderCtx } from '../support/orderCtx';
+import { orderCtx, resetOrderCtx } from '../support/orderCtx';
 import { orderCardLocator } from '../support/orderCardLocator';
 
 const { Given, When, Then, Before } = createBdd();
@@ -12,6 +12,7 @@ let ctx: any = {};
 
 Before({ tags: '@orders_status' }, async () => {
   ctx = {};
+  resetOrderCtx();
   await ensureDbConnected();
 });
 
