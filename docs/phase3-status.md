@@ -273,3 +273,17 @@ corrected understanding of what `recon.ts` actually does (it's a real
 MCP-based tool-use agent, not a plain SDK call — an earlier draft of the
 architecture doc got this wrong and was corrected) live in the updated
 `agentic-qa-platform-summary.md`, not in this repo.
+
+## Addendum 2 (Phase 4 session, 2026-07-24)
+
+Section 4 above ("Before-hook tag scoping") claimed, as a verified fact, that
+an orders-domain scenario shows "exactly 2 [`Before` hooks] (shared + own
+domain)". **That's no longer true as of commit `aa67823`.** Looking at the
+rendered Cucumber HTML report while starting Phase 4 surfaced this as two
+blank, indistinguishable "Before" rows per orders-* scenario — functionally
+harmless (the two hooks did different work), but noise. Fixed by calling
+`resetOrderCtx()` directly from each of orders-items/orders-status/orders-
+validation's own `Before()` and deleting the shared cross-domain `Before()`
+in `orders-common.steps.ts`, so it's back to exactly 1 `Before` per scenario
+— same as customers/products/security always had. Re-verified 35/35 passing
+and 1 `Before` per orders-* scenario directly in the Cucumber JSON.
