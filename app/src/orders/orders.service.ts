@@ -5,9 +5,15 @@ import { OrderStatus } from '../../generated/prisma/enums';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(dto: CreateOrderDto) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: dto.customerId },
+    });
+    if (!customer) {
+      throw new BadRequestException(`Customer ${dto.customerId} not found`);
+    }
     const productIds = dto.items.map((i) => i.productId);
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds } },
