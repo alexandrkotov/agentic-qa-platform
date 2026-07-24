@@ -18,7 +18,7 @@ src/
     McpManager.ts         # MCP client: connect / list tools / call tools / disconnect
   tools/
     swagger.ts            # Custom HTTP tool: fetches OpenAPI JSON spec
-  phases/
+  bootstrap/
     recon.ts              # Phase 1 — Reconnaissance: system prompt, MCP configs, report writer
 reports/                  # Generated JSON reports (git-ignored)
 ```
@@ -235,13 +235,13 @@ Then pass it to `provider.run({ tools: [myTool] })`.
 
 ## Adding a New Phase
 
-1. Create `src/phases/<phase-name>.ts`
+1. Create `src/bootstrap/<phase-name>.ts`
 2. Export a `run<PhaseName>(provider: AgentProvider): Promise<void>` function
 3. Add a `case` in `src/index.ts`
 4. Add a script in `package.json`
 
 ```typescript
-// src/phases/generate.ts
+// src/bootstrap/generate.ts
 export async function runGenerate(provider: AgentProvider): Promise<void> {
   const reconReport = JSON.parse(
     await readFile('reports/recon-latest.json', 'utf-8'),

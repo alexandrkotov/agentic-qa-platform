@@ -14,9 +14,11 @@ hands-on debugging.
   `.claude/worktrees/...` checkout won't have any of it — worktrees don't
   share uncommitted state, and even after the Phase 2 commits landed on
   `main`, a worktree checked out from an older branch point won't see them
-  either. If a new chat is on a worktree and `tests/`/`agent-service/src/phases/generate.ts`
+  either. If a new chat is on a worktree and `tests/`/`agent-service/src/bootstrap/generate.ts`
   look missing, that's why — point it at the main checkout, or make sure its
-  branch is up to date with `main`.
+  branch is up to date with `main`. (Note: this file lived at
+  `agent-service/src/phases/generate.ts` at the time this Phase 2 session
+  ran; renamed to `bootstrap/` during Phase 3 — see `docs/phase3-status.md`.)
 - **`pnpm` in this environment hard-fails on unapproved native build
   scripts** (the "ignored builds" gate, pnpm ~v10+) — any dependency with a
   postinstall build (e.g. `esbuild`, pulled in transitively by `tsx`) will

@@ -1,5 +1,5 @@
-import { runRecon } from './phases/recon.ts';
-import { runGenerate } from './phases/generate.ts';
+import { runRecon } from './bootstrap/recon.ts';
+import { runGenerate } from './bootstrap/generate.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
 import { OpenAIProvider } from './providers/OpenAIProvider.ts';
 import type { AgentProvider } from './providers/AgentProvider.ts';
