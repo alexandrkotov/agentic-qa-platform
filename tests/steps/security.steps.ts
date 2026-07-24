@@ -7,7 +7,7 @@ const BASE_URL = 'http://localhost:3000';
 
 let ctx: any = {};
 
-Before(async () => {
+Before({ tags: '@security' }, async () => {
   ctx = {};
 });
 

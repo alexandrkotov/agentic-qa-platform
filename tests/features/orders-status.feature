@@ -1,6 +1,6 @@
 Feature: Order status management
 
-  @happy_path
+  @happy_path @orders_status
   Scenario: Submit DRAFT order
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -9,7 +9,7 @@ Feature: Order status management
     Then the order status should be SUBMITTED
     And the order status history should contain entries DRAFT, SUBMITTED in order
 
-  @edge_case
+  @edge_case @orders_status
   Scenario: Delete SUBMITTED order via UI
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -17,7 +17,7 @@ Feature: Order status management
     When I view the orders page
     Then the order row should not show a Delete button
 
-  @edge_case
+  @edge_case @orders_status
   Scenario: Delete SUBMITTED order via API
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -26,7 +26,7 @@ Feature: Order status management
     Then the API response status should be 409
     And the API response body should contain message "Cannot delete order {id}: only DRAFT orders can be deleted"
 
-  @happy_path
+  @happy_path @orders_status
   Scenario: View order status history
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -34,7 +34,7 @@ Feature: Order status management
     When I click Show history on the order
     Then the history panel should display status entries with timestamps
 
-  @edge_case
+  @edge_case @orders_status
   Scenario: Change order status via API from SUBMITTED to DRAFT
     Given an order test customer exists
     And an order test product exists with price 29.99

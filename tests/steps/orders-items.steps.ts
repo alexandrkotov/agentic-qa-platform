@@ -9,7 +9,7 @@ const { Given, When, Then, Before } = createBdd();
 const BASE = 'http://localhost:3000';
 let ctx: any = {};
 
-Before(async () => {
+Before({ tags: '@orders_items' }, async () => {
   ctx = {};
   await ensureDbConnected();
 });

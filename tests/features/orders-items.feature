@@ -1,6 +1,6 @@
 Feature: Order Items Management
 
-  @happy_path
+  @happy_path @orders_items
   Scenario: Delete DRAFT order
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -10,7 +10,7 @@ Feature: Order Items Management
     Then the order test order should no longer appear in the orders list
     And the order test order should not exist in the database
 
-  @happy_path
+  @happy_path @orders_items
   Scenario: Edit DRAFT order items
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -19,7 +19,7 @@ Feature: Order Items Management
     And I edit the order test order and change the quantity to 5
     Then the order test order item quantity should be 5 in the database
 
-  @edge_case
+  @edge_case @orders_items
   Scenario: Edit SUBMITTED order items via API
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -29,7 +29,7 @@ Feature: Order Items Management
     Then the response status should be 409
     And the response body should mention "only DRAFT orders"
 
-  @happy_path
+  @happy_path @orders_items
   Scenario: Order unitPrice snapshot
     Given an order test customer exists
     And an order test product exists with price 29.99
@@ -37,7 +37,7 @@ Feature: Order Items Management
     When the order test product price is updated to 49.99
     Then the order test order item unitPrice in the database should still be 29.99
 
-  @happy_path
+  @happy_path @orders_items
   Scenario: Add multiple items to order
     Given an order test customer exists
     And an order test product exists with price 29.99

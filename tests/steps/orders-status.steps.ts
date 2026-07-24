@@ -10,7 +10,7 @@ const BASE_URL = 'http://localhost:3000';
 
 let ctx: any = {};
 
-Before(async () => {
+Before({ tags: '@orders_status' }, async () => {
   ctx = {};
   await ensureDbConnected();
 });

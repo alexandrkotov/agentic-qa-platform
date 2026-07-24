@@ -14,7 +14,7 @@ let lastStatus: number;
 let lastBody: any;
 let orderedCustomerId: number | undefined;
 
-Before(async () => {
+Before({ tags: '@customers' }, async () => {
   lastEmail = undefined as any;
   lastName = undefined as any;
   lastCustomerId = undefined;

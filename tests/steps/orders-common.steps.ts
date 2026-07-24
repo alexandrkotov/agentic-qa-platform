@@ -6,7 +6,7 @@ const { Given, Before } = createBdd();
 
 const BASE = 'http://localhost:3000';
 
-Before(async () => {
+Before({ tags: '@orders_items or @orders_status or @orders_validation' }, async () => {
   resetOrderCtx();
 });
 
