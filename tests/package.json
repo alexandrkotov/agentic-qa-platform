@@ -3,13 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
+    "test": "bddgen && playwright test",
+    "report": "node support/generate-html-report.mjs",
     "typecheck": "tsc --noEmit",
     "cleanup": "node support/cleanup.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
     "playwright-bdd": "^9.2.0",
+    "multiple-cucumber-html-reporter": "^4.1.0",
     "pg": "^8.13.0",
     "@types/pg": "^8.11.0",
     "@types/node": "^22.0.0",

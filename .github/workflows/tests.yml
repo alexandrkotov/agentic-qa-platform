@@ -1,0 +1,134 @@
+name: BDD test suite
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'tests/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/tests.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'tests/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/tests.yml'
+  workflow_dispatch:
+
+env:
+  DATABASE_URL: postgresql://user:pass@localhost:5432/testdb
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start app stack (db, app, frontend)
+        run: docker compose up -d --build
+
+      - name: Run Prisma migrations
+        run: |
+          for i in $(seq 1 15); do
+            if docker compose exec -T app npx prisma migrate deploy; then
+              break
+            fi
+            if [ "$i" -eq 15 ]; then
+              echo "Migrations did not succeed in time"
+              docker compose logs
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Wait for app and frontend to be ready
+        run: |
+          for target in http://localhost:3000/customers http://localhost:5173/; do
+            echo "Waiting for $target"
+            for i in $(seq 1 30); do
+              if curl -sf -o /dev/null "$target"; then
+                echo "$target is up"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "$target did not become ready in time"
+                docker compose logs
+                exit 1
+              fi
+              sleep 2
+            done
+          done
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tests/pnpm-lock.yaml
+
+      - name: Install test dependencies
+        working-directory: tests
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Sweep any leftover test data
+        working-directory: tests
+        run: pnpm run cleanup
+
+      - name: Run BDD test suite
+        working-directory: tests
+        run: pnpm run test
+
+      - name: Generate Cucumber HTML report
+        if: always()
+        working-directory: tests
+        run: pnpm run report
+
+      - name: Sweep test data created by this run
+        if: always()
+        working-directory: tests
+        run: pnpm run cleanup
+
+      - name: Upload Cucumber HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cucumber-html-report
+          path: tests/reports/cucumber-html
+          retention-days: 14
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report
+          path: tests/playwright-report
+          retention-days: 14
+
+      - name: Upload traces for failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/test-results
+          retention-days: 14
+
+      - name: Dump app logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop app stack
+        if: always()
+        run: docker compose down -v

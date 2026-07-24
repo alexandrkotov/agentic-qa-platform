@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { defineBddConfig } from 'playwright-bdd';
+import { defineBddConfig, cucumberReporter } from 'playwright-bdd';
 
 const testDir = defineBddConfig({
   features: 'features/*.feature',
@@ -10,6 +10,11 @@ export default defineConfig({
   testDir,
   use: {
     baseURL: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
-  reporter: [['html'], ['json', { outputFile: 'reports/cucumber-report.json' }]],
+  reporter: [
+    ['html'],
+    cucumberReporter('json', { outputFile: 'reports/cucumber-json/report.json' }),
+  ],
 });
