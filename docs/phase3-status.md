@@ -261,3 +261,15 @@ gets a fresh timestamp on every run.
    actual GitHub infrastructure (see "Known loose ends"). Fix and re-push
    if anything cold-runner-specific breaks.
 2. Decide the Phase 4 scope question above before starting more work.
+
+## Addendum (post-completion, same session)
+
+After this phase was marked complete, `agent-service/src/phases/` was
+renamed to `agent-service/src/bootstrap/` (commit `2bee4c6`) — out of
+scope for this doc (it's an `agent-service` architecture change, not
+reporting/CI), noted here only so a future session doesn't find `src/phases/`
+in this file and wonder why the tree doesn't match. Rationale and the
+corrected understanding of what `recon.ts` actually does (it's a real
+MCP-based tool-use agent, not a plain SDK call — an earlier draft of the
+architecture doc got this wrong and was corrected) live in the updated
+`agentic-qa-platform-summary.md`, not in this repo.
