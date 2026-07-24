@@ -9,8 +9,8 @@ The interesting part isn't "AI runs Playwright tests" — running tests doesn't 
 that an agent explores a live, unfamiliar application (API + UI + database) on its own,
 figures out what's worth testing, and produces a real, executable BDD test suite from that —
 which a human then reviews, debugs, and hardens before it's trusted to run repeatedly. See
-[docs/phase2-status.md](docs/phase2-status.md) and [docs/phase3-status.md](docs/phase3-status.md)
-for the detailed, warts-and-all account of how that went.
+[docs/phase2-status.md](docs/phase2-status.md), [docs/phase3-status.md](docs/phase3-status.md), and
+[docs/phase4-status.md](docs/phase4-status.md) for the detailed, warts-and-all account of how that went.
 
 ## What's in this repo
 
@@ -36,7 +36,7 @@ rejected, do business rules hold consistently across both the UI and the API.
 |---|---|---|
 | **Recon** | Explores the *live* running app — reads the OpenAPI spec, walks the Postgres schema, navigates the UI, and performs a real write scenario (create → submit an order) to observe actual behavior rather than guess at it. Uses a real agentic tool-use loop with **Playwright MCP** (browser) and **Postgres MCP** (database) — not a single prompt. Produces a structured JSON report (`agent-service/reports/recon-*.json`): endpoints, schema, UI pages, business rules, candidate test scenarios. | [`agent-service/src/bootstrap/recon.ts`](agent-service/src/bootstrap/recon.ts) |
 | **Generate** | Takes that recon report and generates a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) — one call per business domain (customers, products, orders-status, orders-items, orders-validation, security). One-shot per domain, no tool use, no execution feedback loop. | [`agent-service/src/bootstrap/generate.ts`](agent-service/src/bootstrap/generate.ts) |
-| **E2E agent** | **Roadmap — not implemented.** Part of a larger planned architecture (a QA Orchestrator coordinating separate API / UI / E2E agents, each running a closed loop of generate → run → analyze failure → fix, rather than the current one-shot batch calls). Not built yet. | — |
+| **E2E agent** | **Phase 4 — planned, not implemented.** First step toward a larger target architecture (a QA Orchestrator coordinating separate API / UI / E2E agents), scoped down to just this one agent first: closed loop of generate → run → analyze failure → fix, cross-checking UI ↔ DB ↔ API, rather than the current one-shot batch calls. See [docs/phase4-status.md](docs/phase4-status.md). | — |
 
 Both agents are **independent, manually-triggered, one-shot tools** — "run it, get an artifact,
 a human takes it from there" — not steps in an automated pipeline. Neither is invoked by the test
