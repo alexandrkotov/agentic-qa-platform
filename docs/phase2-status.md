@@ -5,6 +5,28 @@ Covers Phase 2 (BDD test suite generation + first live runs) as of this session,
 conducted in the `Home` (chat) tab before moving to `</> Code` for continued
 hands-on debugging.
 
+## Environment notes (read this before continuing in a new chat)
+
+- **Work here happens in the main checkout, not a worktree.** All of Phase 2
+  (`tests/`, the `agent-service` generate-phase changes) was built up as
+  uncommitted work in `/home/test/projects/agentic-qa-platform` on branch
+  `main`, then committed there directly. A session started fresh from a
+  `.claude/worktrees/...` checkout won't have any of it — worktrees don't
+  share uncommitted state, and even after the Phase 2 commits landed on
+  `main`, a worktree checked out from an older branch point won't see them
+  either. If a new chat is on a worktree and `tests/`/`agent-service/src/phases/generate.ts`
+  look missing, that's why — point it at the main checkout, or make sure its
+  branch is up to date with `main`.
+- **`pnpm` in this environment hard-fails on unapproved native build
+  scripts** (the "ignored builds" gate, pnpm ~v10+) — any dependency with a
+  postinstall build (e.g. `esbuild`, pulled in transitively by `tsx`) will
+  make `pnpm install`/`pnpm run <script>` fail outright with
+  `[ERR_PNPM_IGNORED_BUILDS]` instead of just warning, unless
+  `pnpm approve-builds` has been run interactively first. Prefer plain `.mjs`/`.js`
+  scripts over TS-via-`tsx` for small standalone tools (see
+  `tests/support/cleanup.mjs`) to avoid this entirely, rather than relying on
+  someone remembering to approve builds.
+
 ## What Phase 2 does
 
 `agent-service/src/phases/generate.ts` — a script (sibling to `recon.ts`) that
