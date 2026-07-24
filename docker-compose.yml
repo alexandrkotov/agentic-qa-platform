@@ -20,6 +20,12 @@ services:
     depends_on:
       - app
 
+  report:
+    image: nginx:alpine
+    ports: ["8080:80"]
+    volumes:
+      - ./tests/reports/cucumber-html:/usr/share/nginx/html:ro
+
   db:
     image: postgres:16
     environment:
