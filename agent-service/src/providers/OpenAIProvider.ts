@@ -76,6 +76,14 @@ export class OpenAIProvider implements AgentProvider {
       );
 
       const result = await run(agent, userMessage);
+
+      const usage = result.state.usage;
+      console.log(
+        `[OpenAI] Usage: ${usage.inputTokens.toLocaleString()} input + ` +
+          `${usage.outputTokens.toLocaleString()} output tokens across ${usage.requests} request(s) ` +
+          `— cost not tracked (OpenAI pricing not in this codebase's pricing table)`,
+      );
+
       return result.finalOutput ?? '';
     } finally {
       for (const server of mcpInstances) {

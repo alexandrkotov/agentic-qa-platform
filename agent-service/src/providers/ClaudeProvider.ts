@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentProvider, AgentRunOptions } from './AgentProvider.ts';
 import { McpManager } from '../mcp/McpManager.ts';
 import { config } from '../config.ts';
+import { estimateClaudeCostUsd } from '../pricing.ts';
 
 export class ClaudeProvider implements AgentProvider {
   private readonly client: Anthropic;
@@ -22,6 +23,12 @@ export class ClaudeProvider implements AgentProvider {
     maxIterations = 50,
   }: AgentRunOptions): Promise<string> {
     const mcp = new McpManager();
+    const totalUsage = {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    };
 
     try {
       if (mcpServers.length > 0) {
@@ -67,6 +74,11 @@ export class ClaudeProvider implements AgentProvider {
           tools: anthropicTools.length > 0 ? anthropicTools : undefined,
           messages,
         });
+
+        totalUsage.input_tokens += response.usage.input_tokens;
+        totalUsage.output_tokens += response.usage.output_tokens;
+        totalUsage.cache_creation_input_tokens += response.usage.cache_creation_input_tokens ?? 0;
+        totalUsage.cache_read_input_tokens += response.usage.cache_read_input_tokens ?? 0;
 
         messages.push({ role: 'assistant', content: response.content });
 
@@ -120,6 +132,14 @@ export class ClaudeProvider implements AgentProvider {
 
       return 'Agent reached max iterations without a final response.';
     } finally {
+      const cost = estimateClaudeCostUsd(model, totalUsage);
+      const costStr = cost === null ? 'cost unknown for this model' : `~$${cost.toFixed(4)}`;
+      console.log(
+        `[Claude] Usage: ${totalUsage.input_tokens.toLocaleString()} input + ` +
+          `${totalUsage.output_tokens.toLocaleString()} output tokens ` +
+          `(cache write ${totalUsage.cache_creation_input_tokens.toLocaleString()}, ` +
+          `cache read ${totalUsage.cache_read_input_tokens.toLocaleString()}) — ${costStr}`,
+      );
       await mcp.disconnectAll();
     }
   }
