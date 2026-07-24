@@ -14,6 +14,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   reporter: [
+    ['list'],
     ['html'],
     cucumberReporter('json', { outputFile: 'reports/cucumber-json/report.json' }),
   ],
