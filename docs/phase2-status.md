@@ -198,31 +198,150 @@ fix(orders): validate customerId exists on order creation (400)
 |---|---|---|
 | `orders-validation` | ✅ 9/9 passing | Confirmed the customerId fix above. |
 | `orders-status` | ✅ 5/5 passing | Confirmed both known-correction scenarios (409 on rollback, 409 on edit-SUBMITTED-adjacent scenario is actually in orders-items — see below). Uses the working XPath `orderCardLocator`. |
-| `orders-items` | ⚠️ 2/5 passing | **Not yet diagnosed** — 3 of 5 scenarios failing as of the last run in the `Home` tab, before switching to `Code`. Uses a different (older, `:has-text(customerEmail)`-based) locator strategy than `orders-status`; failures not yet triaged to know if it's the same class of locator issue or something new. **This is the immediate next task.** |
-| `customers` | ❓ Not yet run | `typecheck` passes; never executed against the live app. |
-| `products` | ❓ Not yet run | `typecheck` passes; never executed against the live app. |
-| `security` | ❓ Not yet run | `typecheck` passes; never executed against the live app. |
+| `orders-items` | ✅ 5/5 passing | Diagnosed and fixed — see "orders-items fixes" below. |
+| `customers` | ✅ 6/6 passing | First live run — see "customers/products/security first runs" below. |
+| `products` | ✅ 6/6 passing | First live run — see "customers/products/security first runs" below. |
+| `security` | ✅ 4/4 passing | First live run — confirmed no real XSS vuln (script-tag payloads render escaped, don't execute). |
+
+All 6 domains, 35/35 scenarios, green. Confirmed stable across two consecutive
+full `npx playwright test` runs (no flakiness observed).
+
+## `orders-items` fixes (3 of 5 scenarios were failing)
+
+The `:has-text("<customerEmail>")` locator strategy noted as "unverified
+under stress" in point 9 above turned out to be broken by design: order
+cards render the customer's **name** only (`OrdersPage.tsx` line ~255,
+`customerMap.get(order.customerId)?.name`), never the email — email only
+appears inside the `<option>` text of the "New Order" Customer `<select>`.
+So the locator matched that dropdown option, not the card, then timed out
+looking for a Delete/Edit button inside it. Two more distinct bugs surfaced
+once that was fixed:
+
+1. **`orderCardLocator()` extracted to `tests/support/orderCardLocator.ts`**
+   (was only in `orders-status.steps.ts`) and now used by both files. Delete
+   and Edit steps in `orders-items.steps.ts` use it the same way
+   `orders-status.steps.ts` does.
+2. **`window.confirm()` on delete** — `OrdersPage.tsx`'s delete handler
+   calls `window.confirm(...)`; Playwright auto-*dismisses* dialogs by
+   default (equivalent to Cancel), which would silently no-op the delete.
+   Fixed with `page.once('dialog', d => d.accept())` before the click.
+3. **No accessible name on the "New Order" form's `<select>`/`<input>`
+   fields** — the `Customer`/`Items` `<label>`s have no `htmlFor`, and the
+   fields have no `id`/`aria-label`, so `getByRole(..., {name})` can never
+   find them. Also the step assumed clicking "Create Order" *opens* the
+   form — it doesn't; the form is always rendered, so that click was
+   actually submitting an empty, invalid form and focusing the Customer
+   select via native validation. Fixed by scoping to `page.locator('form')`
+   and indexing fields positionally instead of by accessible name, and by
+   selecting options by `value` (id) instead of `label` (option text is
+   `"{name} ({email})"` / `"{name} (${price})"`, which never equals the bare
+   name strings stored in `ctx`).
+4. **Race condition between click and DB assertion** — both `handleSaveOrder`
+   and `handleCreate` in `OrdersPage.tsx` fire an `await api.patch/post(...)`
+   and only update UI state (closing the edit form / resetting the Customer
+   select) *after* it resolves. The step functions returned right after
+   `.click()`, so the following DB-assertion step sometimes ran before the
+   write landed (observed as quantity staying at the old value, or the
+   just-created order not existing yet). Fixed by waiting on the resulting
+   DOM change (`expect(saveButton).toHaveCount(0)` /
+   `expect(customerSelect).toHaveValue('')`) before returning from the step,
+   rather than a fixed `waitForTimeout`. Note `orders-status.steps.ts`'s
+   "I submit the order via the UI" step still uses a hardcoded
+   `waitForTimeout(300)` for the same class of issue — not touched here
+   since it's currently passing, but the same race exists there and the
+   deterministic-wait pattern would be a safer replacement if it ever flakes.
+
+## `customers`/`products`/`security` first runs (2 of 3 had failures)
+
+First-ever executions against the live app. `orders-validation`/`orders-status`
+had already worked around most of this app's UI quirks, so these three mostly
+confirmed the same failure classes rather than finding new ones:
+
+1. **`getByLabel()` doesn't work anywhere in this app** — `CustomersPage.tsx`'s
+   Email/Name inputs and `ProductsPage.tsx`'s Name/Price inputs all use
+   `placeholder` text with no `<label>`, `id`, or `aria-label`. `customers.steps.ts`
+   and `security.steps.ts` (which reuses the same forms for its XSS scenarios)
+   both used `page.getByLabel('Email'/'Name'/'Price')`, which timed out.
+   Fixed by switching to `page.getByPlaceholder(...)` in all three files.
+   Note this is a step below `getByRole(..., {name})` from the `orders-items`
+   fixes: Chromium *does* expose `placeholder` as the accessible name for
+   `type="text"` inputs (so `getByRole('textbox', {name: 'Name'})` happened to
+   work in `products.steps.ts`) but *not* for `type="number"` (spinbutton) —
+   an inconsistent browser fallback, not something to rely on either way.
+   `getByPlaceholder` sidesteps the whole question.
+2. **Hardcoded (non-unique) test data breaks re-runs** — two scenarios don't
+   generate unique data the way the `orders-*` domains do:
+   - `customers.feature`'s "Create customer with valid data" uses the fixed
+     name `"Jane Doe"`, which collides with a pre-existing seed customer of
+     the same name. `page.getByText(lastName)` was ambiguous (strict-mode
+     violation). Fixed by scoping the name assertion to the table row
+     containing the (unique, timestamped) email instead of a page-wide text
+     search.
+   - `products.feature`'s "Create product with valid data" uses a fully
+     fixed name+price (`"Wireless Mouse QA"` / `"$29.99"`), so *every* repeat
+     run adds another identical row and `getByRole('row', {name})` becomes
+     ambiguous once 2+ exist. Fixed pragmatically with `.first()` — the
+     scenario's intent ("a product like this exists in the list") is
+     satisfied either way; the real fix would be generating a unique
+     name/price per run, but that means editing the `.feature` file's literal
+     Gherkin text, not just the step implementation.
+
+## Test data cleanup (resolved)
+
+Chose a **prefix-based teardown script** over a dedicated test DB/schema —
+seed/demo data (`Alec`, `Zhanna`, `Jane Doe`, `Super User`, `Wireless Mouse`,
+etc.) lives in the same tables as test data, and a separate schema would've
+meant new infra (separate `DATABASE_URL`, a seed script) for marginal benefit
+over just matching the naming patterns the suite already uses consistently.
+
+`tests/support/cleanup.mjs` (run via `pnpm run cleanup`): matches
+`Customer.email` and `Product.name`
+against the naming patterns each domain's steps files actually use
+(`order-test-%`, `cust_%`, `qa-prod-%`, `xss_%`, `sqltest%`, `debug-%` for
+customers; `Order Test Product%`, `Prod\_%`, `Referenced Product%`,
+`Wireless Mouse QA%`, `Debug Product%`, `Injected%`, `<script>%`, plus exact
+`Zero Price Item`/`Negative Price Item` for products), then deletes their
+`Order` rows first — `OrderItem`/`OrderStatusHistory` cascade automatically
+(`onDelete: Cascade` in the Prisma schema), but `Order→Customer` and
+`OrderItem→Product` don't, so Orders must go before Customers/Products or the
+FK blocks the delete. Orders are matched transitively (by their customer or
+by any item's product), not by their own naming scheme, since orders don't
+carry distinguishing text themselves.
+
+First run swept **201 customers, 216 products, 123 orders**, leaving exactly
+the 4 real customers and 5 real products verified by name beforehand. Also
+caught and removed `debug-*`/`Debug Product*` rows left over from an ad-hoc
+Playwright script used to diagnose the `orders-items` race condition earlier
+in this session — folded into the same pattern list rather than cleaned up
+by hand. Verified idempotent (second run against a live DB found only the
+rows the just-completed test run had added, zero left after) and that the
+full suite still passes 35/35 against a freshly-cleaned DB (no scenario
+secretly depended on accumulated data).
+
+Not wired as an automatic `afterEach`/Playwright `globalTeardown` — it's a
+manual `pnpm run cleanup` step for now, run between sessions or before a
+demo. Worth revisiting when CI wiring happens (see below).
+
+**Plain `.mjs`, not TypeScript** — the first version was `cleanup.ts` run via
+a `tsx` devDependency, but `tsx`'s transitive `esbuild` dependency has a
+native postinstall build script, which this pnpm setup (v11, with the
+"ignored builds" security gate introduced around pnpm 10) refuses to run
+without explicit approval (`pnpm approve-builds`), and — surprisingly — fails
+the *entire* `pnpm install`/`pnpm run` rather than just warning. That's a
+one-time interactive step, but it'd hit anyone else who clones the repo and
+runs `pnpm run cleanup` cold. Rewritten as plain `cleanup.mjs` (no TS syntax
+needed for a script this size) and dropped `tsx` entirely — `pnpm run
+cleanup` now runs with zero extra setup, and `pnpm-lock.yaml` no longer
+references `tsx`/`esbuild` at all.
 
 ## Known loose ends / risks (not yet addressed)
 
-- **Test data accumulation, no cleanup**: every run creates new `Customer`/
-  `Product`/`Order` rows (`order-test-...` / `Order Test Customer` /
-  `Order Test Product ...` prefixes) with no `afterEach`/global teardown.
-  As of the last check there were 30+ orders and 40+ customers/products
-  accumulated purely from test runs during this session. Not yet a hard
-  blocker, but will eventually slow the `/orders` page down and should get
-  a cleanup strategy (delete-by-prefix teardown, or a dedicated test DB
-  schema/reset between runs) before this suite is run repeatedly in CI.
 - **Fragile implicit ordering dependency** in `orders-validation.steps.ts`:
   the "Invalid status value in order status update" scenario's step reads
   `ctx.orderId`, which is only set by a *different* step
   (`I create an order test order with valid customerId and items`) assumed
   to have run earlier in the same scenario. Not yet verified against the
   actual `.feature` file that this ordering always holds.
-- **`orders-items.steps.ts`'s locator strategy is unverified under stress** —
-  it has passed 2/5 so far but the 3 failures aren't diagnosed yet, so it's
-  unknown whether they're locator-related (like the `orders-status` saga) or
-  something else entirely (data setup, timing, a real app bug, etc.).
 - **`customers.steps.ts` still uses bare module-level `let` state with a
   `Before()` reset patch** (applied earlier this session) rather than the
   cleaner `ctx: any = {}` object pattern used everywhere else. Not broken,
@@ -233,11 +352,14 @@ fix(orders): validate customerId exists on order creation (400)
 
 ## Immediate next steps (recommended order)
 
-1. Diagnose and fix the 3 failing `orders-items` scenarios.
-2. Run `customers`, `products`, and `security` domains for the first time
-   against the live app — expect UI-locator mismatches similar to the
-   `orders-status` saga, since none of these have been executed yet.
-3. Decide on and implement a test-data cleanup strategy.
+1. ~~Diagnose and fix the 3 failing `orders-items` scenarios.~~ Done.
+2. ~~Run `customers`, `products`, and `security` domains for the first time
+   against the live app.~~ Done — all 6 domains, 35/35 scenarios, green.
+3. ~~Decide on and implement a test-data cleanup strategy.~~ Done — see
+   "Test data cleanup" above (`pnpm run cleanup`).
 4. Verify the `orders-validation` step-ordering assumption noted above.
-5. Once all 6 domains are green, consider: `multiple-cucumber-html-reporter`
-   wiring (Phase 3 per the original architecture doc), GitHub Actions CI.
+5. Consider wiring `pnpm run cleanup` into CI (e.g. as a pre-run step) once
+   CI is set up, or as a Playwright `globalTeardown` if automatic cleanup
+   after every local run turns out to be wanted.
+6. `multiple-cucumber-html-reporter` wiring (Phase 3 per the original
+   architecture doc), GitHub Actions CI.
