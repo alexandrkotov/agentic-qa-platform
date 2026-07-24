@@ -6,6 +6,8 @@
   "scripts": {
     "recon": "tsx src/index.ts recon",
     "recon:openai": "tsx src/index.ts recon --provider openai",
+    "testgen": "tsx src/index.ts generate",
+    "testgen:openai": "tsx src/index.ts generate --provider openai",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,11 +16,13 @@
     "@openai/agents": "^0.13.5",
     "@playwright/mcp": "^0.0.78",
     "dotenv": "^16.6.1",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "@types/pg": "^8.11.0"
   }
 }

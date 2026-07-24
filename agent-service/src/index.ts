@@ -1,4 +1,5 @@
 import { runRecon } from './phases/recon.ts';
+import { runGenerate } from './phases/generate.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
 import { OpenAIProvider } from './providers/OpenAIProvider.ts';
 import type { AgentProvider } from './providers/AgentProvider.ts';
@@ -12,6 +13,8 @@ function getArg(flag: string, defaultValue: string): string {
 
 const phase = args.find((a) => !a.startsWith('-')) ?? 'recon';
 const providerName = getArg('--provider', 'claude');
+const reportPathArg = getArg('--report', '');
+const domainArg = getArg('--domain', '');
 
 function createProvider(): AgentProvider {
   switch (providerName) {
@@ -31,6 +34,13 @@ async function main() {
   switch (phase) {
     case 'recon':
       await runRecon(provider);
+      break;
+    case 'generate':
+      await runGenerate(
+        provider,
+        reportPathArg || undefined,
+        domainArg ? domainArg.split(',') : undefined,
+      );
       break;
     default:
       console.error(`Unknown phase: ${phase}`);
