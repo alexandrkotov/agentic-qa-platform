@@ -28,6 +28,37 @@ const PRODUCT_NAME_PATTERNS = [
 
 const PRODUCT_NAME_EXACT = ['Zero Price Item', 'Negative Price Item'];
 
+// Re-syncs each table's identity/serial sequence to MAX(id) after cleanup
+// deletes rows, so repeated test runs don't leave the sequence drifting
+// arbitrarily far ahead of the actual row count. Must run after the deletes
+// below, not before — otherwise MAX(id) would still include the rows about
+// to be removed.
+const RESET_ID_SEQUENCES_SQL = `
+DO $$
+DECLARE
+    table_name text;
+BEGIN
+    FOREACH table_name IN ARRAY ARRAY[
+        'Product',
+        'Customer',
+        'Order',
+        'OrderItem',
+        'OrderStatusHistory'
+    ]
+    LOOP
+        EXECUTE format(
+            'SELECT setval(
+                pg_get_serial_sequence(''public."%1$s"'', ''id''),
+                COALESCE(MAX(id), 1),
+                MAX(id) IS NOT NULL
+            )
+            FROM public."%1$s";',
+            table_name
+        );
+    END LOOP;
+END $$;
+`;
+
 async function main() {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -73,6 +104,8 @@ async function main() {
     if (productIds.length > 0) {
       await client.query('DELETE FROM "Product" WHERE id = ANY($1::int[])', [productIds]);
     }
+
+    await client.query(RESET_ID_SEQUENCES_SQL);
 
     console.log('Cleanup complete.');
   } finally {
