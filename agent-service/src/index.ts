@@ -1,4 +1,4 @@
-import { runRecon } from './bootstrap/recon.ts';
+import { runDiscovery } from './bootstrap/discovery.ts';
 import { runGenerate } from './bootstrap/generate.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
 import { OpenAIProvider } from './providers/OpenAIProvider.ts';
@@ -11,7 +11,7 @@ function getArg(flag: string, defaultValue: string): string {
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : defaultValue;
 }
 
-const phase = args.find((a) => !a.startsWith('-')) ?? 'recon';
+const phase = args.find((a) => !a.startsWith('-')) ?? 'discovery';
 const providerName = getArg('--provider', 'claude');
 const reportPathArg = getArg('--report', '');
 const domainArg = getArg('--domain', '');
@@ -32,8 +32,8 @@ async function main() {
   const provider = createProvider();
 
   switch (phase) {
-    case 'recon':
-      await runRecon(provider);
+    case 'discovery':
+      await runDiscovery(provider);
       break;
     case 'generate':
       await runGenerate(
@@ -44,7 +44,7 @@ async function main() {
       break;
     default:
       console.error(`Unknown phase: ${phase}`);
-      console.error('Usage: tsx src/index.ts recon [--provider claude|openai]');
+      console.error('Usage: tsx src/index.ts discovery [--provider claude|openai]');
       process.exit(1);
   }
 }

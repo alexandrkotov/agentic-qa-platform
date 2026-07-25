@@ -19,7 +19,7 @@ src/
   tools/
     swagger.ts            # Custom HTTP tool: fetches OpenAPI JSON spec
   bootstrap/
-    recon.ts              # Phase 1 — Reconnaissance: system prompt, MCP configs, report writer
+    discovery.ts          # Phase 1 — System Discovery: system prompt, MCP configs, report writer
 reports/                  # Generated JSON reports (git-ignored)
 ```
 
@@ -56,14 +56,14 @@ Make sure the target application is running (`docker compose up` from the projec
 ## Running
 
 ```bash
-# Phase 1 — Reconnaissance (Claude, default)
-pnpm recon
+# Phase 1 — System Discovery (Claude, default)
+pnpm discovery
 
-# Phase 1 — Reconnaissance (OpenAI)
-pnpm recon:openai
+# Phase 1 — System Discovery (OpenAI)
+pnpm discovery:openai
 ```
 
-Each run saves a timestamped JSON report to `reports/recon-<ISO-timestamp>.json`.
+Each run saves a timestamped JSON report to `reports/discovery-<ISO-timestamp>.json`.
 
 ---
 
@@ -243,12 +243,12 @@ Then pass it to `provider.run({ tools: [myTool] })`.
 ```typescript
 // src/bootstrap/generate.ts
 export async function runGenerate(provider: AgentProvider): Promise<void> {
-  const reconReport = JSON.parse(
-    await readFile('reports/recon-latest.json', 'utf-8'),
+  const discoveryReport = JSON.parse(
+    await readFile('reports/discovery-latest.json', 'utf-8'),
   );
   const result = await provider.run({
     systemPrompt: GENERATE_SYSTEM_PROMPT,
-    userMessage: JSON.stringify(reconReport),
+    userMessage: JSON.stringify(discoveryReport),
     tools: [writeFileTool],
   });
   // ...

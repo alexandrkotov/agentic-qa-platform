@@ -387,3 +387,14 @@ references `tsx`/`esbuild` at all.
    after every local run turns out to be wanted.
 6. `multiple-cucumber-html-reporter` wiring (Phase 3 per the original
    architecture doc), GitHub Actions CI.
+
+## Addendum (Phase 4 session, 2026-07-24)
+
+Phase 1 ("Recon") was renamed to "System Discovery Agent" for clarity to
+readers without AI-agent-jargon context — `recon.ts` → `agent-service/src/bootstrap/discovery.ts`,
+`pnpm recon` → `pnpm discovery`, report prefix `recon-*.json` →
+`discovery-*.json`. This file's mentions of `recon.ts`/`recon report` above
+describe the code as it was named during Phase 2 — left as-is rather than
+rewritten, same as this file was never updated for the later `phases/` →
+`bootstrap/` rename either (see `phase3-status.md`'s addendum on that).
+Full rationale and scope of the rename: `phase4-status.md`.

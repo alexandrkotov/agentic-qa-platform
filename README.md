@@ -34,8 +34,8 @@ rejected, do business rules hold consistently across both the UI and the API.
 
 | Agent | Role | Path |
 |---|---|---|
-| **Recon** | Explores the *live* running app — reads the OpenAPI spec, walks the Postgres schema, navigates the UI, and performs a real write scenario (create → submit an order) to observe actual behavior rather than guess at it. Uses a real agentic tool-use loop with **Playwright MCP** (browser) and **Postgres MCP** (database) — not a single prompt. Produces a structured JSON report (`agent-service/reports/recon-*.json`): endpoints, schema, UI pages, business rules, candidate test scenarios. | [`agent-service/src/bootstrap/recon.ts`](agent-service/src/bootstrap/recon.ts) |
-| **Generate** | Takes that recon report and generates a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) — one call per business domain (customers, products, orders-status, orders-items, orders-validation, security). One-shot per domain, no tool use, no execution feedback loop. | [`agent-service/src/bootstrap/generate.ts`](agent-service/src/bootstrap/generate.ts) |
+| **System Discovery Agent** | Explores the *live* running app — reads the OpenAPI spec, walks the Postgres schema, navigates the UI, and performs a real write scenario (create → submit an order) to observe actual behavior rather than guess at it. Uses a real agentic tool-use loop with **Playwright MCP** (browser) and **Postgres MCP** (database) — not a single prompt. Produces a structured JSON report (`agent-service/reports/discovery-*.json`): endpoints, schema, UI pages, business rules, candidate test scenarios. | [`agent-service/src/bootstrap/discovery.ts`](agent-service/src/bootstrap/discovery.ts) |
+| **Generate** | Takes that discovery report and generates a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) — one call per business domain (customers, products, orders-status, orders-items, orders-validation, security). One-shot per domain, no tool use, no execution feedback loop. | [`agent-service/src/bootstrap/generate.ts`](agent-service/src/bootstrap/generate.ts) |
 | **E2E agent** | **Phase 4 — planned, not implemented.** First step toward a larger target architecture (a QA Orchestrator coordinating separate API / UI / E2E agents), scoped down to just this one agent first: closed loop of generate → run → analyze failure → fix, cross-checking UI ↔ DB ↔ API, rather than the current one-shot batch calls. See [docs/phase4-status.md](docs/phase4-status.md). | — |
 
 Both agents are **independent, manually-triggered, one-shot tools** — "run it, get an artifact,
@@ -92,14 +92,14 @@ echo 'DATABASE_URL="postgresql://user:pass@localhost:5432/testdb"' > app/.env
 # tests/.env — read by tests/support/db.ts for direct DB assertions/cleanup
 echo 'DATABASE_URL=postgresql://user:pass@localhost:5432/testdb' > tests/.env
 
-# agent-service/.env — only needed if you're going to run recon/generate yourself
+# agent-service/.env — only needed if you're going to run discovery/generate yourself
 cd agent-service && cp .env.example .env
 # then edit .env and fill in ANTHROPIC_API_KEY (and OPENAI_API_KEY if you want the
 # OpenAI-provider comparison run) — see agent-service/README.md for details
 cd ..
 ```
 
-No prompt files to prepare — the recon/generate system prompts are plain TypeScript string
+No prompt files to prepare — the discovery/generate system prompts are plain TypeScript string
 constants committed directly in `agent-service/src/bootstrap/*.ts`, not externalized.
 
 ### 2. Start the app stack
@@ -138,7 +138,7 @@ container from step 2 — refresh the page any time you regenerate the report, n
 
 ### 5. (Optional) Re-run the agents yourself
 
-The recon report and generated test suite are already committed — you don't need to run the
+The discovery report and generated test suite are already committed — you don't need to run the
 agents to use this repo. If you want to see them work, or point them at a modified app:
 
 ```bash
@@ -147,8 +147,8 @@ pnpm install
 # one-time: install the Chromium build Playwright MCP needs
 node_modules/.pnpm/@playwright+mcp@*/node_modules/@playwright/mcp/node_modules/.bin/playwright install chromium
 
-pnpm recon              # Phase 1 — writes agent-service/reports/recon-<timestamp>.json
-pnpm testgen            # Phase 2 — reads the latest recon report, writes tests/features + tests/steps
+pnpm discovery          # Phase 1 — writes agent-service/reports/discovery-<timestamp>.json
+pnpm testgen            # Phase 2 — reads the latest discovery report, writes tests/features + tests/steps
 ```
 
 See [`agent-service/README.md`](agent-service/README.md) for provider switching

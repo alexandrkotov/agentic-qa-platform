@@ -287,3 +287,13 @@ validation's own `Before()` and deleting the shared cross-domain `Before()`
 in `orders-common.steps.ts`, so it's back to exactly 1 `Before` per scenario
 — same as customers/products/security always had. Re-verified 35/35 passing
 and 1 `Before` per orders-* scenario directly in the Cucumber JSON.
+
+## Addendum 3 (Phase 4 session, 2026-07-24)
+
+Phase 1 ("Recon") was renamed to "System Discovery Agent" for clarity to
+readers without AI-agent-jargon context — `recon.ts` → `agent-service/src/bootstrap/discovery.ts`,
+`pnpm recon` → `pnpm discovery`, report prefix `recon-*.json` →
+`discovery-*.json`. This file's own references to `recon.ts`/`pnpm recon`
+above (e.g. the "Environment notes" and the addendum right before this one)
+describe the code as it was named at the time — left as-is, not rewritten.
+Full rationale and scope of the rename: `phase4-status.md`.

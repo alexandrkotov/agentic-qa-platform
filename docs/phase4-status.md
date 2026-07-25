@@ -14,7 +14,7 @@ concrete design points captured here.
 ## Scope decision (2026-07-24)
 
 `phase3-status.md` left an open question: continue the Phase 1–3 batch-pipeline
-numbering (`recon` → `generate` → …), or start decomposing toward the
+numbering (`discovery` → `generate` → …), or start decomposing toward the
 architecture doc's target design (Orchestrator + separate API/UI/E2E Agent).
 
 **Decided: the latter, but not all at once.** Phase 4 builds the **E2E Agent**
@@ -36,7 +36,7 @@ three agents in one go. Reasoning (full version in the updated
 
 ## What Phase 4 aims to build
 
-An **E2E Agent** that, unlike `recon.ts` (single tool-use pass, writes a
+An **E2E Agent** that, unlike `discovery.ts` (single tool-use pass, writes a
 report) and `generate.ts` (one-shot generation, no execution feedback), runs a
 **closed loop**: pick/generate a cross-layer scenario → execute it (browser
 action via Playwright, direct Postgres check, API check) → if it fails,
@@ -47,14 +47,14 @@ Not yet designed (target input/output shape now drafted in "Design input:
 agent contract" below, but not implemented — the items here are the
 remaining open questions on top of that):
 - Whether this lives under `agent-service/src/bootstrap/` alongside
-  `recon.ts`/`generate.ts`, or a new top-level directory (arguably it isn't a
-  one-shot bootstrap tool the way those two are — open question).
+  `discovery.ts`/`generate.ts`, or a new top-level directory (arguably it
+  isn't a one-shot bootstrap tool the way those two are — open question).
 - Tool loop design: reuse `ClaudeProvider`'s existing manual agentic loop, or
   does the closed-loop generate→run→analyze→fix shape need something
   different from `AgentProvider.run()`'s current one-shot-conversation
   contract.
 - Which MCP servers it needs at runtime (Playwright MCP + Postgres MCP,
-  matching `recon.ts`'s tool config, is the obvious starting guess) and
+  matching `discovery.ts`'s tool config, is the obvious starting guess) and
   whether it also needs a way to run/read Playwright's own test output
   (not just MCP browser actions) to close the loop on real test failures.
 - Scope of the first scenario(s) to target — likely one existing
@@ -115,7 +115,7 @@ evidence behind it isn't trustworthy enough to act on, let alone automate.
 This wasn't discussed at all when the E2E-agent-first decision was made —
 worth flagging as a real gap the scope decision didn't cover. Giving a
 closed-loop agent write access to fix its own failures is a meaningfully
-different risk profile from `recon`/`generate`'s one-shot, human-reviewed
+different risk profile from `discovery`/`generate`'s one-shot, human-reviewed
 output.
 
 Guardrails for the first implementation:
@@ -138,7 +138,7 @@ Staged autonomy rollout instead of building straight to full autonomy:
    above
 
 Phase 4's first vertical slice should target **Suggest** mode — matches
-where `recon`/`generate` already sit (see `agentic-qa-platform-summary.md`'s
+where `discovery`/`generate` already sit (see `agentic-qa-platform-summary.md`'s
 "Suggest mode" framing), and doesn't require the guardrails above to be
 airtight on day one.
 
@@ -151,6 +151,41 @@ not a separate LLM-driven agent. Collecting artifacts is predictable work;
 there's no reason to spend a model call on it. Keeps with the project's
 existing AI-does-discovery/decisions, code-does-execution/assertions split
 (see `agentic-qa-platform-summary.md`, "Что именно делает AI").
+
+## Naming: "Recon" renamed to "System Discovery Agent" (2026-07-24)
+
+Phase 1 was called "Recon" throughout the code and docs. Renamed because
+"recon" reads as AI/security jargon — clear inside this project, but not
+self-explanatory to someone reading the README without that context. Went
+with **System Discovery Agent** over
+the alternative **Application Discovery Agent** because the agent explores
+three layers (OpenAPI contract, UI, and Postgres directly), not just "the
+application" — "System" better matches what it actually inspects, and reads
+consistently alongside the planned API Agent / UI Agent / E2E Agent names.
+
+Renamed thoroughly, not just in prose:
+- `agent-service/src/bootstrap/recon.ts` → `discovery.ts`, `runRecon` →
+  `runDiscovery`, CLI phase keyword `recon` → `discovery`
+  (`pnpm discovery`/`discovery:openai` replace `pnpm recon`/`recon:openai`)
+- Report filename prefix: new runs write `discovery-<timestamp>.json`
+  instead of `recon-<timestamp>.json`
+- Every current-facing doc updated: this file, `README.md`,
+  `agent-service/README.md`, `agentic-qa-platform-summary.md`
+
+**Deliberately NOT renamed:**
+- The four existing historical report files in `agent-service/reports/`
+  (`recon-2026-07-2*...json`, git-ignored) — left as-is as historical
+  artifacts of runs that were actually called "recon" at the time. Still
+  loadable via `generate.ts`'s explicit `--report <path>` flag; they just
+  won't match the new `discovery-*.json` auto-detection glob for "latest
+  report" (not a problem — that report is already consumed, `tests/` is
+  already generated and committed from it).
+- `docs/phase2-status.md` and `docs/phase3-status.md` — frozen, dated status
+  summaries describing what was literally true when written (`recon.ts`,
+  `pnpm recon`, etc., at the time). Following the same precedent as the
+  earlier `phases/` → `bootstrap/` rename (see `phase3-status.md`'s
+  addendum): corrections/renames after the fact get a short addendum note
+  in those files, not a silent rewrite of the original text.
 
 ## Environment notes carried forward (see `phase3-status.md` for detail)
 

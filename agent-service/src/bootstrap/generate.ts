@@ -188,7 +188,7 @@ this domain needs, self-contained, under the "order test ..." prefix.`,
 // ---------------------------------------------------------------------------
 
 function buildSystemPrompt(domain: Domain, reportJson: string): string {
-  return `You are a QA test-generation agent. You convert a reconnaissance report (JSON) into an executable BDD test suite, one domain at a time.
+  return `You are a QA test-generation agent. You convert a system discovery report (JSON) into an executable BDD test suite, one domain at a time.
 
 ## Stack
 - Test runner: Playwright Test
@@ -198,7 +198,7 @@ function buildSystemPrompt(domain: Domain, reportJson: string): string {
 - API scenarios: Playwright's APIRequestContext (request fixture)
 - UI scenarios: Playwright's page fixture
 
-## Reconnaissance report (source of truth for endpoints, schema, business rules)
+## System discovery report (source of truth for endpoints, schema, business rules)
 ${reportJson}
 ${domain.extraInstructions ?? ''}
 
@@ -241,12 +241,12 @@ const USER_MESSAGE = (domain: Domain) =>
 
 async function findLatestReport(): Promise<string> {
   const files = await readdir(config.reportsDir);
-  const reconFiles = files.filter((f) => f.startsWith('recon-') && f.endsWith('.json'));
-  if (reconFiles.length === 0) {
-    throw new Error(`No recon-*.json reports found in ${config.reportsDir}. Run 'pnpm recon' first.`);
+  const discoveryFiles = files.filter((f) => f.startsWith('discovery-') && f.endsWith('.json'));
+  if (discoveryFiles.length === 0) {
+    throw new Error(`No discovery-*.json reports found in ${config.reportsDir}. Run 'pnpm discovery' first.`);
   }
-  reconFiles.sort();
-  return join(config.reportsDir, reconFiles[reconFiles.length - 1]);
+  discoveryFiles.sort();
+  return join(config.reportsDir, discoveryFiles[discoveryFiles.length - 1]);
 }
 
 function parseFileMap(raw: string, domainKey: string): Record<string, string> {

@@ -64,7 +64,7 @@ export class OpenAIProvider implements AgentProvider {
       const openaiTools = tools.map(toOpenAITool);
 
       const agent = new Agent({
-        name: 'qa-recon-agent',
+        name: 'qa-discovery-agent',
         model,
         instructions: systemPrompt,
         tools: openaiTools,

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "recon": "tsx src/index.ts recon",
-    "recon:openai": "tsx src/index.ts recon --provider openai",
+    "discovery": "tsx src/index.ts discovery",
+    "discovery:openai": "tsx src/index.ts discovery --provider openai",
     "testgen": "tsx src/index.ts generate",
     "testgen:openai": "tsx src/index.ts generate --provider openai",
     "typecheck": "tsc --noEmit"
