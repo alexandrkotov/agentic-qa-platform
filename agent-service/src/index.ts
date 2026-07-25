@@ -16,6 +16,7 @@ const phase = args.find((a) => !a.startsWith('-')) ?? 'discovery';
 const providerName = getArg('--provider', 'claude');
 const reportPathArg = getArg('--report', '');
 const domainArg = getArg('--domain', '');
+const scenarioArg = getArg('--scenario', '');
 
 function createProvider(): AgentProvider {
   switch (providerName) {
@@ -44,7 +45,7 @@ async function main() {
       );
       break;
     case 'e2e':
-      await runE2EAgent(provider, providerName);
+      await runE2EAgent(provider, providerName, scenarioArg ? scenarioArg.split(',') : undefined);
       break;
     default:
       console.error(`Unknown phase: ${phase}`);

@@ -69,8 +69,10 @@ implementation:**
   test output" question below — yes, that's the whole mechanism now, not an
   addition on top of MCP browser actions.
 - First scenario: **"Submit DRAFT order"** (`tests/features/orders-status.feature`,
-  `@happy_path @orders_status`) — hardcoded in `agent-service/src/agents/e2e/scenarios.ts`,
-  not yet generalized to a selector.
+  `@happy_path @orders_status`) — hardcoded in `agent-service/src/agents/e2e/scenarios.ts`.
+  Later generalized to a small `SCENARIOS` array plus a `--scenario` CLI
+  filter (mirrors `generate.ts`'s `--domain`) — see "Scenario-shape check"
+  below.
 
 ## Design input: agent contract (from external review)
 
@@ -283,6 +285,72 @@ extra code) since `runE2EAgent` takes the generic `AgentProvider` interface.
   loop (that's "Execute with approval," stage 2 of the autonomy rollout,
   deliberately out of scope for this slice).
 
+## Scenario-shape check: is "E2E Agent" the right name? (2026-07-25)
+
+While using the agent, a sharp question came up: it's called the **E2E
+Agent**, but the mechanism (`runner.ts` → `evidence.ts` → `diagnose.ts`)
+doesn't check what *kind* of scenario it's running — it would work
+identically on a pure-UI scenario or a pure-API scenario, not just a
+cross-layer one. So does the name overclaim, and should the project drop the
+API Agent/UI Agent/E2E Agent specialization from the architecture doc in
+favor of one generically-named agent?
+
+**Decision at the time: don't guess, test it.** `scenarios.ts` was
+generalized from one hardcoded entry to three, deliberately chosen to be
+different *shapes*, not three more cross-layer checks:
+
+| id | scenario | shape |
+|---|---|---|
+| `submit-draft-order` | Submit DRAFT order | cross-layer: UI action, verified via both a direct API call and a direct Postgres query |
+| `create-customer-valid` | Create customer with valid data | UI-driven: action + assertion through the page, plus a DB check, no explicit API assertion |
+| `invalid-customer-id` | Invalid customer ID in API | pure API: no UI, no direct DB query at all |
+
+`agent-service/src/agents/e2e/index.ts` was generalized alongside it to loop
+over a filterable list of scenarios (`SCENARIOS`, optionally narrowed by a
+new `--scenario <id>[,<id>...]` CLI flag, mirroring `generate.ts`'s
+`--domain`) instead of always running `SCENARIOS[0]`. Each scenario writes
+its own `agent-service/reports/e2e-<scenarioId>-<timestamp>.json`.
+
+**Verified live, all three shapes, both pass and fail:**
+- All three passed cleanly with no code changes needed per shape.
+- All three were then deliberately broken (a wrong expected value in the
+  relevant assertion — API status code, DB value, or the original
+  `SUBMITTED` check) and re-run individually via `--scenario <id>`. All three
+  produced a correct `test_bug` classification (high confidence) and a
+  patch scoped to exactly the broken line — with **zero scenario-specific
+  code** in `evidence.ts`/`diagnose.ts` to make that happen.
+- The pure-API scenario correctly came back with `screenshotPath: null`
+  (there's no `page`/browser context in that test, so Playwright never
+  writes one) while `tracePath`/`errorContextPath` were still populated —
+  `evidence.ts`'s `fileIfExists` handled the missing file as a normal `null`,
+  not a crash. The UI-driven scenario had all three artifact paths
+  populated. This is exactly the kind of shape-dependent detail that *would*
+  have needed special-casing if the mechanism weren't genuinely generic.
+- Full 35/35 regression suite stayed green after every one of these runs;
+  `tests/` was reverted via `git checkout --` each time and confirmed clean.
+
+**Conclusion: the current mechanism (run → collect evidence → diagnose) is
+empirically scenario-shape-agnostic, not just cross-layer-specific.** This
+is now a tested fact, not a guess, and it reopened the naming question the
+architecture doc's original API/UI/E2E split was built around.
+
+**Decided (2026-07-25): keep the name "E2E Agent".** It names the *role*
+this instance fills in the target architecture (Orchestrator + API Agent +
+UI Agent + E2E Agent), not a technical guarantee enforced by the code —
+same framing as `agentic-qa-platform-summary.md`'s "Архитектура агентов"
+section, which this agent instance partially realizes. Reasoning against
+renaming to something scope-neutral right now: specialization may become
+real later (e.g. UI-agent-style locator healing would plausibly need live
+DOM/accessibility access that this agent doesn't have; an API-agent-style
+contract check would plausibly want to diff against the OpenAPI schema) —
+renaming now, based on a sample of three scenarios, risks having to rename
+back if that turns out to matter. If/when API Agent or UI Agent get built
+and turn out to need meaningfully different capabilities than this one, that
+will be the real signal to revisit naming — not this experiment alone.
+`agentic-qa-platform-summary.md` updated to match (status table, "Архитектура
+агентов" section, and a new naming note alongside the existing Recon →
+System Discovery Agent one).
+
 ## Environment notes carried forward (see `phase3-status.md` for detail)
 
 - No git remote configured — local-only git workflow, deliberate.
@@ -308,13 +376,22 @@ extra code) since `runE2EAgent` takes the generic `AgentProvider` interface.
    "fix → re-run" part of the loop is *diagnose + propose* only for this
    slice (Suggest mode) — nothing auto-applies or auto-retries yet, by
    design.
-3. Generalize `scenarios.ts` beyond the one hardcoded entry — pick 1-2 more
-   existing cross-layer scenarios (`orders-items` is the other domain with
-   the same UI→DB pattern) and confirm the evidence/diagnosis code holds up
-   without scenario-specific special-casing.
-4. Move to autonomy stage 2 ("Execute with approval") once comfortable with
+3. ~~Generalize `scenarios.ts` beyond the one hardcoded entry — pick 1-2 more
+   existing cross-layer scenarios ... and confirm the evidence/diagnosis code
+   holds up without scenario-specific special-casing.~~ Done — went further
+   than planned: tested across three different scenario *shapes*
+   (cross-layer, UI-driven, pure-API), not just more cross-layer ones. See
+   "Scenario-shape check" above. This surfaced an unresolved naming question
+   (next item).
+4. ~~Decide the naming question from "Scenario-shape check" above.~~ Done —
+   keeping "E2E Agent" as a role name, not renamed. See "Scenario-shape
+   check" above for the reasoning; `agentic-qa-platform-summary.md` updated
+   to match.
+5. Move to autonomy stage 2 ("Execute with approval") once comfortable with
    Suggest-mode output quality across a few scenarios: apply an
    approved `proposedPatch` and re-run to confirm it actually fixes the
    scenario, still bounded by the healing guardrails above.
-5. Once proven across more than one scenario, revisit whether/how to build
-   the API Agent, UI Agent, and Orchestrator on top.
+6. Once proven across more than one scenario, revisit whether/how to build
+   the API Agent, UI Agent, and Orchestrator on top — informed by whatever
+   the naming decision above concludes about whether specialization is
+   actually warranted.

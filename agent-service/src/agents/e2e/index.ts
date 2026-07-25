@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import { config } from '../../config.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS, type E2EScenarioConfig } from './scenarios.ts';
 import { runScenario } from './runner.ts';
 import { collectEvidence } from './evidence.ts';
 import { diagnoseFailure } from './diagnose.ts';
@@ -10,11 +10,12 @@ import type { E2ERunReport } from './contract.ts';
 
 const TESTS_ROOT = resolve(config.reportsDir, '..', '..', 'tests');
 
-export async function runE2EAgent(provider: AgentProvider, providerName: string): Promise<void> {
-  console.log('\n=== Phase 4: E2E Agent (Suggest mode) ===\n');
-
-  const scenario = SCENARIOS[0]; // v1: exactly one hardcoded scenario
-  console.log(`Scenario: ${scenario.title}`);
+async function runOne(
+  provider: AgentProvider,
+  providerName: string,
+  scenario: E2EScenarioConfig,
+): Promise<E2ERunReport> {
+  console.log(`\n--- Scenario: ${scenario.title} (${scenario.id}) ---\n`);
 
   const startedAt = new Date();
   const { passed, result } = await runScenario(TESTS_ROOT, scenario.title);
@@ -24,10 +25,10 @@ export async function runE2EAgent(provider: AgentProvider, providerName: string)
 
   let diagnosis = null;
   if (!passed) {
-    console.log('\n--- Scenario failed — running diagnosis (1 model call) ---\n');
+    console.log('\nScenario failed — running diagnosis (1 model call)\n');
     diagnosis = await diagnoseFailure(provider, TESTS_ROOT, scenario, evidence);
   } else {
-    console.log('\n--- Scenario passed — skipping diagnosis (no model call, no cost) ---\n');
+    console.log('\nScenario passed — skipping diagnosis (no model call, no cost)\n');
   }
 
   const report: E2ERunReport = {
@@ -44,13 +45,53 @@ export async function runE2EAgent(provider: AgentProvider, providerName: string)
 
   await mkdir(config.reportsDir, { recursive: true });
   const timestamp = startedAt.toISOString().replace(/[:.]/g, '-');
-  const reportPath = join(config.reportsDir, `e2e-${timestamp}.json`);
+  const reportPath = join(config.reportsDir, `e2e-${scenario.id}-${timestamp}.json`);
   await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf-8');
 
-  console.log(`\n=== E2E run ${report.status.toUpperCase()} — report saved: ${reportPath} ===\n`);
+  console.log(`=== [${scenario.id}] ${report.status.toUpperCase()} — report saved: ${reportPath} ===`);
   if (diagnosis) {
     console.log(`Classification: ${diagnosis.classification} (confidence: ${diagnosis.confidence})`);
     console.log(`Reasoning: ${diagnosis.reasoning}`);
-    console.log(diagnosis.proposedPatch ? `\nProposed patch:\n${diagnosis.proposedPatch}` : '\nNo patch proposed.');
+    console.log(diagnosis.proposedPatch ? `\nProposed patch:\n${diagnosis.proposedPatch}` : 'No patch proposed.');
+  }
+
+  return report;
+}
+
+/**
+ * @param scenarioIds Optional list of scenario ids to (re-)run, e.g. ['invalid-customer-id'].
+ *   Omit to run every scenario in SCENARIOS.
+ */
+export async function runE2EAgent(
+  provider: AgentProvider,
+  providerName: string,
+  scenarioIds?: string[],
+): Promise<void> {
+  console.log('\n=== Phase 4: E2E Agent (Suggest mode) ===\n');
+
+  const scenariosToRun = scenarioIds?.length
+    ? SCENARIOS.filter((s) => scenarioIds.includes(s.id))
+    : SCENARIOS;
+
+  if (scenarioIds?.length) {
+    const unknown = scenarioIds.filter((id) => !SCENARIOS.some((s) => s.id === id));
+    if (unknown.length > 0) {
+      throw new Error(
+        `Unknown scenario id(s): ${unknown.join(', ')}. Valid ids: ${SCENARIOS.map((s) => s.id).join(', ')}`,
+      );
+    }
+  }
+
+  const reports: E2ERunReport[] = [];
+  for (const scenario of scenariosToRun) {
+    reports.push(await runOne(provider, providerName, scenario));
+  }
+
+  const passedCount = reports.filter((r) => r.status === 'passed').length;
+  console.log(
+    `\n=== E2E Agent summary: ${passedCount}/${reports.length} passed ===`,
+  );
+  for (const r of reports) {
+    console.log(` - ${r.scenarioId}: ${r.status}${r.diagnosis ? ` (${r.diagnosis.classification})` : ''}`);
   }
 }
