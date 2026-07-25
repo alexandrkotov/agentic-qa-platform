@@ -1,5 +1,16 @@
 # Agentic QA Platform
 
+[![Author](https://img.shields.io/badge/Author-Alexander%20Kotov-181717?style=flat&logo=github&logoColor=white)](https://github.com/alexandrkotov)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat&logo=nestjs&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
+![AI](https://img.shields.io/badge/AI-Claude%20%2B%20OpenAI-8A2BE2?style=flat)
+
 An SDET / AI-automation portfolio project: a small containerized **Order Management System**
 (backend + frontend + Postgres) used as a target for **AI agents that explore the app and
 generate its automated test suite**, plus the resulting test suite itself (Playwright +
@@ -153,3 +164,13 @@ pnpm testgen            # Phase 2 — reads the latest discovery report, writes 
 
 See [`agent-service/README.md`](agent-service/README.md) for provider switching
 (`--provider openai`), `--domain` filtering for `testgen`, and the full architecture reference.
+
+## Author
+
+**Alexander Kotov** — [github.com/alexandrkotov](https://github.com/alexandrkotov)
+
+## License
+
+[MIT](LICENSE) — use it however you like, just keep the copyright/license
+notice (i.e. credit back to this repo) in copies or substantial portions of
+the code.
