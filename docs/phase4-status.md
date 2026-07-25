@@ -1,7 +1,10 @@
 # Agentic QA Platform — Phase 4: E2E Agent — Status Summary
 
-**Status: not started.** Planning stub only — records the scope decision made
-at the start of this phase so a new chat doesn't have to re-derive it.
+**Status: first vertical slice implemented and verified (2026-07-25).** One
+hardcoded scenario, Suggest mode only (diagnoses, never applies a patch) — see
+"What was built" below. Originally a planning stub recording the scope
+decision made at the start of this phase; now updated with what was actually
+built.
 Companion to `agentic-qa-platform-summary.md` (architecture doc — lives in
 Windows Downloads, **not** in this repo: `C:\Users\alexk\Downloads\agentic-qa-platform-summary.md`,
 reachable from WSL at `/mnt/c/Users/alexk/Downloads/agentic-qa-platform-summary.md`)
@@ -43,23 +46,31 @@ action via Playwright, direct Postgres check, API check) → if it fails,
 analyze why → attempt a fix → re-run. This is a different execution shape
 from anything built in Phase 1–3, not an extension of `generate.ts`.
 
-Not yet designed (target input/output shape now drafted in "Design input:
-agent contract" below, but not implemented — the items here are the
-remaining open questions on top of that):
-- Whether this lives under `agent-service/src/bootstrap/` alongside
-  `discovery.ts`/`generate.ts`, or a new top-level directory (arguably it
-  isn't a one-shot bootstrap tool the way those two are — open question).
-- Tool loop design: reuse `ClaudeProvider`'s existing manual agentic loop, or
-  does the closed-loop generate→run→analyze→fix shape need something
-  different from `AgentProvider.run()`'s current one-shot-conversation
-  contract.
-- Which MCP servers it needs at runtime (Playwright MCP + Postgres MCP,
-  matching `discovery.ts`'s tool config, is the obvious starting guess) and
-  whether it also needs a way to run/read Playwright's own test output
-  (not just MCP browser actions) to close the loop on real test failures.
-- Scope of the first scenario(s) to target — likely one existing
-  `orders-items`/`orders-status`-style cross-layer check, reimplemented as a
-  live agent loop, before generalizing to new scenarios.
+**Resolved (2026-07-25) — see "What was built" below for the actual
+implementation:**
+- Directory placement: `agent-service/src/agents/e2e/` — a new top-level
+  directory, sibling to `bootstrap/`, not inside it. `bootstrap/` stays
+  reserved for one-shot tools (`discovery.ts`, `generate.ts`); the E2E Agent
+  is a different kind of thing (closed-loop, not "run once, get an artifact").
+- Tool loop design: **turned out not to need one for the execution phase.**
+  The "obvious starting guess" below (give Claude Playwright MCP + Postgres
+  MCP and let it explore) was rejected — it would mean an LLM deciding
+  pass/fail from raw tool output, which violates the project's own
+  AI-discovers/code-asserts split. Instead: a deterministic runner spawns the
+  *real* `tests/` Playwright suite (`bddgen` then `playwright test --grep
+  "<scenario>"`) as a child process and reads its actual exit code + Cucumber
+  JSON report. `provider.run()` is only called once, only on failure, purely
+  to diagnose — no tools, no MCP, no loop needed since there's nothing for it
+  to call.
+- MCP servers needed: **none, for this slice.** Evidence comes entirely from
+  the real test run's own output (Cucumber JSON + `trace.zip` +
+  `test-failed-1.png` + `error-context.md`), not from the LLM re-verifying
+  anything live via MCP. This directly answered the "read Playwright's own
+  test output" question below — yes, that's the whole mechanism now, not an
+  addition on top of MCP browser actions.
+- First scenario: **"Submit DRAFT order"** (`tests/features/orders-status.feature`,
+  `@happy_path @orders_status`) — hardcoded in `agent-service/src/agents/e2e/scenarios.ts`,
+  not yet generalized to a selector.
 
 ## Design input: agent contract (from external review)
 
@@ -187,6 +198,91 @@ Renamed thoroughly, not just in prose:
   addendum): corrections/renames after the fact get a short addendum note
   in those files, not a silent rewrite of the original text.
 
+## What was built (2026-07-25)
+
+`agent-service/src/agents/e2e/`, five files:
+
+- `scenarios.ts` — hardcoded `SCENARIOS` array, one entry (id, title,
+  Gherkin feature name, feature/steps file paths). Mirrors `generate.ts`'s
+  `DOMAINS` array pattern (data-driven config, not dynamic discovery).
+- `contract.ts` — the actual TypeScript types for the input/output contract
+  designed above: `FailureClassification`, `StepEvidence`,
+  `ScenarioEvidence`/`ScenarioEvidenceNotFound` (discriminated union — a
+  missing/unparseable report or a `--grep` miss is a typed case, not a
+  crash), `EvidenceBundle`, `Diagnosis`, `E2ERunReport`.
+- `runner.ts` — deterministic execution, no LLM. Deletes the previous
+  `tests/reports/cucumber-json/report.json` first (its absence afterward
+  unambiguously means bddgen/Playwright crashed before the reporter ran,
+  not stale data), pre-sweep `cleanup.mjs`, `bddgen`, `playwright test
+  --grep "<title>"`, post-sweep `cleanup.mjs` (always, even on failure).
+  Invokes `tests/node_modules/.bin/{bddgen,playwright}` directly via
+  `node:child_process.spawn` — not through `pnpm run ...` — matching
+  `discovery.ts`'s existing precedent of spawning local binaries directly.
+  `AbortController`-based timeouts (bddgen 60s, playwright 4min, cleanup
+  30s) so a stuck browser or a down Docker stack can't hang the agent
+  forever. **Pass/fail is the child process's real exit code — never an
+  LLM's opinion.**
+- `evidence.ts` — reads the Cucumber JSON report and scans (never
+  reconstructs) `tests/test-results/` for the matching run's artifacts.
+  Two things learned empirically that the original design guessed wrong
+  about: (1) Cucumber JSON nests scenarios under **features**
+  (`{name, elements[]}`), not a flat scenario list — confirmed by parsing a
+  real report; (2) Playwright SHA1-hash-truncates the per-test output folder
+  name once the title exceeds ~60 chars, so the folder name is not
+  reconstructable from the scenario title — confirmed live: a run of this
+  exact scenario produced `test-results/features-orders-status.fea-ac52b-nagement-Submit-DRAFT-order/`,
+  which no naive concatenation would have predicted. `evidence.ts` just
+  `readdir`s the directory instead (Playwright wipes `test-results/` at the
+  start of every invocation, and `--grep` isolates one scenario, so there's
+  normally at most one entry).
+- `diagnose.ts` — the only LLM call, and only made when the run failed. No
+  MCP servers, no tools, single `provider.run()` call with the Gherkin +
+  step source + the evidence bundle, asked to return the classification/
+  reasoning/patch JSON per the contract. The `application_bug` → no-patch
+  guardrail is stated in the prompt **and** re-enforced in code afterward
+  (`diagnose.ts` nulls out `proposedPatch` if the model returns one anyway
+  for an `application_bug` classification) — the model isn't trusted to
+  have followed the prompt rule perfectly.
+
+Wired up the same way `discovery`/`generate` are: `case 'e2e'` in
+`agent-service/src/index.ts`, `pnpm e2e`/`pnpm e2e:openai` scripts in
+`agent-service/package.json`. OpenAI provider support came for free (no
+extra code) since `runE2EAgent` takes the generic `AgentProvider` interface.
+
+**Verified live**, not just typechecked:
+- **Pass-path**: `pnpm e2e` against the (currently-passing) scenario —
+  report shows `status: "passed"`, `diagnosis: null`, and the console log
+  confirms no `[Claude] Usage: ...` line appeared (proves the diagnosis call
+  really was skipped, no cost incurred on a passing run).
+- **Fail-path**: temporarily changed `orders-status.steps.ts`'s
+  `expect(body.status).toBe('SUBMITTED')` to `.toBe('SUBMITTED_WRONG')`, ran
+  `pnpm e2e`, confirmed: `status: "failed"`; the failing step carried a real
+  Playwright error message; `tracePath`/`screenshotPath`/`errorContextPath`
+  all pointed at real files; `diagnosis` classified it `test_bug` (confidence
+  `high`) with a `proposedPatch` that was exactly the one-line fix, scoped
+  only to the `.steps.ts` file. Reverted via `git checkout --` immediately
+  after — `git status` on `tests/` was clean throughout, confirming the
+  Suggest-mode guardrail held in practice (the agent never touched the file
+  itself), not just in prompt text.
+- **Full-suite regression**: `cd tests && pnpm run test` — all 35 scenarios
+  still pass after the above runs.
+
+**Known rough edges, accepted for this slice, not silently ignored:**
+- `--grep` runs overwrite `tests/reports/cucumber-json/report.json`, which
+  is the same file the full-suite HTML report reads from. Running `pnpm e2e`
+  and then `pnpm run report` (without re-running the full suite first) would
+  render an HTML report showing only 1 scenario, not 35. Not a problem for
+  how it's used today (nothing auto-chains these), but a sharp edge for a
+  future session to know about.
+- Token/cost metrics aren't in the structured `E2ERunReport` — only visible
+  via `ClaudeProvider`'s existing console logging (unchanged from
+  `discovery`/`generate`, per the "agent contract" design note above; fixing
+  this means extending `AgentProvider.run()`'s return type, deliberately not
+  done here).
+- Still exactly one hardcoded scenario, Suggest mode only. No retry-after-fix
+  loop (that's "Execute with approval," stage 2 of the autonomy rollout,
+  deliberately out of scope for this slice).
+
 ## Environment notes carried forward (see `phase3-status.md` for detail)
 
 - No git remote configured — local-only git workflow, deliberate.
@@ -201,11 +297,24 @@ Renamed thoroughly, not just in prose:
 
 ## Immediate next steps
 
-1. Resolve the open design questions above (directory placement, tool-loop
-   shape, MCP server needs) before writing code.
-2. Implement the E2E Agent against a single existing cross-layer scenario
+1. ~~Resolve the open design questions above (directory placement, tool-loop
+   shape, MCP server needs) before writing code.~~ Done — see "What was
+   built" above.
+2. ~~Implement the E2E Agent against a single existing cross-layer scenario
    first (e.g. the `orders-status` DRAFT→SUBMITTED check), verify the
    closed loop (run → detect failure → fix → re-run) actually works
-   end-to-end, before generalizing to more scenarios.
-3. Once proven, revisit whether/how to build the API Agent, UI Agent, and
-   Orchestrator on top.
+   end-to-end, before generalizing to more scenarios.~~ Done — pass-path and
+   fail-path both verified live (see "What was built" above). Note: the
+   "fix → re-run" part of the loop is *diagnose + propose* only for this
+   slice (Suggest mode) — nothing auto-applies or auto-retries yet, by
+   design.
+3. Generalize `scenarios.ts` beyond the one hardcoded entry — pick 1-2 more
+   existing cross-layer scenarios (`orders-items` is the other domain with
+   the same UI→DB pattern) and confirm the evidence/diagnosis code holds up
+   without scenario-specific special-casing.
+4. Move to autonomy stage 2 ("Execute with approval") once comfortable with
+   Suggest-mode output quality across a few scenarios: apply an
+   approved `proposedPatch` and re-run to confirm it actually fixes the
+   scenario, still bounded by the healing guardrails above.
+5. Once proven across more than one scenario, revisit whether/how to build
+   the API Agent, UI Agent, and Orchestrator on top.

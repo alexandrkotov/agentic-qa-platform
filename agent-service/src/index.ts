@@ -1,5 +1,6 @@
 import { runDiscovery } from './bootstrap/discovery.ts';
 import { runGenerate } from './bootstrap/generate.ts';
+import { runE2EAgent } from './agents/e2e/index.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
 import { OpenAIProvider } from './providers/OpenAIProvider.ts';
 import type { AgentProvider } from './providers/AgentProvider.ts';
@@ -42,9 +43,12 @@ async function main() {
         domainArg ? domainArg.split(',') : undefined,
       );
       break;
+    case 'e2e':
+      await runE2EAgent(provider, providerName);
+      break;
     default:
       console.error(`Unknown phase: ${phase}`);
-      console.error('Usage: tsx src/index.ts discovery [--provider claude|openai]');
+      console.error('Usage: tsx src/index.ts discovery|generate|e2e [--provider claude|openai]');
       process.exit(1);
   }
 }
