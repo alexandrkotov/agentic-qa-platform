@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import { config } from '../../config.ts';
-import { discoverScenarios, type E2EScenarioConfig } from './scenarios.ts';
+import { discoverScenarios, resolveScenarioSelectors, type E2EScenarioConfig } from './scenarios.ts';
 import { runScenario } from './runner.ts';
 import { collectEvidence } from './evidence.ts';
 import { diagnoseFailure } from './diagnose.ts';
@@ -59,8 +59,10 @@ async function runOne(
 }
 
 /**
- * @param scenarioIds Optional list of scenario ids to (re-)run, e.g. ['invalid-customer-id'].
- *   Omit to run every scenario in SCENARIOS.
+ * @param scenarioIds Optional list of scenario selectors to (re-)run — each may be an
+ *   exact scenario id, an exact scenario title, or a tag (e.g. ['invalid-customer-id-in-api'],
+ *   ['View order status history'], ['security'], ['WIP']). Resolved via
+ *   resolveScenarioSelectors(). Omit to run every discovered scenario.
  */
 export async function runE2EAgent(
   provider: AgentProvider,
@@ -72,17 +74,8 @@ export async function runE2EAgent(
   const SCENARIOS = await discoverScenarios(TESTS_ROOT);
 
   const scenariosToRun = scenarioIds?.length
-    ? SCENARIOS.filter((s) => scenarioIds.includes(s.id))
+    ? resolveScenarioSelectors(SCENARIOS, scenarioIds)
     : SCENARIOS;
-
-  if (scenarioIds?.length) {
-    const unknown = scenarioIds.filter((id) => !SCENARIOS.some((s) => s.id === id));
-    if (unknown.length > 0) {
-      throw new Error(
-        `Unknown scenario id(s): ${unknown.join(', ')}. Valid ids: ${SCENARIOS.map((s) => s.id).join(', ')}`,
-      );
-    }
-  }
 
   if (!scenarioIds?.length) {
     console.warn(
