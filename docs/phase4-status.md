@@ -691,21 +691,30 @@ mount source directory as `root` and block subsequent writes.
   unknown for this model" (the run used `claude-opus-4-5`, not in
   `pricing.ts`'s table) — reverted the deliberate break afterward.
 - Full 35/35 regression suite stayed green throughout.
-- **Not yet verified** (deferred until this branch is merged to `main`,
-  per the environment fact above): the live `report` container actually
-  serving `/usage/` after a real `docker compose up -d --force-recreate
-  report`. This is a known, explicitly-scoped gap, not an oversight — see
-  "Immediate next steps."
+- **Live container, verified after merging to `main`**: the very first
+  `docker compose up -d --force-recreate report` attempt (with the volume
+  nested at `/usr/share/nginx/html/usage`) **failed outright** —
+  `error mounting ... create mountpoint ... read-only file system`. Docker
+  can't create a new mountpoint inside a directory that's itself an
+  already-read-only bind mount. Fixed in a follow-up commit: `usage-html`
+  now mounts at a sibling container path
+  (`/usr/share/nginx/usage-html`, not nested under `/html`), with a small
+  custom `report-nginx.conf` (two `location` blocks: `/` for the existing
+  Cucumber report, `/usage/` aliased to the new directory) replacing the
+  stock `nginx:alpine` default. After that fix: `curl localhost:8080/usage/`
+  → 200; adding a second `recordUsage()` entry (no container
+  restart) changed the page's "Total calls" from 1 to 2 on the next
+  `curl` — confirms the bind mount genuinely serves live filesystem changes,
+  not a cached snapshot; `curl localhost:8080/` (existing Cucumber report)
+  unaffected throughout. Test entries cleaned up afterward — an empty
+  `usage-html/` correctly returns `403` (no index, no autoindex), same
+  pattern as `cucumber-html/` before its first real report.
 
 ## Immediate next steps (Stage 4/5)
 
-1. After merging to `main`: run `recordUsage()` once for real from the main
-   checkout (e.g. via `pnpm discovery`/`pnpm e2e`) so
-   `agent-service/reports/usage-html/` exists as the `test` user, *then*
-   `docker compose up -d --force-recreate report` from
-   `/home/test/projects/agentic-qa-platform`, then confirm
-   `curl localhost:8080/usage/` returns 200 and the existing
-   `localhost:8080/` (Cucumber report) still works unchanged.
+1. ~~After merging to `main`: verify the live `report` container actually
+   serves `/usage/`.~~ Done — see the mount-path fix above (required a
+   follow-up commit; the original nested-mount design didn't actually work).
 2. Optional, not required: extend `resolveScenarioSelectors` further only
    if a real need shows up in practice (e.g. glob patterns) — not adding
    speculative selector syntax now.
