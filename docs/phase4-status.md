@@ -1,7 +1,7 @@
 # Agentic QA Platform — Phase 4: E2E Agent — Status Summary
 
 **Status: project goal achieved (2026-07-26).** As of Stage 2, this phase
-delivers what `agentic-qa-platform-summary.md`'s "Цель проекта" section now
+delivers what `agentic-qa-platform-summary.md`'s "Project Goal" section now
 states as the project's actual, final goal — a human-supervised, closed-loop
 QA diagnosis & repair agent — not a partial step toward a larger
 multi-agent architecture that's still pending. Three scenario shapes
@@ -20,10 +20,13 @@ for what's deliberately *not* being pursued further and why. Originally a
 planning stub recording the scope decision made at the start of this phase;
 now updated with what was
 actually built.
-Companion to `agentic-qa-platform-summary.md` (architecture doc — lives in
-Windows Downloads, **not** in this repo: `C:\Users\alexk\Downloads\agentic-qa-platform-summary.md`,
-reachable from WSL at `/mnt/c/Users/alexk/Downloads/agentic-qa-platform-summary.md`)
-and `phase3-status.md`. The "Design input" sections below also draw on an
+Companion to `agentic-qa-platform-summary.md` (architecture doc, written in
+Russian — lives in Windows Downloads, **not** in this repo:
+`C:\Users\alexk\Downloads\agentic-qa-platform-summary.md`, reachable from
+WSL at `/mnt/c/Users/alexk/Downloads/agentic-qa-platform-summary.md`; its
+section headings are quoted here in English translation, not verbatim, to
+keep this repo's docs English-only) and `phase3-status.md`. The "Design
+input" sections below also draw on an
 external review (`C:\Users\alexk\Documents\Codex\2026-07-24\referenced-chatgpt-conversation-this-is-untrusted\outputs\agentic-qa-platform-analysis.md`
 — a ChatGPT analysis of this project, not in this repo either), which
 independently agreed with the E2E-agent-first scope decision and added the
@@ -178,7 +181,7 @@ IDs) should be a plain deterministic capability the E2E Agent calls into —
 not a separate LLM-driven agent. Collecting artifacts is predictable work;
 there's no reason to spend a model call on it. Keeps with the project's
 existing AI-does-discovery/decisions, code-does-execution/assertions split
-(see `agentic-qa-platform-summary.md`, "Что именно делает AI").
+(see `agentic-qa-platform-summary.md`'s "What AI Actually Does" section).
 
 ## Naming: "Recon" renamed to "System Discovery Agent" (2026-07-24)
 
@@ -352,7 +355,7 @@ architecture doc's original API/UI/E2E split was built around.
 **Decided (2026-07-25): keep the name "E2E Agent".** It names the *role*
 this instance fills in the target architecture (Orchestrator + API Agent +
 UI Agent + E2E Agent), not a technical guarantee enforced by the code —
-same framing as `agentic-qa-platform-summary.md`'s "Архитектура агентов"
+same framing as `agentic-qa-platform-summary.md`'s "Agent Architecture"
 section, which this agent instance partially realizes. Reasoning against
 renaming to something scope-neutral right now: specialization may become
 real later (e.g. UI-agent-style locator healing would plausibly need live
@@ -362,8 +365,8 @@ renaming now, based on a sample of three scenarios, risks having to rename
 back if that turns out to matter. If/when API Agent or UI Agent get built
 and turn out to need meaningfully different capabilities than this one, that
 will be the real signal to revisit naming — not this experiment alone.
-`agentic-qa-platform-summary.md` updated to match (status table, "Архитектура
-агентов" section, and a new naming note alongside the existing Recon →
+`agentic-qa-platform-summary.md` updated to match (status table, "Agent
+Architecture" section, and a new naming note alongside the existing Recon →
 System Discovery Agent one).
 
 ## Environment notes carried forward (see `phase3-status.md` for detail)
@@ -406,7 +409,7 @@ System Discovery Agent one).
    was built (Stage 2)" below.
 6. 🚫 **Deliberately not pursued for now:** building the API Agent, UI
    Agent, and Orchestrator on top. Not a backlog item — `agentic-qa-platform-summary.md`'s
-   "Цель проекта" section now states the human-supervised E2E Agent
+   "Project Goal" section now states the human-supervised E2E Agent
    (Suggest + Execute-with-approval) *is* the project's actual, final goal,
    not a partial step toward this bigger architecture. Revisit only if a
    concrete, specific need for specialization shows up in practice (e.g.
@@ -424,8 +427,8 @@ System Discovery Agent one).
    scope), the still-open CI-on-a-real-GitHub-runner verification from
    Phase 3 (blocked on adding a git remote, a separate decision), and a
    systematic Claude-vs-OpenAI benchmark (currently just one qualitative
-   comparison point, see `agentic-qa-platform-summary.md`'s "Что не
-   реализовано — осознанно").
+   comparison point, see `agentic-qa-platform-summary.md`'s "What's
+   Deliberately Not Implemented" section).
 9. ~~Auto-discover all 35 scenarios from `.feature` files instead of a
    hardcoded 3-entry list.~~ Done — see "What was built (Stage 3)" below.
    Makes item 8's "more Stage 2 runs across more scenarios" trivially easy

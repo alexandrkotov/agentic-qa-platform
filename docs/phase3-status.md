@@ -244,8 +244,8 @@ gets a fresh timestamp on every run.
   rebuild `app`/`frontend` images from scratch. Fine for a portfolio
   project's current traffic; worth a registry-cache or
   `docker/build-push-action` swap if run frequency goes up.
-- The original architecture doc's "Рекомендуемая последовательность
-  разработки" (steps 3–10: API Agent, UI Agent via Playwright Test
+- The original architecture doc's recommended development sequence
+  (steps 3–10: API Agent, UI Agent via Playwright Test
   Agents/MCP, DB tools, E2E Agent, Orchestrator, Claude/OpenAI provider
   abstraction, metrics) describes a different, more interactive agent
   framework than what `agent-service`'s `recon.ts` → `generate.ts` pipeline
