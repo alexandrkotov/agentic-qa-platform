@@ -1,10 +1,17 @@
 # Agentic QA Platform — Phase 4: E2E Agent — Status Summary
 
-**Status: first vertical slice implemented and verified (2026-07-25).** One
-hardcoded scenario, Suggest mode only (diagnoses, never applies a patch) — see
-"What was built" below. Originally a planning stub recording the scope
-decision made at the start of this phase; now updated with what was actually
-built.
+**Status: project goal achieved (2026-07-26).** As of Stage 2, this phase
+delivers what `agentic-qa-platform-summary.md`'s "Цель проекта" section now
+states as the project's actual, final goal — a human-supervised, closed-loop
+QA diagnosis & repair agent — not a partial step toward a larger
+multi-agent architecture that's still pending. Three scenario shapes
+verified (cross-layer, UI-driven, pure-API), both Suggest mode (diagnose +
+propose) and Execute-with-approval (apply, gated on an explicit human `y`,
+re-run, no auto-commit) proven live. See "What was built" and "What was
+built (Stage 2)" below for the two increments, and "Immediate next steps"
+for what's deliberately *not* being pursued further and why. Originally a
+planning stub recording the scope decision made at the start of this phase;
+now updated with what was actually built.
 Companion to `agentic-qa-platform-summary.md` (architecture doc — lives in
 Windows Downloads, **not** in this repo: `C:\Users\alexk\Downloads\agentic-qa-platform-summary.md`,
 reachable from WSL at `/mnt/c/Users/alexk/Downloads/agentic-qa-platform-summary.md`)
@@ -389,15 +396,28 @@ System Discovery Agent one).
    to match.
 5. ~~Move to autonomy stage 2 ("Execute with approval").~~ Done — see "What
    was built (Stage 2)" below.
-6. Once proven across more than one scenario, revisit whether/how to build
-   the API Agent, UI Agent, and Orchestrator on top — informed by whatever
-   the naming decision above concludes about whether specialization is
-   actually warranted.
-7. Consider autonomy stage 3 ("Constrained autonomous") once comfortable
-   with Stage 2's apply/re-run behavior across more scenarios and failure
-   types — auto-apply only pre-approved categories of *test* defects
-   (never application code), still no interactive confirmation removed
-   without a replacement guardrail of equal strength.
+6. 🚫 **Deliberately not pursued for now:** building the API Agent, UI
+   Agent, and Orchestrator on top. Not a backlog item — `agentic-qa-platform-summary.md`'s
+   "Цель проекта" section now states the human-supervised E2E Agent
+   (Suggest + Execute-with-approval) *is* the project's actual, final goal,
+   not a partial step toward this bigger architecture. Revisit only if a
+   concrete, specific need for specialization shows up in practice (e.g.
+   UI-healing needing live DOM access, API-agent needing OpenAPI-schema
+   diffing) — not as a default next step.
+7. 🚫 **Deliberately not pursued for now:** autonomy stage 3 ("Constrained
+   autonomous" — auto-apply without the interactive `y` confirmation).
+   Same reasoning as #6 — the explicit human-approval gate is a stated part
+   of the current goal, not a stepping stone to remove. Would only be
+   reconsidered after substantial real-world experience with Stage 2 across
+   many scenarios/failure types *and* a deliberate, separate decision to
+   accept the higher risk profile — not an automatic progression.
+8. Optional, low-priority, not required for the stated goal: more Stage 2
+   runs across more scenarios/failure types (useful data, doesn't change
+   scope), the still-open CI-on-a-real-GitHub-runner verification from
+   Phase 3 (blocked on adding a git remote, a separate decision), and a
+   systematic Claude-vs-OpenAI benchmark (currently just one qualitative
+   comparison point, see `agentic-qa-platform-summary.md`'s "Что не
+   реализовано — осознанно").
 
 ## What was built (Stage 2 — Execute with approval, 2026-07-26)
 
