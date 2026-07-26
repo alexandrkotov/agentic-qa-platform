@@ -8,4 +8,4 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 EXPOSE 3000
-CMD ["pnpm", "run", "start:dev"]
+CMD ["sh", "-c", "npx prisma generate && pnpm run start:dev"]
