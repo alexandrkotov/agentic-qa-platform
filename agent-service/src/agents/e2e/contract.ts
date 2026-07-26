@@ -41,11 +41,21 @@ export interface EvidenceBundle {
   stderrTail: string;
 }
 
+export interface StructuredFix {
+  /** Must be exactly one of the scenario's own featurePath/stepsPaths (relative to tests/). */
+  filePath: string;
+  /** Must occur exactly once, verbatim, in the current file contents. */
+  oldText: string;
+  newText: string;
+}
+
 export interface Diagnosis {
   classification: FailureClassification;
   reasoning: string;
   /** MUST be null when classification === 'application_bug'. */
   proposedPatch: string | null;
+  /** Machine-applicable exact find/replace. Null whenever classification === 'application_bug' (enforced in code). */
+  structuredFix: StructuredFix | null;
   /** Required when classification === 'application_bug'. */
   recommendedAction: string | null;
   confidence: 'low' | 'medium' | 'high';
@@ -61,4 +71,25 @@ export interface E2ERunReport {
   durationMs: number;
   evidence: EvidenceBundle;
   diagnosis: Diagnosis | null;
+}
+
+export type ApplyFixOutcome =
+  | 'applied_and_passed'
+  | 'applied_but_still_failed'
+  | 'applied_but_typecheck_failed'
+  | 'aborted_by_user'
+  | 'refused_not_applicable';
+
+export interface ApplyFixReport {
+  scenarioId: string;
+  scenarioTitle: string;
+  sourceReportPath: string;
+  outcome: ApplyFixOutcome;
+  originalClassification: FailureClassification;
+  originalReasoning: string;
+  appliedFix: StructuredFix | null;
+  typecheck: { ranAt: string; passed: boolean; stdoutTail: string; stderrTail: string } | null;
+  rerun: { passed: boolean; evidence: EvidenceBundle } | null;
+  startedAt: string;
+  finishedAt: string;
 }

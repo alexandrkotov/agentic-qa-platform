@@ -12,7 +12,7 @@ export interface RunnerResult {
 const TAIL_CHARS = 4000;
 const tail = (s: string, n = TAIL_CHARS) => (s.length > n ? s.slice(-n) : s);
 
-async function runProcess(command: string, args: string[], cwd: string, timeoutMs: number): Promise<RunnerResult> {
+export async function runProcess(command: string, args: string[], cwd: string, timeoutMs: number): Promise<RunnerResult> {
   return new Promise((resolvePromise) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);

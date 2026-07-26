@@ -387,11 +387,109 @@ System Discovery Agent one).
    keeping "E2E Agent" as a role name, not renamed. See "Scenario-shape
    check" above for the reasoning; `agentic-qa-platform-summary.md` updated
    to match.
-5. Move to autonomy stage 2 ("Execute with approval") once comfortable with
-   Suggest-mode output quality across a few scenarios: apply an
-   approved `proposedPatch` and re-run to confirm it actually fixes the
-   scenario, still bounded by the healing guardrails above.
+5. ~~Move to autonomy stage 2 ("Execute with approval").~~ Done — see "What
+   was built (Stage 2)" below.
 6. Once proven across more than one scenario, revisit whether/how to build
    the API Agent, UI Agent, and Orchestrator on top — informed by whatever
    the naming decision above concludes about whether specialization is
    actually warranted.
+7. Consider autonomy stage 3 ("Constrained autonomous") once comfortable
+   with Stage 2's apply/re-run behavior across more scenarios and failure
+   types — auto-apply only pre-approved categories of *test* defects
+   (never application code), still no interactive confirmation removed
+   without a replacement guardrail of equal strength.
+
+## What was built (Stage 2 — Execute with approval, 2026-07-26)
+
+**Core design decision: `structuredFix`, a new field separate from
+`proposedPatch`.** `proposedPatch` (free text, "diff preferred, prose is
+fine") isn't reliably machine-applicable — no diff-parsing library is
+installed in `agent-service`, and LLM-generated unified diffs routinely have
+slightly-off line numbers/context a strict `git apply` would reject anyway.
+Added `Diagnosis.structuredFix: { filePath, oldText, newText } | null` —
+an exact-match find/replace, the same shape as how Claude Code itself edits
+files. `proposedPatch` is unchanged, kept for human-readable display.
+
+Guardrails enforced in **code**, not just prompted (`diagnose.ts`'s new
+`sanitizeStructuredFix()`, called from `diagnoseFailure` after
+`JSON.parse`):
+- `structuredFix` forced to `null` whenever `classification === 'application_bug'`
+  (same rule as `proposedPatch`).
+- `oldText` must be non-empty and different from `newText` (rejects empty
+  needles and no-op "fixes").
+- `filePath` must resolve (via `path.resolve`, not raw string equality) to
+  exactly one of the scenario's own `featurePath`/`stepsPaths` — the same
+  closed set `diagnose.ts` already reads as source context. Tighter than
+  "anywhere under `tests/`" and costs nothing, since the model has no
+  evidence-grounded visibility into any other file anyway.
+- `oldText` must occur **exactly once** in the file's live contents at
+  apply time (checked again in `apply.ts`, independently of the
+  diagnose-time check, since the file may have changed since) — zero or
+  multiple matches refuses rather than guessing.
+
+**Two-phase CLI, not one combined command.** Approval has to be a real
+human action. A new `apply-fix` phase (`agent-service/src/agents/e2e/apply.ts`,
+wired into `index.ts`/`package.json` as `pnpm apply-fix -- --report <path>`,
+reusing the *existing* `--report` flag) reads back a specific Suggest-mode
+report, validates every guardrail above plus `status === 'failed'` and a
+non-null `diagnosis`, prints a before/after view, and requires an
+**explicit interactive `y`/`yes`** via `node:readline/promises` before
+writing anything — anything else (including a piped/non-TTY stream
+reaching EOF, which readline resolves as `''`) defaults to abort. Every
+outcome (`refused_not_applicable`, `aborted_by_user`,
+`applied_but_typecheck_failed`, `applied_and_passed`/`applied_but_still_failed`)
+writes an `ApplyFixReport` (`e2e-<id>-applied-<timestamp>.json`) carrying
+the original diagnosis, the exact fix applied (or not), a `tsc --noEmit`
+gate result, and the re-run result — a self-contained audit trail, not
+just "it worked." Nothing in `apply.ts` calls `diagnoseFailure` — a second
+failure after applying is reported, never auto-re-diagnosed or looped.
+**Never commits anything** — the modified file is left for a human to
+review via `git diff`, same as every other change this project makes.
+
+`runner.ts`'s internal `runProcess` was exported (one-line change) so
+`apply.ts` could reuse it for the `tsc --noEmit` gate without duplicating
+child-process/timeout logic. `index.ts` also moved `createProvider()` from
+one call before the `switch` to being called individually inside each case
+that needs it, since `apply-fix` needs **no LLM call at all** (diagnosis
+already happened in a prior `e2e` run) and shouldn't require an Anthropic
+API key just to exist; the `Provider: ...` log line is now gated the same
+way so it isn't printed for `apply-fix`.
+
+**Verified live**, not just typechecked — all against the `invalid-customer-id`
+scenario (pure API, no `page`/browser context):
+- Deliberately broke it (`expect(lastStatus).toBe(404)` → `.toBe(499)`),
+  ran `pnpm e2e -- --scenario invalid-customer-id`: failed as expected,
+  `diagnosis.structuredFix` came back non-null, correctly scoped to
+  `steps/customers.steps.ts`, with `oldText` verbatim-present.
+- **Abort path, both ways**: `printf 'n\n' | pnpm apply-fix ...` and
+  `printf '' | pnpm apply-fix ...` (simulating piped EOF) both correctly
+  aborted with `aborted_by_user`, writing an apply-report but leaving
+  `git diff` on the source file unchanged both times.
+- **Approval path**: `printf 'y\n' | pnpm apply-fix ...` — file modified,
+  `tsc --noEmit` ran and passed, scenario re-ran via the real Playwright
+  process (no `[Claude] Usage: ...` line — confirms no LLM call happened
+  during apply), scenario passed, `applied_and_passed` report written. The
+  model's fix happened to exactly reverse the deliberate break —
+  `git diff` on the file was empty afterward (byte-identical restore), not
+  just semantically correct — though byte-identical restoration was never
+  the pass criterion, only the re-run passing was.
+- **Negative-path spot checks**, all correctly refused with no write and no
+  prompt/exit code 1: (a) a `status: "passed"` report; (b) a hand-edited
+  report with `classification: "application_bug"` and a non-null
+  `structuredFix` anyway — proves the *code* guardrail stops it, not just
+  the prompt; (c) a hand-edited report where `oldText` was chosen to occur
+  7 times in the target file — refused with "found 7, expected exactly 1."
+- **Full 35/35 regression** stayed green throughout; `tests/` confirmed
+  clean via `git status`/`git diff` after every step.
+
+**Known rough edges, accepted for this stage:**
+- `structuredFix` is a single find/replace block, not an array — can't
+  express a multi-location fix in one shot. Not needed yet; every fix seen
+  so far has been single-location.
+- No automatic retry-with-re-diagnosis if the applied fix doesn't work —
+  by design (bounded to exactly one apply-and-retry attempt per the
+  documented guardrails), but means a human has to re-run Suggest mode
+  by hand to get a second diagnosis if the first fix doesn't land.
+- The `tsc --noEmit` gate only catches compile-time breakage, not runtime
+  logic errors that would still pass typecheck but fail differently than
+  expected — the scenario re-run is still the real check for those.
