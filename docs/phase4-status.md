@@ -800,3 +800,57 @@ the two real recovery loops (`tool_error`-shaped crash, shared-step
 human writing code by hand. Item 8 above is now considered adequately
 exercised for the project's stated goal — not something requiring an
 open-ended stream of further runs.
+
+## Addendum: git remote added, first real CI verification (2026-07-26)
+
+The "no git remote configured" note under "Environment notes carried
+forward" above is no longer current. A remote was added
+(`github.com/alexandrkotov/agentic-qa-platform`), `main` pushed, and
+`.github/workflows/tests.yml` run for real via `workflow_dispatch` for the
+first time — closing out the last still-open item from item 8's list
+(`phase3-status.md`'s "CI-on-a-real-GitHub-runner verification").
+
+The first run failed, and not on a flake — it surfaced a genuine bug that
+local development had never hit: `app/generated/prisma` is gitignored, and
+nothing in `app/Dockerfile` ever ran `prisma generate` inside the
+container. Locally this was silently masked by a `generated/prisma` folder
+already sitting on the host disk from earlier manual Prisma commands,
+carried into every container restart by the dev bind mount
+(`docker-compose.yml`'s `./app:/usr/src/app`). A genuinely fresh checkout
+has no such leftover, so `nest start --watch` failed to compile (29
+TypeScript errors, all missing-module/missing-property on the ungenerated
+client) and the app never bound to port 3000. Fixed by generating the
+Prisma client at container **startup** rather than build time
+(`app/Dockerfile`'s `CMD` became `sh -c "npx prisma generate && pnpm run
+start:dev"`) — build-time generation wouldn't have survived the dev bind
+mount overlaying the image's `/usr/src/app` at runtime anyway.
+
+A second `workflow_dispatch` run (after that fix) got further — app and
+frontend both came up — but failed inside the test suite itself with
+`EACCES: permission denied, mkdir '.../tests/reports/cucumber-json'` (and
+again on `.../tests/reports/cucumber-html/features`). Root cause: the
+workflow's "Start app stack" step ran a bare `docker compose up -d --build`
+with no service names, which brings up all four compose services —
+including `report`, the local-only nginx report viewer
+(`phase3-status.md` Section 5 already documents CI as using build
+artifacts instead, never this container). `report`'s bind mounts point at
+host paths that don't exist on a fresh checkout, and Docker auto-creates
+missing bind-mount directories as **root** on GitHub's native-Linux
+runners — silently masked in local WSL2/Docker Desktop development, where
+this apparently doesn't happen the same way. So `tests/reports/` ended up
+root-owned before the unprivileged `runner` user's test process ever got a
+chance to write into it. Fixed by scoping the step to `docker compose up -d
+--build db app frontend`, never starting `report` in CI at all.
+
+Both fixes verified live, in order: full 35/35 regression run locally with
+`app/generated/prisma` deliberately deleted first (via `docker compose exec
+app rm -rf`, since the container had left root-owned files there too — a
+smaller instance of the same auto-created-as-root pattern found in the
+second bug) to genuinely simulate a fresh clone, then a real
+`workflow_dispatch` run on GitHub Actions — `status: completed, conclusion:
+success`, confirmed via the public Actions API
+(`api.github.com/repos/.../actions/runs/<id>`), not just "the UI shows
+green." Both `app/Dockerfile` and `.github/workflows/tests.yml` fixes were
+committed separately, each fast-forward-merged into `main` from the main
+checkout and pushed before the next verification step, per this project's
+usual workflow.

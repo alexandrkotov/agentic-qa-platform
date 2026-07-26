@@ -297,3 +297,40 @@ readers without AI-agent-jargon context — `recon.ts` → `agent-service/src/bo
 above (e.g. the "Environment notes" and the addendum right before this one)
 describe the code as it was named at the time — left as-is, not rewritten.
 Full rationale and scope of the rename: `phase4-status.md`.
+
+## Addendum 4 (2026-07-26): a git remote finally exists, and the CI workflow this file's Section 3 describes is now verified for real
+
+A remote was added (`github.com/alexandrkotov/agentic-qa-platform`) and `main`
+pushed — the "no git remote" caveat throughout this file's "Environment
+notes" and "Known loose ends" is no longer current. `workflow_dispatch` was
+used to run `.github/workflows/tests.yml` for the first time on a real
+GitHub-hosted runner, and it surfaced two genuine environment-only bugs
+that local development had never hit (full detail in `phase4-status.md`'s
+own addendum):
+
+1. **Prisma client never generated inside a fresh container.**
+   `app/generated/prisma` is gitignored and nothing in `app/Dockerfile`
+   ran `prisma generate`; it only "worked" locally because a stale
+   generated folder already sat on the host disk from earlier manual
+   Prisma commands, carried into every container restart by the dev bind
+   mount. Fixed by generating at container *startup*
+   (`sh -c "npx prisma generate && pnpm run start:dev"`), not build time —
+   the bind mount overlays anything baked in at build time anyway.
+2. **The `report` service was unintentionally started in CI.** Step 3's
+   `docker compose up -d --build` (no service names) brought up all four
+   compose services, including `report` — the local-only nginx viewer this
+   very file already documented as "CI uploads the report as a build
+   artifact instead" (Section 5 above). `report`'s bind mounts point at
+   host paths that don't exist on a fresh checkout, and Docker auto-creates
+   missing bind-mount directories as **root** on GitHub's native-Linux
+   runners — so `tests/reports/` ended up root-owned before the suite
+   (running as the unprivileged `runner` user) could ever write into it.
+   Fixed by scoping the step to `docker compose up -d --build db app
+   frontend`.
+
+Both fixes verified live: a full 35/35 regression run locally (with the
+Prisma `generated/` folder deliberately deleted first, to simulate a truly
+fresh clone) and then a real `workflow_dispatch` run on GitHub Actions —
+green, `conclusion: success`, confirmed via the public Actions API. The
+"Immediate next steps" item above ("push and watch the first real GitHub
+Actions run closely") is done; no further action needed here.

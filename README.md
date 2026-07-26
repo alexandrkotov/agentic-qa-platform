@@ -82,9 +82,11 @@ details. Path: [`tests/`](tests/).
 
 A GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) that
 builds the app stack, migrates the database, runs the full suite, and uploads the HTML reports as
-artifacts. **Not yet verified against a real run** — this repo currently has no git remote (local
-git only, by choice) — see [docs/phase3-status.md](docs/phase3-status.md) for what to double-check
-on the first real push.
+artifacts. **Verified green on a real GitHub-hosted runner** (2026-07-26), after fixing two
+environment-only bugs the first real run surfaced — a Prisma client never generated inside a fresh
+container, and the local-only report viewer container unintentionally starting in CI and leaving
+root-owned report directories behind. See [docs/phase3-status.md](docs/phase3-status.md) and
+[docs/phase4-status.md](docs/phase4-status.md) for the full writeup.
 
 ## Running this locally
 
