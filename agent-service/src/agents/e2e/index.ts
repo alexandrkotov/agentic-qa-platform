@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import { config } from '../../config.ts';
-import { SCENARIOS, type E2EScenarioConfig } from './scenarios.ts';
+import { discoverScenarios, type E2EScenarioConfig } from './scenarios.ts';
 import { runScenario } from './runner.ts';
 import { collectEvidence } from './evidence.ts';
 import { diagnoseFailure } from './diagnose.ts';
@@ -69,6 +69,8 @@ export async function runE2EAgent(
 ): Promise<void> {
   console.log('\n=== Phase 4: E2E Agent (Suggest mode) ===\n');
 
+  const SCENARIOS = await discoverScenarios(TESTS_ROOT);
+
   const scenariosToRun = scenarioIds?.length
     ? SCENARIOS.filter((s) => scenarioIds.includes(s.id))
     : SCENARIOS;
@@ -80,6 +82,20 @@ export async function runE2EAgent(
         `Unknown scenario id(s): ${unknown.join(', ')}. Valid ids: ${SCENARIOS.map((s) => s.id).join(', ')}`,
       );
     }
+  }
+
+  if (!scenarioIds?.length) {
+    console.warn(
+      [
+        '',
+        `WARNING: running all ${scenariosToRun.length} scenarios with no --scenario filter.`,
+        'Each scenario spawns its own bddgen + playwright + cleanup cycle (roughly 3-4s',
+        'each), unlike `cd tests && pnpm run test`, which runs everything in ONE parallel',
+        'Playwright invocation (roughly 5s total). This run may take several minutes.',
+        'Pass --scenario <id>[,<id>...] to run a subset instead.',
+        '',
+      ].join('\n'),
+    );
   }
 
   const reports: E2ERunReport[] = [];

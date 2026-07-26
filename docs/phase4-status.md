@@ -7,11 +7,15 @@ QA diagnosis & repair agent — not a partial step toward a larger
 multi-agent architecture that's still pending. Three scenario shapes
 verified (cross-layer, UI-driven, pure-API), both Suggest mode (diagnose +
 propose) and Execute-with-approval (apply, gated on an explicit human `y`,
-re-run, no auto-commit) proven live. See "What was built" and "What was
-built (Stage 2)" below for the two increments, and "Immediate next steps"
-for what's deliberately *not* being pursued further and why. Originally a
-planning stub recording the scope decision made at the start of this phase;
-now updated with what was actually built.
+re-run, no auto-commit) proven live. Stage 3 (same day) then auto-discovered
+all 35 real scenarios from `.feature` files, replacing the 3-entry
+hardcoded list — the mechanism now covers the whole suite, not just the
+scenarios picked to prove the concept. See "What was built", "What was
+built (Stage 2)", and "What was built (Stage 3)" below for the three
+increments, and "Immediate next steps" for what's deliberately *not* being
+pursued further and why. Originally a planning stub recording the scope
+decision made at the start of this phase; now updated with what was
+actually built.
 Companion to `agentic-qa-platform-summary.md` (architecture doc — lives in
 Windows Downloads, **not** in this repo: `C:\Users\alexk\Downloads\agentic-qa-platform-summary.md`,
 reachable from WSL at `/mnt/c/Users/alexk/Downloads/agentic-qa-platform-summary.md`)
@@ -418,6 +422,11 @@ System Discovery Agent one).
    systematic Claude-vs-OpenAI benchmark (currently just one qualitative
    comparison point, see `agentic-qa-platform-summary.md`'s "Что не
    реализовано — осознанно").
+9. ~~Auto-discover all 35 scenarios from `.feature` files instead of a
+   hardcoded 3-entry list.~~ Done — see "What was built (Stage 3)" below.
+   Makes item 8's "more Stage 2 runs across more scenarios" trivially easy
+   now (any of the 35 is runnable via `--scenario <id>`, not just the
+   original 3) — still optional, still not required for the stated goal.
 
 ## What was built (Stage 2 — Execute with approval, 2026-07-26)
 
@@ -513,3 +522,71 @@ scenario (pure API, no `page`/browser context):
 - The `tsc --noEmit` gate only catches compile-time breakage, not runtime
   logic errors that would still pass typecheck but fail differently than
   expected — the scenario re-run is still the real check for those.
+
+## What was built (Stage 3 — auto-discover all 35 scenarios, 2026-07-26)
+
+`scenarios.ts`'s hardcoded 3-entry `SCENARIOS` array (hand-picked to span
+different scenario shapes — see "Scenario-shape check" above) is replaced
+by `discoverScenarios(testsRoot): Promise<E2EScenarioConfig[]>`, which
+parses the real `.feature` files under `tests/features/` directly. No more
+hand-typed scenario list to keep in sync as the suite grows — all 35
+scenarios across all 6 domains are now runnable via `--scenario <id>`, not
+just the original 3.
+
+**How it works:** a minimal line-scanner (only matches `Feature:` and
+`Scenario:` lines — this suite has no `Scenario Outline:`/`Examples:`
+anywhere, confirmed by counting) extracts feature name + scenario titles
+per `.feature` file. `id` is derived via `slugify(title)` (verified
+empirically against all 35 real titles: zero collisions; also re-checked
+at runtime, throws loudly on any collision rather than silently dropping
+one). The one thing that *is* still a small, hand-maintained map:
+`DOMAIN_STEPS_FILES` (6 entries, one per `.feature` file's domain →
+its `.steps.ts` file(s)) — not derivable from the `.feature` file alone,
+since `orders-items`/`orders-status`/`orders-validation` all share
+`orders-common.steps.ts` and there's no `orders-common.feature` to infer
+that from. A domain missing from this map only drops that domain's
+scenarios (`console.warn`, not a crash); zero scenarios discovered overall
+is a thrown error, not a silent empty list.
+
+**Known, accepted backward-compatibility break:** `slugify(title)` only
+matches 1 of the 3 original hand-picked ids. `create-customer-valid` →
+`create-customer-with-valid-data`; `invalid-customer-id` →
+`invalid-customer-id-in-api` (`submit-draft-order` happens to stay the
+same). The two historical report files under the old ids
+(`e2e-create-customer-valid-*.json`, `e2e-invalid-customer-id-*.json`) no
+longer resolve via `apply-fix` — confirmed live: refuses cleanly with
+"Report references unknown scenario id," not a crash. Decided deliberately,
+not fixed with an id-override map: the old ids were arbitrary human
+shorthand from the 3-scenario proof-of-concept, not a stable API: adding an
+override map would just relocate the "hand-maintained list forever"
+problem this stage exists to eliminate. The "Scenario-shape check" section
+above and Stage 2's "Verified live" section both still reference the old
+ids — left as-is (historical record of what was literally run at the time
+those sections were written), not rewritten.
+
+**A real operational tradeoff, made visible rather than silently
+absorbed:** `runner.ts` spawns a *separate* `bddgen` + `playwright test
+--grep` + pre/post cleanup cycle per scenario (~3-4s each). Running the
+E2E Agent with no `--scenario` filter now means ~35 such cycles
+sequentially — much slower than `cd tests && pnpm run test`, which runs
+all 35 in one parallel Playwright invocation in ~5s. Not fixed (batching
+multiple `--grep` titles into one invocation is a separate, bigger
+feature) — instead, `runE2EAgent` now prints an explicit warning whenever
+no `--scenario` filter is given at all, naming the slowdown and suggesting
+`--scenario` to target a subset.
+
+**Verified live:**
+- `discoverScenarios()` in isolation: exactly 35 scenarios, 35 unique ids,
+  per-feature counts matching the known suite shape exactly
+  (`Customer Management`: 6, `Products`: 6, `Security - ...`: 4, `Order
+  Items Management`: 5, `Order status management`: 5, `Orders validation`:
+  9), zero missing `featurePath`/`stepsPaths` files on disk.
+- One scenario per domain (6 total, deliberately including both
+  `Background:`-bearing domains and all three `orders-common.steps.ts`-sharing
+  domains) run via `pnpm e2e -- --scenario <id>`: all 6 passed correctly.
+- The no-filter warning: confirmed it prints (with the correct count, 35)
+  before the first scenario starts.
+- The accepted backward-compat break: `pnpm apply-fix -- --report
+  <old-id-report>` refuses cleanly with the expected message, not a crash.
+- `pnpm run typecheck` clean; full 35/35 regression suite still green
+  afterward.

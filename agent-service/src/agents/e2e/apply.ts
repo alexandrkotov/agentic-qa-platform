@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { runProcess, runScenario, type RunnerResult } from './runner.ts';
 import { collectEvidence } from './evidence.ts';
 import { config } from '../../config.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { discoverScenarios } from './scenarios.ts';
 import type { E2ERunReport, ApplyFixReport, ApplyFixOutcome } from './contract.ts';
 
 async function confirm(promptText: string): Promise<boolean> {
@@ -33,6 +33,7 @@ export async function applyFix(sourceReportPath: string, testsRoot: string): Pro
   const raw = await readFile(sourceReportPath, 'utf-8');
   const sourceReport = JSON.parse(raw) as E2ERunReport;
 
+  const SCENARIOS = await discoverScenarios(testsRoot);
   const scenario = SCENARIOS.find((s) => s.id === sourceReport.scenarioId);
   if (!scenario) {
     console.error(`Report references unknown scenario id "${sourceReport.scenarioId}" (not in current SCENARIOS list).`);
