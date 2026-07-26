@@ -143,6 +143,7 @@ export async function runDiscovery(provider: AgentProvider): Promise<void> {
     mcpServers: [playwrightMcp, postgresMcp],
     tools: [fetchSwaggerTool],
     maxIterations: 60,
+    operation: 'discovery',
   });
 
   // Save report

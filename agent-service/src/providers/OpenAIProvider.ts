@@ -2,6 +2,7 @@ import { Agent, MCPServerStdio, run, tool } from '@openai/agents';
 import { z } from 'zod';
 import type { AgentProvider, AgentRunOptions, CustomTool } from './AgentProvider.ts';
 import { config } from '../config.ts';
+import { recordUsage } from '../usageLog.ts';
 
 /** Convert a CustomTool to an @openai/agents tool instance */
 function toOpenAITool(ct: CustomTool) {
@@ -44,6 +45,7 @@ export class OpenAIProvider implements AgentProvider {
     mcpServers = [],
     tools = [],
     model = config.model.openai,
+    operation = 'unspecified',
   }: AgentRunOptions): Promise<string> {
     const mcpInstances = mcpServers.map(
       (s) =>
@@ -83,6 +85,17 @@ export class OpenAIProvider implements AgentProvider {
           `${usage.outputTokens.toLocaleString()} output tokens across ${usage.requests} request(s) ` +
           `— cost not tracked (OpenAI pricing not in this codebase's pricing table)`,
       );
+      await recordUsage({
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'openai',
+        model,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        costUsd: null,
+      });
 
       return result.finalOutput ?? '';
     } finally {

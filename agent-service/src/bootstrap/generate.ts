@@ -309,6 +309,7 @@ export async function runGenerate(
         tools: [],
         maxIterations: 5,
         model: 'claude-sonnet-5',
+        operation: `generate:${domain.key}`,
       });
 
       const fileMap = parseFileMap(raw, domain.key);

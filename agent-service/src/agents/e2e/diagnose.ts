@@ -118,6 +118,7 @@ export async function diagnoseFailure(
     mcpServers: [],
     tools: [],
     maxIterations: 5,
+    operation: `e2e-diagnose:${scenario.id}`,
   });
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);

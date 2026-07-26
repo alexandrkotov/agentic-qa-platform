@@ -23,6 +23,8 @@ export interface AgentRunOptions {
   /** Override model; defaults to provider-specific config value */
   model?: string;
   maxIterations?: number;
+  /** Label for the usage/cost log, e.g. "discovery", "generate:customers", "e2e-diagnose:submit-draft-order". */
+  operation?: string;
 }
 
 export interface AgentProvider {

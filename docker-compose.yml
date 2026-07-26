@@ -25,6 +25,7 @@ services:
     ports: ["8080:80"]
     volumes:
       - ./tests/reports/cucumber-html:/usr/share/nginx/html:ro
+      - ./agent-service/reports/usage-html:/usr/share/nginx/html/usage:ro
 
   db:
     image: postgres:16

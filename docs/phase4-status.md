@@ -10,11 +10,15 @@ propose) and Execute-with-approval (apply, gated on an explicit human `y`,
 re-run, no auto-commit) proven live. Stage 3 (same day) then auto-discovered
 all 35 real scenarios from `.feature` files, replacing the 3-entry
 hardcoded list — the mechanism now covers the whole suite, not just the
-scenarios picked to prove the concept. See "What was built", "What was
-built (Stage 2)", and "What was built (Stage 3)" below for the three
-increments, and "Immediate next steps" for what's deliberately *not* being
-pursued further and why. Originally a planning stub recording the scope
-decision made at the start of this phase; now updated with what was
+scenarios picked to prove the concept. Stage 4 made `--scenario` accept an
+exact title or a Gherkin tag (not just id), including ad-hoc tags like
+`@WIP`. Stage 5 added a persistent, live-updating local log of every AI
+call's token usage/cost project-wide, served via the existing `report`
+nginx service at `/usage/`. See "What was built" and each "What was built
+(Stage N)" section below for all increments, and "Immediate next steps"
+for what's deliberately *not* being pursued further and why. Originally a
+planning stub recording the scope decision made at the start of this phase;
+now updated with what was
 actually built.
 Companion to `agentic-qa-platform-summary.md` (architecture doc — lives in
 Windows Downloads, **not** in this repo: `C:\Users\alexk\Downloads\agentic-qa-platform-summary.md`,
@@ -590,3 +594,118 @@ no `--scenario` filter is given at all, naming the slowdown and suggesting
   <old-id-report>` refuses cleanly with the expected message, not a crash.
 - `pnpm run typecheck` clean; full 35/35 regression suite still green
   afterward.
+
+## What was built (Stage 4 — flexible `--scenario` selector, 2026-07-26)
+
+`--scenario` previously only matched an exact scenario `id`. `scenarios.ts`'s
+parser now also collects each scenario's Gherkin tags (`@`-prefixed lines
+immediately preceding `Scenario:`, reset on any other real content
+including `Background:`), added as a new `tags: string[]` field on
+`E2EScenarioConfig`. A new `resolveScenarioSelectors(scenarios, selectors)`
+replaces `index.ts`'s inline filter+validate: each comma-separated
+`--scenario` token is tried in order against an exact `id`, an exact
+scenario `title`, then a tag (matched with a leading `@` stripped from both
+sides, so `WIP`/`@WIP` are equivalent) — a tag can select multiple
+scenarios at once, deduped by `id`. An unmatched token throws immediately,
+listing available tags (short and useful) rather than all 35 ids/titles.
+
+Confirmed directly: every scenario except `security.feature`'s already
+carries both a type tag (`@happy_path`/`@edge_case`) and a domain tag
+(`@customers`, `@orders_status`, etc.) — so tag-based selection gets
+domain-level grouping for free via tags that already existed, no separate
+"domain" concept was needed. `security.feature`'s carry only `@security`.
+No feature-level tags exist anywhere in the suite.
+
+**Verified live:** exact id (regression check), exact title (`"Invalid
+product ID in API"`), tag selecting all 4 of `security.feature`'s scenarios
+(`security` and `@security` both worked), a mixed list
+(`security,submit-draft-order` → 5 scenarios, no duplicates), an ad-hoc
+`@WIP` tag temporarily added to one scenario in `products.feature` (ran
+just that one, then reverted via `git checkout --`), an unknown selector
+(clean error naming available tags), and a full 35/35 regression
+afterward.
+
+## What was built (Stage 5 — AI usage/cost logging + live local report, 2026-07-26)
+
+Every `provider.run()` call already computed token usage internally
+(`ClaudeProvider.ts` also estimates cost via `pricing.ts`) but only
+`console.log`'d it — never persisted, never visible after the terminal
+scrolled away. New file `agent-service/src/usageLog.ts` exports
+`recordUsage(entry)`, called from inside `ClaudeProvider.run()`'s and
+`OpenAIProvider.run()`'s existing usage-logging point (not from each of the
+3 call sites individually) — this guarantees every `provider.run()` call
+gets logged automatically forever, including any future call site, without
+relying on callers remembering to log themselves. `AgentRunOptions` gained
+an optional `operation?: string` field so callers can label what the call
+was for; the 3 existing call sites (`discovery.ts` → `'discovery'`,
+`generate.ts` → `` `generate:${domain.key}` `` per domain, `diagnose.ts` →
+`` `e2e-diagnose:${scenario.id}` ``) each got one line added to their
+existing `provider.run({...})` call.
+
+`recordUsage()` **never throws** — it's observability, not core
+functionality, and a logging bug must never crash an actual discovery/
+generate/diagnose run. Two independent try/catches (append, then
+read+render+write), and per-line JSON parsing during read is individually
+guarded — one corrupted line in `usage-log.jsonl` is `console.warn`'d and
+skipped, not fatal to the whole report.
+
+Report is served by **adding a second bind-mount subpath** to the existing
+`report` nginx service, not a new container and not custom nginx config:
+`./agent-service/reports/usage-html:/usr/share/nginx/html/usage:ro`,
+reachable at `http://localhost:8080/usage/`. Deliberately a *separate*
+directory from `tests/reports/cucumber-html` (not co-located) to avoid any
+risk of `multiple-cucumber-html-reporter`'s `generate()` wiping/touching an
+unrelated file living inside its own output directory. Live update is a
+plain `<meta http-equiv="refresh" content="5">` — the whole page reloads
+every 5s if left open, no JS polling/websockets, nginx stays a static file
+server.
+
+**Environment fact worth remembering for next time:** the `report`
+container actually running day-to-day is driven by the **main checkout's**
+`docker-compose.yml` (`/home/test/projects/agentic-qa-platform`), not
+whatever worktree a session happens to be in — confirmed via `docker
+inspect`'s `com.docker.compose.project.working_dir`. The `docker-compose.yml`
+edit in this worktree has no live effect until merged to `main`, and the
+`report` service needs `docker compose up -d --force-recreate report` (run
+from the main checkout) to pick up the new volume after merging — plain
+`restart` won't apply a volume-list change. Also: `recordUsage()` needs to
+have run at least once (creating `agent-service/reports/usage-html/` as the
+`test` user) *before* that recreate, or Docker will auto-create the bind
+mount source directory as `root` and block subsequent writes.
+
+**Verified live:**
+- Logic-only (no Docker/API key needed): `recordUsage()` called directly
+  with fabricated entries (a Claude-shaped one, an OpenAI-shaped one with
+  `costUsd: null`, one with `costUsd: 0`) — confirmed appended (not
+  overwritten) to `usage-log.jsonl`, confirmed the rendered HTML's summary
+  totals matched hand-computed sums, and confirmed `$0.0000` (known zero
+  cost) renders distinctly from `—` (unknown cost, correctly excluded from
+  the total with a note).
+- A manually corrupted JSONL line: `console.warn`'d and skipped, did not
+  throw, the other valid entries still rendered correctly.
+- One real end-to-end call: deliberately broke `invalid-customer-id-in-api`
+  (`toBe(404)` → `toBe(499)`), ran `pnpm e2e`, confirmed the resulting
+  `e2e-diagnose:invalid-customer-id-in-api` log entry's token counts
+  matched the console's `[Claude] Usage: ...` line exactly (5,377 input /
+  252 output), and `costUsd: null` correctly matched the console's "cost
+  unknown for this model" (the run used `claude-opus-4-5`, not in
+  `pricing.ts`'s table) — reverted the deliberate break afterward.
+- Full 35/35 regression suite stayed green throughout.
+- **Not yet verified** (deferred until this branch is merged to `main`,
+  per the environment fact above): the live `report` container actually
+  serving `/usage/` after a real `docker compose up -d --force-recreate
+  report`. This is a known, explicitly-scoped gap, not an oversight — see
+  "Immediate next steps."
+
+## Immediate next steps (Stage 4/5)
+
+1. After merging to `main`: run `recordUsage()` once for real from the main
+   checkout (e.g. via `pnpm discovery`/`pnpm e2e`) so
+   `agent-service/reports/usage-html/` exists as the `test` user, *then*
+   `docker compose up -d --force-recreate report` from
+   `/home/test/projects/agentic-qa-platform`, then confirm
+   `curl localhost:8080/usage/` returns 200 and the existing
+   `localhost:8080/` (Cucumber report) still works unchanged.
+2. Optional, not required: extend `resolveScenarioSelectors` further only
+   if a real need shows up in practice (e.g. glob patterns) — not adding
+   speculative selector syntax now.

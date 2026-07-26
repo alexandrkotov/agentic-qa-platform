@@ -3,6 +3,7 @@ import type { AgentProvider, AgentRunOptions } from './AgentProvider.ts';
 import { McpManager } from '../mcp/McpManager.ts';
 import { config } from '../config.ts';
 import { estimateClaudeCostUsd } from '../pricing.ts';
+import { recordUsage } from '../usageLog.ts';
 
 export class ClaudeProvider implements AgentProvider {
   private readonly client: Anthropic;
@@ -21,6 +22,7 @@ export class ClaudeProvider implements AgentProvider {
     tools = [],
     model = config.model.claude,
     maxIterations = 50,
+    operation = 'unspecified',
   }: AgentRunOptions): Promise<string> {
     const mcp = new McpManager();
     const totalUsage = {
@@ -140,6 +142,17 @@ export class ClaudeProvider implements AgentProvider {
           `(cache write ${totalUsage.cache_creation_input_tokens.toLocaleString()}, ` +
           `cache read ${totalUsage.cache_read_input_tokens.toLocaleString()}) — ${costStr}`,
       );
+      await recordUsage({
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'claude',
+        model,
+        inputTokens: totalUsage.input_tokens,
+        outputTokens: totalUsage.output_tokens,
+        cacheCreationTokens: totalUsage.cache_creation_input_tokens,
+        cacheReadTokens: totalUsage.cache_read_input_tokens,
+        costUsd: cost,
+      });
       await mcp.disconnectAll();
     }
   }
