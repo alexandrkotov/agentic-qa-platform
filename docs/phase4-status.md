@@ -422,9 +422,12 @@ System Discovery Agent one).
    reconsidered after substantial real-world experience with Stage 2 across
    many scenarios/failure types *and* a deliberate, separate decision to
    accept the higher risk profile — not an automatic progression.
-8. Optional, low-priority, not required for the stated goal: more Stage 2
+8. ~~Optional, low-priority, not required for the stated goal: more Stage 2
    runs across more scenarios/failure types (useful data, doesn't change
-   scope), the still-open CI-on-a-real-GitHub-runner verification from
+   scope)~~ Done — see "Stage 2 experience: real runs across failure types"
+   below (`environment_issue`, a `tool_error`-shaped crash, `application_bug`,
+   and a shared-step `test_bug` affecting two scenarios). Remaining, still
+   optional: the still-open CI-on-a-real-GitHub-runner verification from
    Phase 3 (blocked on adding a git remote, a separate decision), and a
    systematic Claude-vs-OpenAI benchmark (currently just one qualitative
    comparison point, see `agentic-qa-platform-summary.md`'s "What's
@@ -721,3 +724,79 @@ mount source directory as `root` and block subsequent writes.
 2. Optional, not required: extend `resolveScenarioSelectors` further only
    if a real need shows up in practice (e.g. glob patterns) — not adding
    speculative selector syntax now.
+
+## Stage 2 experience: real runs across failure types (2026-07-26)
+
+Prior verification (Stages 1-2) only exercised one failure shape: a wrong
+expected value in an assertion (`test_bug`). This addendum closes out item 8
+above with real, live-verified runs across the other categories in the
+taxonomy, each deliberately induced and then reverted (never left in the
+tree):
+
+- **`environment_issue`**: stopped the `app` container, ran
+  `pnpm e2e -- --scenario submit-draft-order`. Playwright failed with
+  `connect ECONNREFUSED ::1:3000` on the very first API step. Diagnosis:
+  `environment_issue`, confidence `high`, no patch proposed — correctly
+  recognized that no assertion ever ran, so nothing about the app or test
+  code was actually exercised.
+- **`tool_error`-shaped crash, classified as `test_bug`**: introduced a
+  genuine syntax error (`res.json(;`) into `orders-status.steps.ts`, which
+  crashes Playwright's TypeScript transform *before* `bddgen`/the Cucumber
+  reporter ever runs — exactly the `evidence.scenario.found: false, reason:
+  "report_missing"` path `evidence.ts` was built to detect. The model was
+  handed only the stderr tail (a Babel `BABEL_PARSE_ERROR` stack trace) and
+  correctly pinpointed the exact malformed line, proposing a valid
+  `structuredFix`. It classified this as `test_bug`, not `tool_error` —
+  a reasonable distinction not originally anticipated: the taxonomy's
+  `tool_error` is meant for the *tooling itself* misbehaving (a crashed
+  process, a broken environment), whereas a syntax typo in test code is a
+  defect *in the test*, even though its symptom (report never generated) is
+  identical to what a real tool crash would look like. Applied via
+  `apply-fix` with approval: `tsc --noEmit` passed, the scenario re-ran and
+  passed, and the resulting file was byte-identical to its pre-break state.
+- **`application_bug`**: temporarily removed the customer-existence check in
+  `app/src/orders/orders.service.ts` (real historical validation logic, not
+  synthetic), ran `create-order-with-non-existent-customerid`. The API now
+  returns `500` (an unhandled FK-constraint failure) instead of a `4xx`
+  validation error. Diagnosis: `application_bug`, confidence `high`,
+  `proposedPatch`/`structuredFix` both `null`, with a specific, correct
+  `recommendedAction` (validate the customer exists, return 400/422).
+  Confirmed the **code-level** guardrail, not just the prompt: ran
+  `apply-fix` against this report with `y` piped in anyway — it refused
+  before ever printing a confirmation prompt, since `sanitizeStructuredFix`
+  and `apply.ts`'s own check both force `structuredFix: null` whenever
+  `classification === 'application_bug'`, independent of what the model
+  returned.
+  - Practical wrinkle, not previously exercised: this is the first
+    experiment needing an `app/`-side change. Confirmed live (again) that
+    the running `app` container bind-mounts the **main checkout's**
+    `./app`, not this worktree's — editing the worktree's copy has zero
+    effect. Had to make (and revert) the temporary change directly against
+    `/home/test/projects/agentic-qa-platform/app/src/orders/orders.service.ts`,
+    then `docker restart` the container (`nest start --watch` picks up the
+    change once the container restarts; a bare file edit alone does not
+    trigger it inside this container). Nothing was committed on either
+    side.
+- **Shared-step `test_bug` affecting two scenarios at once**: broke one
+  shared assertion step in `products.steps.ts` (`toBe(400)` → `toBe(401)`),
+  then ran the whole domain in one call via the tag selector,
+  `pnpm e2e -- --scenario products`. Both scenarios that call this step
+  (`create-product-with-negative-price`, `create-product-with-empty-name`)
+  failed and were independently diagnosed as `test_bug` with the same
+  correct fix. Applying the fix once (via `apply-fix` against just one of
+  the two reports) fixed the shared file for both — confirmed by re-running
+  `--scenario products`: 6/6 passed.
+
+Full 35/35 regression run after all of the above (app bug reverted, app
+container restarted back to its real code, all `tests/` edits reverted):
+green. Working tree confirmed clean in both the worktree and the main
+checkout throughout.
+
+**Takeaway**: across all four induced failure types the classification was
+correct, the code-level guardrails held even under adversarial input
+(approval piped to a report the guardrail should refuse regardless), and
+the two real recovery loops (`tool_error`-shaped crash, shared-step
+`test_bug`) both applied a correct fix and recovered to green without any
+human writing code by hand. Item 8 above is now considered adequately
+exercised for the project's stated goal — not something requiring an
+open-ended stream of further runs.
