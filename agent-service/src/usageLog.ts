@@ -94,6 +94,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
   let totalCacheRead = 0;
   let totalCost = 0;
   let anyUnknownCost = false;
+  let failedCount = 0;
   for (const e of entries) {
     totalInput += e.inputTokens;
     totalOutput += e.outputTokens;
@@ -101,12 +102,18 @@ function renderHtml(entries: UsageLogEntry[]): string {
     totalCacheRead += e.cacheReadTokens;
     if (e.costUsd === null) anyUnknownCost = true;
     else totalCost += e.costUsd;
+    // 0 input + 0 output only happens when the API call errored before any
+    // response came back (recordUsage runs in a `finally`, so a failed call
+    // still gets logged) -- never a real, billed call. Used to hide these
+    // by default, since they're not interesting for "what did this cost".
+    if (e.inputTokens === 0 && e.outputTokens === 0) failedCount++;
   }
 
   const rows = sorted
-    .map(
-      (e) => `
-      <tr>
+    .map((e) => {
+      const failed = e.inputTokens === 0 && e.outputTokens === 0;
+      return `
+      <tr${failed ? ' data-failed="true"' : ''}>
         <td>${esc(e.timestamp)}</td>
         <td>${esc(e.operation)}</td>
         <td>${esc(e.provider)}</td>
@@ -116,8 +123,8 @@ function renderHtml(entries: UsageLogEntry[]): string {
         <td class="num">${e.cacheCreationTokens.toLocaleString()}</td>
         <td class="num">${e.cacheReadTokens.toLocaleString()}</td>
         <td class="num">${fmtCost(e.costUsd)}</td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join('');
 
   return `<!DOCTYPE html>
@@ -136,17 +143,22 @@ function renderHtml(entries: UsageLogEntry[]): string {
   .summary .stat .label { font-size:0.75rem; color:#8a8f98; text-transform:uppercase; letter-spacing:0.03em; }
   .summary .stat .value { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size:1.15rem; margin-top:0.15rem; }
   .note { color:#d4a72c; font-size:0.8rem; margin-top:0.5rem; }
+  .controls { margin-bottom: 1rem; }
+  .toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #8a8f98; cursor: pointer; user-select: none; }
+  .toggle input { accent-color: #5b8cff; }
   table { border-collapse: collapse; width:100%; font-size:0.85rem; }
   th, td { padding: 0.4rem 0.7rem; border-bottom: 1px solid #262a35; text-align:left; }
   th { color:#8a8f98; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.03em; }
   td.num, th.num { font-family: ui-monospace, "SF Mono", Consolas, monospace; text-align:right; }
   tr:hover td { background:#1b1e27; }
+  tr[data-failed="true"] { display: none; }
+  body.show-failed tr[data-failed="true"] { display: table-row; }
   .empty { color:#8a8f98; padding:2rem 0; }
 </style>
 </head>
 <body>
   <h1>Agent Service — AI Usage Log</h1>
-  <div class="subtitle">Auto-refreshes every 5s. ${entries.length} call(s) logged.</div>
+  <div class="subtitle">Auto-refreshes every 5s. ${entries.length} call(s) logged${failedCount > 0 ? ` (${failedCount} failed — errored before any tokens came back, $0, hidden by default)` : ''}.</div>
   <div class="summary">
     <div class="stat"><span class="label">Total calls</span><span class="value">${entries.length}</span></div>
     <div class="stat"><span class="label">Input tokens</span><span class="value">${totalInput.toLocaleString()}</span></div>
@@ -156,6 +168,11 @@ function renderHtml(entries: UsageLogEntry[]): string {
     <div class="stat"><span class="label">Total known cost</span><span class="value">$${totalCost.toFixed(4)}</span></div>
   </div>
   ${anyUnknownCost ? '<div class="note">Note: some entries have no cost estimate (e.g. OpenAI calls, or an unpriced model) and are excluded from the total above.</div>' : ''}
+  ${
+    failedCount > 0
+      ? `<div class="controls"><label class="toggle"><input type="checkbox" id="show-failed">Show ${failedCount} failed call${failedCount === 1 ? '' : 's'} (0 tokens, errored before any response)</label></div>`
+      : ''
+  }
   ${
     entries.length === 0
       ? '<div class="empty">No usage recorded yet.</div>'
@@ -170,6 +187,23 @@ function renderHtml(entries: UsageLogEntry[]): string {
     </tbody>
   </table>`
   }
+  <script>
+    // Page reloads every 5s (meta refresh above), so the toggle's state has
+    // to persist itself via localStorage -- a plain in-memory checked flag
+    // would reset back to hidden on every refresh.
+    (function () {
+      var KEY = 'usage-log-show-failed';
+      var checkbox = document.getElementById('show-failed');
+      if (!checkbox) return;
+      var show = localStorage.getItem(KEY) === '1';
+      checkbox.checked = show;
+      document.body.classList.toggle('show-failed', show);
+      checkbox.addEventListener('change', function () {
+        localStorage.setItem(KEY, checkbox.checked ? '1' : '0');
+        document.body.classList.toggle('show-failed', checkbox.checked);
+      });
+    })();
+  </script>
 </body>
 </html>
 `;
