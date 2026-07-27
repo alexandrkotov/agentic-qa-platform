@@ -142,10 +142,13 @@ root-owned report directories behind. See [docs/phase3-status.md](docs/phase3-st
 
 ### Services & URLs
 
-Once the stack (and, for the last row, `agent-service`) is running, here's everything with a web UI:
+Once the stack (and, for the last row, `agent-service`) is running, here's everything with a web UI
+— or just open `http://localhost` for a page linking to all of them ([`hub/index.html`](hub/index.html),
+served by the same `report` container on the default port, no `:8080` to remember):
 
 | Service | URL | What it is | Started by |
 |---|---|---|---|
+| **Hub — links to everything below** | `http://localhost` | | `docker compose up` |
 | Frontend | `http://localhost:5173` | OrderFlow, the app under test | `docker compose up` |
 | Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | `docker compose up` |
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
@@ -201,7 +204,8 @@ Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres
 (single-node broker, external listener `:9094`), `kafka-ui` (cluster admin UI, `:8081` — for
 humans only, nothing in this repo depends on it), and `report` (nginx, `:8080` — serves the
 Cucumber test report at `/` once you generate one in step 4, and the AI usage/cost log at
-`/usage/`, which shows a friendly placeholder until any agent call happens in step 5 or 6).
+`/usage/`, which shows a friendly placeholder until any agent call happens in step 5 or 6; the
+same container also serves the hub page above on the default port, `:80`).
 
 Kafka is intentionally not persisted across rebuilds (no volume) — it's a derived event stream,
 not data worth keeping, and `app`'s health-gated dependency on it means a full `--build` always
