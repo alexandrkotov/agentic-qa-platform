@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Descriptor Editor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eef0f3;
+    --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
+    --accent: #3a63d8; --accent-bg: #e8edfc;
+    --danger: #b3261e; --danger-bg: #fbe9e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --surface: #1b1e27; --surface-2: #232733;
+      --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
+      --accent: #7c9bef; --accent-bg: #232c47;
+      --danger: #f0847c; --danger-bg: #3a1f1e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    display: flex; min-height: 100vh;
+  }
+  aside {
+    width: 260px; flex-shrink: 0; background: var(--surface);
+    border-right: 1px solid var(--line); padding: 1.25rem 1rem;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  aside h1 { font-size: 0.95rem; margin: 0; }
+  aside .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
+  #descriptor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+  #descriptor-list li button {
+    width: 100%; text-align: left; padding: 0.5rem 0.65rem; border-radius: 6px;
+    border: none; background: none; color: var(--text); cursor: pointer; font-size: 0.87rem;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  #descriptor-list li button:hover { background: var(--surface-2); }
+  #descriptor-list li button.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.55rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost {
+    background: none; border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 0.45rem 0.8rem; font-size: 0.82rem; cursor: pointer;
+  }
+  button.ghost:hover { background: var(--surface-2); }
+  button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.78rem; padding: 0.2rem 0.4rem; }
+
+  main { flex: 1; padding: 1.75rem clamp(1rem, 4vw, 3rem); max-width: 780px; }
+  main h2 { margin: 0 0 0.15rem; font-size: 1.15rem; }
+  main .empty { color: var(--text-mute); font-size: 0.9rem; margin-top: 3rem; }
+
+  .field { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.9rem; }
+  .field label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-mute); }
+  .field input, .field textarea, .field select {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.5rem 0.6rem; font-size: 0.87rem; color: var(--text); font-family: inherit;
+  }
+  .field textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; resize: vertical; min-height: 3.5rem; }
+  .field .hint { font-size: 0.72rem; color: var(--text-mute); }
+
+  .components-head { display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 0.75rem; }
+  .components-head h3 { margin: 0; font-size: 0.95rem; }
+
+  .component-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem; margin-bottom: 0.85rem;
+  }
+  .component-card .card-head { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.75rem; }
+  .component-card .card-head select { flex: 1; }
+  .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; font-size: 0.85rem; }
+  .nested { padding-left: 1rem; border-left: 2px solid var(--line); margin-bottom: 0.6rem; }
+
+  .save-bar { display: flex; align-items: center; gap: 0.8rem; margin-top: 1.5rem; }
+  #status { font-size: 0.83rem; }
+  #status.ok { color: #2f8f5b; }
+  #status.err { color: var(--danger); }
+  #issues { margin-top: 0.5rem; background: var(--danger-bg); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.8rem; color: var(--danger); display: none; }
+  #issues.show { display: block; }
+</style>
+</head>
+<body>
+  <aside>
+    <div>
+      <h1>System Descriptors</h1>
+      <div class="subtitle">Target systems the recon agent can explore</div>
+    </div>
+    <ul id="descriptor-list"></ul>
+    <button class="ghost" id="new-btn">+ New descriptor</button>
+  </aside>
+  <main>
+    <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
+    <div id="editor" style="display:none">
+      <h2 id="editor-title"></h2>
+      <div class="field">
+        <label>Extra instructions <span class="hint">(optional — free text spliced into the discovery prompt)</span></label>
+        <textarea id="extra-instructions" rows="4" placeholder="System-specific verification steps that don't generalize to other targets…"></textarea>
+      </div>
+
+      <div class="components-head">
+        <h3>Components</h3>
+        <button class="ghost" id="add-component">+ Add component</button>
+      </div>
+      <div id="components"></div>
+
+      <div class="save-bar">
+        <button class="primary" id="save-btn">Save</button>
+        <span id="status"></span>
+      </div>
+      <div id="issues"></div>
+    </div>
+  </main>
+
+<script>
+const state = { names: [], current: null, components: [] };
+
+const FIELD_DEFS = {
+  'postgres': [
+    { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'postgresql://user:pass@host:5432/db' },
+  ],
+  'rest-api': [
+    { key: 'swaggerUrl', label: 'Swagger / OpenAPI URL', type: 'text', placeholder: 'http://localhost:3000/docs-json' },
+    { key: 'baseUrl', label: 'Base URL (optional)', type: 'text', placeholder: 'defaults to swagger URL origin' },
+  ],
+  'web-ui': [
+    { key: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'http://localhost:5173' },
+    { key: 'routes', label: 'Routes (one per line)', type: 'lines', placeholder: '/\n/customers\n/products' },
+  ],
+  'kafka': [
+    { key: 'brokers', label: 'Brokers (one per line)', type: 'lines', placeholder: 'localhost:9094' },
+    { key: 'clientId', label: 'Client ID (optional)', type: 'text' },
+  ],
+};
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const e = new Error(body?.error || res.statusText);
+    e.issues = body?.issues;
+    throw e;
+  }
+  return body;
+}
+
+async function loadList() {
+  state.names = await api('/api/descriptors');
+  const ul = document.getElementById('descriptor-list');
+  ul.innerHTML = '';
+  for (const name of state.names) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.textContent = name;
+    btn.className = name === state.current ? 'active' : '';
+    btn.onclick = () => selectDescriptor(name);
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+}
+
+async function selectDescriptor(name) {
+  const descriptor = await api('/api/descriptors/' + encodeURIComponent(name));
+  state.current = name;
+  state.components = descriptor.components || [];
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('editor').style.display = 'block';
+  document.getElementById('editor-title').textContent = name + '.json';
+  document.getElementById('extra-instructions').value = descriptor.extraInstructions || '';
+  renderComponents();
+  setStatus('');
+  await loadList();
+}
+
+function renderComponents() {
+  const root = document.getElementById('components');
+  root.innerHTML = '';
+  state.components.forEach((comp, idx) => root.appendChild(renderCard(comp, idx)));
+}
+
+function renderCard(comp, idx) {
+  const card = document.createElement('div');
+  card.className = 'component-card';
+
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  const select = document.createElement('select');
+  for (const t of Object.keys(FIELD_DEFS)) {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    if (t === comp.type) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.onchange = () => {
+    state.components[idx] = { type: select.value };
+    renderComponents();
+  };
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'link'; removeBtn.textContent = 'Remove';
+  removeBtn.onclick = () => { state.components.splice(idx, 1); renderComponents(); };
+  head.appendChild(select);
+  head.appendChild(removeBtn);
+  card.appendChild(head);
+
+  const nameField = document.createElement('div');
+  nameField.className = 'field';
+  nameField.innerHTML = '<label>Name <span class="hint">(only required if you have more than one component of this type)</span></label>';
+  const nameInput = document.createElement('input');
+  nameInput.value = comp.name || '';
+  nameInput.oninput = () => { comp.name = nameInput.value || undefined; };
+  nameField.appendChild(nameInput);
+  card.appendChild(nameField);
+
+  for (const def of FIELD_DEFS[comp.type] || []) {
+    card.appendChild(renderField(comp, def));
+  }
+
+  if (comp.type === 'kafka') {
+    card.appendChild(renderKafkaSasl(comp));
+    card.appendChild(renderKafkaTls(comp));
+  }
+
+  return card;
+}
+
+function renderField(comp, def) {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  const label = document.createElement('label');
+  label.textContent = def.label;
+  wrap.appendChild(label);
+
+  if (def.type === 'lines') {
+    const ta = document.createElement('textarea');
+    ta.rows = 3;
+    ta.placeholder = def.placeholder || '';
+    ta.value = (comp[def.key] || []).join('\n');
+    ta.oninput = () => { comp[def.key] = ta.value.split('\n').map((s) => s.trim()).filter(Boolean); };
+    wrap.appendChild(ta);
+  } else {
+    const input = document.createElement('input');
+    input.value = comp[def.key] || '';
+    input.placeholder = def.placeholder || '';
+    input.oninput = () => { comp[def.key] = input.value || undefined; };
+    wrap.appendChild(input);
+  }
+  return wrap;
+}
+
+function renderKafkaSasl(comp) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'checkbox-row';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.checked = !!comp.sasl;
+  const label = document.createElement('label');
+  label.textContent = 'SASL authentication';
+  row.appendChild(cb); row.appendChild(label);
+  wrap.appendChild(row);
+
+  const nested = document.createElement('div');
+  nested.className = 'nested';
+  nested.style.display = comp.sasl ? 'block' : 'none';
+
+  const mech = document.createElement('select');
+  for (const m of ['PLAIN', 'SCRAM-SHA-256', 'SCRAM-SHA-512']) {
+    const o = document.createElement('option'); o.value = m; o.textContent = m;
+    if (comp.sasl?.mechanism === m) o.selected = true;
+    mech.appendChild(o);
+  }
+  const user = document.createElement('input'); user.placeholder = 'username'; user.value = comp.sasl?.username || '';
+  const pass = document.createElement('input'); pass.placeholder = 'password'; pass.type = 'password'; pass.value = comp.sasl?.password || '';
+  [mech, user, pass].forEach((el) => { el.style.marginBottom = '0.4rem'; el.style.width = '100%'; });
+
+  function sync() {
+    comp.sasl = { mechanism: mech.value, username: user.value, password: pass.value };
+  }
+  mech.onchange = sync; user.oninput = sync; pass.oninput = sync;
+
+  nested.appendChild(mech); nested.appendChild(user); nested.appendChild(pass);
+  wrap.appendChild(nested);
+
+  cb.onchange = () => {
+    if (cb.checked) { sync(); nested.style.display = 'block'; }
+    else { delete comp.sasl; nested.style.display = 'none'; }
+  };
+  return wrap;
+}
+
+function renderKafkaTls(comp) {
+  const row = document.createElement('div');
+  row.className = 'checkbox-row';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.checked = !!comp.tls?.enabled;
+  cb.onchange = () => { comp.tls = { enabled: cb.checked }; };
+  const label = document.createElement('label');
+  label.textContent = 'TLS enabled';
+  row.appendChild(cb); row.appendChild(label);
+  return row;
+}
+
+document.getElementById('add-component').onclick = () => {
+  state.components.push({ type: 'postgres', connectionString: '' });
+  renderComponents();
+};
+
+document.getElementById('new-btn').onclick = async () => {
+  const name = prompt('Descriptor name (letters, numbers, - and _ only):');
+  if (!name) return;
+  try {
+    await api('/api/descriptors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, components: [{ type: 'postgres', connectionString: '' }] }),
+    });
+    await selectDescriptor(name);
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+document.getElementById('save-btn').onclick = async () => {
+  const payload = {
+    name: state.current,
+    components: state.components,
+    extraInstructions: document.getElementById('extra-instructions').value || undefined,
+  };
+  try {
+    await api('/api/descriptors/' + encodeURIComponent(state.current), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    setStatus('Saved.', 'ok');
+    hideIssues();
+  } catch (e) {
+    setStatus('Save failed: ' + e.message, 'err');
+    showIssues(e.issues);
+  }
+};
+
+function setStatus(text, kind) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = kind || '';
+}
+
+function showIssues(issues) {
+  const el = document.getElementById('issues');
+  if (!issues || !issues.length) { el.classList.remove('show'); return; }
+  el.innerHTML = issues.map((i) => '&middot; ' + (i.path ? i.path.join('.') + ': ' : '') + i.message).join('<br>');
+  el.classList.add('show');
+}
+function hideIssues() { document.getElementById('issues').classList.remove('show'); }
+
+loadList();
+</script>
+</body>
+</html>
