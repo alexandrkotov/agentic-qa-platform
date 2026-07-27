@@ -28,13 +28,13 @@ export const componentRegistry: BuilderMap = {
   'web-ui': webUiBuilder,
 };
 
-export interface AssembledRecon {
+export interface AssembledDiscovery {
   mcpServers: McpServerConfig[];
   tools: CustomTool[];
   componentPromptSections: string[];
 }
 
-export function assembleRecon(descriptor: SystemDescriptor): AssembledRecon {
+export function assembleDiscovery(descriptor: SystemDescriptor): AssembledDiscovery {
   const mcpServers: McpServerConfig[] = [];
   const tools: CustomTool[] = [];
   const componentPromptSections: string[] = [];

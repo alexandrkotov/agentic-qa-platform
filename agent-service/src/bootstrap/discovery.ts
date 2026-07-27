@@ -2,14 +2,14 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { parseSystemDescriptor } from '../descriptor/schema.ts';
-import { assembleRecon } from '../descriptor/registry.ts';
+import { assembleDiscovery } from '../descriptor/registry.ts';
 import { config } from '../config.ts';
 
 const DEFAULT_DESCRIPTOR_PATH = 'descriptors/orderflow.json';
 
 // ---------------------------------------------------------------------------
 // System prompt — component-specific exploration steps come from the
-// descriptor (via assembleRecon); this shell just frames the task and the
+// descriptor (via assembleDiscovery); this shell just frames the task and the
 // report contract, which stay the same regardless of which components a
 // target system has.
 // ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ export async function runDiscovery(
 
   const descriptorJson = JSON.parse(await readFile(descriptorPath, 'utf-8'));
   const descriptor = parseSystemDescriptor(descriptorJson);
-  const { mcpServers, tools, componentPromptSections } = assembleRecon(descriptor);
+  const { mcpServers, tools, componentPromptSections } = assembleDiscovery(descriptor);
 
   const raw = await provider.run({
     systemPrompt: buildSystemPrompt(componentPromptSections, descriptor.extraInstructions),

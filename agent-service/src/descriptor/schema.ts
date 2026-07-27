@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
-// Component types — one entry per system building block the recon agent
+// Component types — one entry per system building block the discovery agent
 // knows how to explore. Adding a new kind of target system means adding a
 // branch here plus a matching builder in registry.ts — nothing else.
 // ---------------------------------------------------------------------------
