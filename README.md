@@ -110,13 +110,23 @@ with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag defau
 `orderflow.json`, so `pnpm discovery` behaves exactly as before.
 
 A small web editor for these descriptor files —
-[`agent-service/src/admin/`](agent-service/src/admin/), `pnpm admin`, `http://localhost:4400` —
-lists, creates, and edits them from a browser: pick a component type, fill in its fields, save.
-Writes are validated through the same zod schema the CLI uses, so a bad save comes back with the
-exact field-level error instead of silently writing an invalid file. Deliberately not part of
+[`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400` — lists, creates,
+and edits them from a browser: pick a component type, fill in its fields, save. Writes are
+validated through the same zod schema the CLI uses, so a bad save comes back with the exact
+field-level error instead of silently writing an invalid file. Deliberately not part of
 `app`/`frontend` (the system *under test* has no business managing the QA framework's own
 configuration) and deliberately a single static HTML page, not a React/Vite app — the feature
 isn't big enough to justify that tooling.
+
+Runs as its own `descriptor-admin` service in `docker-compose.yml` — starts with everything else,
+no separate step. It's built from a dedicated
+[`agent-service/Dockerfile.admin`](agent-service/Dockerfile.admin) rather than the full
+agent-service image: the editor's only real dependencies are `express` + `zod`, so this installs
+just those instead of also pulling in the Claude/OpenAI SDKs and Playwright MCP that agent-service
+needs for everything else. `agent-service/descriptors/` is bind-mounted read-write, so edits made
+through the browser land on the host filesystem like any other change. (`pnpm admin` from
+`agent-service/` still works too, for iterating on the editor's own code without rebuilding the
+image.)
 
 ### The test suite
 
@@ -142,9 +152,9 @@ root-owned report directories behind. See [docs/phase3-status.md](docs/phase3-st
 
 ### Services & URLs
 
-Once the stack (and, for the last row, `agent-service`) is running, here's everything with a web UI
-— or just open `http://localhost` for a page linking to all of them ([`hub/index.html`](hub/index.html),
-served by the same `report` container on the default port, no `:8080` to remember):
+Once `docker compose up` is running, here's everything with a web UI — or just open
+`http://localhost` for a page linking to all of them ([`hub/index.html`](hub/index.html), served
+by the same `report` container on the default port, no `:8080` to remember):
 
 | Service | URL | What it is | Started by |
 |---|---|---|---|
@@ -154,7 +164,7 @@ served by the same `report` container on the default port, no `:8080` to remembe
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
 | Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) | `docker compose up` |
-| Descriptor editor | `http://localhost:4400` | Edit System Descriptor JSON files | `pnpm admin` (from `agent-service/`) |
+| Descriptor editor | `http://localhost:4400` | Edit System Descriptor JSON files | `docker compose up` |
 
 ### Prerequisites
 
@@ -202,10 +212,11 @@ docker compose up -d --build
 
 Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres, `:5432`), `kafka`
 (single-node broker, external listener `:9094`), `kafka-ui` (cluster admin UI, `:8081` — for
-humans only, nothing in this repo depends on it), and `report` (nginx, `:8080` — serves the
-Cucumber test report at `/` once you generate one in step 4, and the AI usage/cost log at
-`/usage/`, which shows a friendly placeholder until any agent call happens in step 5 or 6; the
-same container also serves the hub page above on the default port, `:80`).
+humans only, nothing in this repo depends on it), `report` (nginx, `:8080` — serves the Cucumber
+test report at `/` once you generate one in step 4, and the AI usage/cost log at `/usage/`, which
+shows a friendly placeholder until any agent call happens in step 5 or 6; the same container also
+serves the hub page above on the default port, `:80`), and `descriptor-admin` (the System
+Descriptor web editor, `:4400` — see below).
 
 Kafka is intentionally not persisted across rebuilds (no volume) — it's a derived event stream,
 not data worth keeping, and `app`'s health-gated dependency on it means a full `--build` always
@@ -252,7 +263,9 @@ pnpm discovery          # Phase 1 — explores descriptors/orderflow.json by def
 pnpm discovery -- --descriptor descriptors/kafka-demo.json   # or point it at the bare-Kafka descriptor instead
 pnpm testgen            # Phase 2 — reads the latest discovery report, writes tests/features + tests/steps
 
-# Web editor for the descriptor JSON files above:
+# The web editor for the descriptor JSON files above already runs via `docker compose up`
+# (http://localhost:4400) -- pnpm admin below is only for iterating on the editor's own
+# code without rebuilding its Docker image:
 pnpm admin              # http://localhost:4400
 ```
 
