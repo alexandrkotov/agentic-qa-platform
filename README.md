@@ -30,6 +30,14 @@ before a single file changes. Nothing commits or pushes itself, at any stage.
 See [docs/phase2-status.md](docs/phase2-status.md), [docs/phase3-status.md](docs/phase3-status.md), and
 [docs/phase4-status.md](docs/phase4-status.md) for the detailed, warts-and-all account of how that went.
 
+### E2E Agent in action
+
+A real, unedited run: a test scenario is deliberately broken, the agent runs the real Playwright
+suite, gets a real failure, calls Claude once to diagnose it, and only applies the fix after an
+explicit human `y` — then re-runs the real suite to confirm it's green. No auto-commit.
+
+![E2E Agent: diagnose a real failure, apply the fix only after human approval, re-verify](docs/assets/e2e-agent-demo.gif)
+
 ## What's in this repo
 
 ### The application under test
