@@ -8,8 +8,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      kafka:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://user:pass@db:5432/testdb
+      KAFKA_BROKERS: kafka:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: "1"
 
   frontend:
     build: ./frontend

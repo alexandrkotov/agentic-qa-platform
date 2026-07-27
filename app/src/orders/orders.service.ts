@@ -2,10 +2,16 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from '../../generated/prisma/enums';
+import { KafkaProducerService } from '../kafka/kafka-producer.service';
+
+const ORDER_STATUS_CHANGED_TOPIC = 'orders.status-changed';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private kafkaProducer: KafkaProducerService,
+  ) { }
 
   async create(dto: CreateOrderDto) {
     const customer = await this.prisma.customer.findUnique({
@@ -25,7 +31,7 @@ export class OrdersService {
 
     const priceMap = new Map(products.map((p) => [p.id, p.price]));
 
-    return this.prisma.order.create({
+    const order = await this.prisma.order.create({
       data: {
         customerId: dto.customerId,
         items: {
@@ -41,6 +47,15 @@ export class OrdersService {
       },
       include: { items: true },
     });
+
+    await this.kafkaProducer.publish(ORDER_STATUS_CHANGED_TOPIC, {
+      orderId: order.id,
+      customerId: order.customerId,
+      status: order.status,
+      occurredAt: new Date().toISOString(),
+    });
+
+    return order;
   }
 
   findAll() {
@@ -75,10 +90,19 @@ export class OrdersService {
         `Cannot transition order ${id} from ${order.status} to ${status}`,
       );
     }
-    return this.prisma.$transaction([
+    const result = await this.prisma.$transaction([
       this.prisma.order.update({ where: { id }, data: { status } }),
       this.prisma.orderStatusHistory.create({ data: { orderId: id, status } }),
     ]);
+
+    await this.kafkaProducer.publish(ORDER_STATUS_CHANGED_TOPIC, {
+      orderId: id,
+      customerId: order.customerId,
+      status,
+      occurredAt: new Date().toISOString(),
+    });
+
+    return result;
   }
 
   async remove(id: number) {
