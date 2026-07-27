@@ -146,8 +146,8 @@ function renderHtml(entries: UsageLogEntry[]): string {
   .controls { margin-bottom: 1rem; }
   .toggle { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: #8a8f98; cursor: pointer; user-select: none; }
   .switch { position: relative; display: inline-block; flex-shrink: 0; width: 36px; height: 20px; }
-  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-  .switch-track { position: absolute; inset: 0; background: #2a2e3a; border-radius: 999px; transition: background-color 0.15s ease; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .switch-track { position: absolute; inset: 0; z-index: 0; background: #2a2e3a; border-radius: 999px; transition: background-color 0.15s ease; }
   .switch-track::before {
     content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
     background: #e4e6eb; border-radius: 50%; transition: transform 0.15s ease;
