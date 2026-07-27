@@ -140,6 +140,19 @@ root-owned report directories behind. See [docs/phase3-status.md](docs/phase3-st
 
 ## Running this locally
 
+### Services & URLs
+
+Once the stack (and, for the last row, `agent-service`) is running, here's everything with a web UI:
+
+| Service | URL | What it is | Started by |
+|---|---|---|---|
+| Frontend | `http://localhost:5173` | OrderFlow, the app under test | `docker compose up` |
+| Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | `docker compose up` |
+| Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | `docker compose up` + step 4 |
+| AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
+| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) | `docker compose up` |
+| Descriptor editor | `http://localhost:4400` | Edit System Descriptor JSON files | `pnpm admin` (from `agent-service/`) |
+
 ### Prerequisites
 
 - **Windows 11 + WSL2 (Debian)** — everything below assumes a WSL2 Debian shell, not native
