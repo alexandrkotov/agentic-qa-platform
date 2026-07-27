@@ -20,6 +20,7 @@ const providerName = getArg('--provider', 'claude');
 const reportPathArg = getArg('--report', '');
 const domainArg = getArg('--domain', '');
 const scenarioArg = getArg('--scenario', '');
+const descriptorArg = getArg('--descriptor', '');
 
 // Same derivation agent-service/src/agents/e2e/index.ts uses to find the
 // sibling tests/ directory from agent-service/reports/.
@@ -43,7 +44,7 @@ async function main() {
 
   switch (phase) {
     case 'discovery':
-      await runDiscovery(createProvider());
+      await runDiscovery(createProvider(), descriptorArg || undefined);
       break;
     case 'generate':
       await runGenerate(
@@ -64,7 +65,7 @@ async function main() {
       break;
     default:
       console.error(`Unknown phase: ${phase}`);
-      console.error('Usage: tsx src/index.ts discovery|generate|e2e|apply-fix [--provider claude|openai] [--report <path>]');
+      console.error('Usage: tsx src/index.ts discovery|generate|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>]');
       process.exit(1);
   }
 }

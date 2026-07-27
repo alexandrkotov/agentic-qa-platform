@@ -43,5 +43,37 @@ services:
       timeout: 3s
       retries: 5
 
+  # Second recon proof point (alongside postgres) for the System Descriptor —
+  # single-node KRaft broker, no ZooKeeper. PLAINTEXT is for other containers
+  # on the compose network (e.g. kafka-ui); PLAINTEXT_HOST is for anything
+  # reaching it from the host, incl. the dockerized kafka-mcp-server started
+  # with --network=host.
+  kafka:
+    image: apache/kafka:latest
+    ports: ["9094:9094"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  # Admin UI for the broker above — convenience for humans, not used by the
+  # recon agent (which talks to Kafka via kafka-mcp-server instead).
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports: ["8081:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+
 volumes:
   pgdata:

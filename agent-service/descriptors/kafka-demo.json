@@ -1,0 +1,9 @@
+{
+  "name": "kafka-demo",
+  "components": [
+    {
+      "type": "kafka",
+      "brokers": ["localhost:9094"]
+    }
+  ]
+}
