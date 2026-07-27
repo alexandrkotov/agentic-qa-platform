@@ -144,8 +144,17 @@ function renderHtml(entries: UsageLogEntry[]): string {
   .summary .stat .value { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size:1.15rem; margin-top:0.15rem; }
   .note { color:#d4a72c; font-size:0.8rem; margin-top:0.5rem; }
   .controls { margin-bottom: 1rem; }
-  .toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #8a8f98; cursor: pointer; user-select: none; }
-  .toggle input { accent-color: #5b8cff; }
+  .toggle { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: #8a8f98; cursor: pointer; user-select: none; }
+  .switch { position: relative; display: inline-block; flex-shrink: 0; width: 36px; height: 20px; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .switch-track { position: absolute; inset: 0; background: #2a2e3a; border-radius: 999px; transition: background-color 0.15s ease; }
+  .switch-track::before {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    background: #e4e6eb; border-radius: 50%; transition: transform 0.15s ease;
+  }
+  .switch input:checked + .switch-track { background: #5b8cff; }
+  .switch input:checked + .switch-track::before { transform: translateX(16px); }
+  .switch input:focus-visible + .switch-track { outline: 2px solid #5b8cff; outline-offset: 2px; }
   table { border-collapse: collapse; width:100%; font-size:0.85rem; }
   th, td { padding: 0.4rem 0.7rem; border-bottom: 1px solid #262a35; text-align:left; }
   th { color:#8a8f98; font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.03em; }
@@ -170,7 +179,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
   ${anyUnknownCost ? '<div class="note">Note: some entries have no cost estimate (e.g. OpenAI calls, or an unpriced model) and are excluded from the total above.</div>' : ''}
   ${
     failedCount > 0
-      ? `<div class="controls"><label class="toggle"><input type="checkbox" id="show-failed">Show ${failedCount} failed call${failedCount === 1 ? '' : 's'} (0 tokens, errored before any response)</label></div>`
+      ? `<div class="controls"><label class="toggle"><span class="switch"><input type="checkbox" id="show-failed"><span class="switch-track"></span></span>Show ${failedCount} failed call${failedCount === 1 ? '' : 's'} (0 tokens, errored before any response)</label></div>`
       : ''
   }
   ${
