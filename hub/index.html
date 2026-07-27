@@ -53,6 +53,13 @@
     transition: border-color 0.15s ease;
   }
   a.card:hover { border-color: var(--accent); }
+  .card-main { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+  .card-icon {
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px;
+    background: var(--accent-bg); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card-icon svg { width: 21px; height: 21px; }
   .card-name { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 700; font-size: 1.02rem; }
   .card-desc { color: var(--mute); font-size: 0.87rem; margin-top: 0.15rem; }
   .badge-needs {
@@ -86,49 +93,100 @@
 
     <div class="grid">
       <a class="card" href="http://localhost:5173">
-        <div>
-          <div class="card-name">Frontend</div>
-          <div class="card-desc">OrderFlow — the app under test</div>
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Frontend</div>
+            <div class="card-desc">OrderFlow — the app under test</div>
+          </div>
         </div>
         <span class="card-url">:5173</span>
       </a>
 
       <a class="card" href="http://localhost:3000/docs">
-        <div>
-          <div class="card-name">Backend API + Swagger</div>
-          <div class="card-desc">OpenAPI docs for the OrderFlow backend</div>
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path>
+              <path d="M14 3v4h4"></path>
+              <line x1="9" y1="13" x2="15" y2="13"></line>
+              <line x1="9" y1="17" x2="15" y2="17"></line>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Backend API + Swagger</div>
+            <div class="card-desc">OpenAPI docs for the OrderFlow backend</div>
+          </div>
         </div>
         <span class="card-url">:3000/docs</span>
       </a>
 
       <a class="card" href="http://localhost:8080/">
-        <div>
-          <div class="card-name">Cucumber test report <span class="badge-needs">needs a test run first</span></div>
-          <div class="card-desc">BDD suite results — empty until you run <code>pnpm run test &amp;&amp; pnpm run report</code> in <code>tests/</code></div>
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="6" y="4" width="12" height="16" rx="1.5"></rect>
+              <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"></path>
+              <path d="M9 13l2 2 4-4"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Cucumber test report <span class="badge-needs">needs a test run first</span></div>
+            <div class="card-desc">BDD suite results — empty until you run <code>pnpm run test &amp;&amp; pnpm run report</code> in <code>tests/</code></div>
+          </div>
         </div>
         <span class="card-url">:8080</span>
       </a>
 
       <a class="card" href="http://localhost:8080/usage/">
-        <div>
-          <div class="card-name">AI usage / cost log</div>
-          <div class="card-desc">Tokens and cost for every agent call, live</div>
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="12" width="4" height="8" rx="1"></rect>
+              <rect x="10" y="7" width="4" height="13" rx="1"></rect>
+              <rect x="17" y="3" width="4" height="17" rx="1"></rect>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">AI usage / cost log</div>
+            <div class="card-desc">Tokens and cost for every agent call, live</div>
+          </div>
         </div>
         <span class="card-url">:8080/usage</span>
       </a>
 
       <a class="card" href="http://localhost:8081">
-        <div>
-          <div class="card-name">Kafka UI</div>
-          <div class="card-desc">Cluster admin — topics, messages, consumer groups</div>
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12h4l2-7 4 14 2-7h6"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Kafka UI</div>
+            <div class="card-desc">Cluster admin — topics, messages, consumer groups</div>
+          </div>
         </div>
         <span class="card-url">:8081</span>
       </a>
 
       <a class="card" href="http://localhost:4400">
-        <div>
-          <div class="card-name">Descriptor editor</div>
-          <div class="card-desc">Edit System Descriptor JSON files (<code>agent-service/descriptors/</code>)</div>
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Descriptor editor</div>
+            <div class="card-desc">Edit System Descriptor JSON files (<code>agent-service/descriptors/</code>)</div>
+          </div>
         </div>
         <span class="card-url">:4400</span>
       </a>
