@@ -33,6 +33,17 @@ export async function recordUsage(entry: UsageLogEntry): Promise<void> {
     // on disk, so one failed append doesn't freeze the dashboard.
   }
 
+  await regenerateUsageHtml();
+}
+
+/**
+ * Re-renders the HTML report from whatever's currently in the log file,
+ * without appending anything. Exported so a one-off migration (e.g.
+ * backfilling costUsd for entries logged before a model was added to
+ * pricing.ts) can refresh the report after editing the log directly,
+ * instead of duplicating the render logic.
+ */
+export async function regenerateUsageHtml(): Promise<void> {
   try {
     const entries = await readAllEntries();
     const html = renderHtml(entries);
