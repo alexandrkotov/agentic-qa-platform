@@ -26,10 +26,11 @@ services:
 
   report:
     image: nginx:alpine
-    ports: ["8080:80"]
+    ports: ["8080:80", "80:8000"]
     volumes:
       - ./tests/reports/cucumber-html:/usr/share/nginx/html:ro
       - ./agent-service/reports/usage-html:/usr/share/nginx/usage-html:ro
+      - ./hub:/usr/share/nginx/hub:ro
       - ./report-nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   db:

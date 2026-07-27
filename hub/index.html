@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic QA Platform</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --text: #16181d; --mute: #666e7a;
+    --line: #dfe3e8; --accent: #3a63d8; --accent-bg: #e8edfc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161b; --surface: #1c1f26; --text: #e7e9ed; --mute: #8b93a1; --line: #2b2f38; --accent: #7c9bef; --accent-bg: #232c47; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    display: flex; justify-content: center;
+    padding: clamp(2rem, 6vw, 4rem) 1.5rem;
+  }
+  main { width: 100%; max-width: 720px; }
+  .eyebrow {
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--mute); margin-bottom: 0.5rem;
+  }
+  h1 { margin: 0 0 0.5rem; font-size: 2rem; }
+  .lede { color: var(--mute); margin: 0 0 2.25rem; line-height: 1.55; max-width: 56ch; }
+  .grid { display: grid; gap: 0.9rem; }
+  a.card {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.1rem 1.3rem; text-decoration: none; color: inherit;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    transition: border-color 0.15s ease;
+  }
+  a.card:hover { border-color: var(--accent); }
+  .card-name { font-weight: 700; font-size: 1.02rem; }
+  .card-desc { color: var(--mute); font-size: 0.87rem; margin-top: 0.15rem; }
+  .card-url {
+    flex-shrink: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.78rem; color: var(--accent); background: var(--accent-bg);
+    padding: 0.3rem 0.6rem; border-radius: 6px; white-space: nowrap;
+  }
+  footer { margin-top: 2.5rem; font-size: 0.8rem; color: var(--mute); }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Agentic QA Platform</div>
+    <h1>Local services</h1>
+    <p class="lede">Everything running for this project, one click away. Some entries need an
+      extra step beyond <code>docker compose up</code> — see the note under each.</p>
+
+    <div class="grid">
+      <a class="card" href="http://localhost:5173">
+        <div>
+          <div class="card-name">Frontend</div>
+          <div class="card-desc">OrderFlow — the app under test</div>
+        </div>
+        <span class="card-url">:5173</span>
+      </a>
+
+      <a class="card" href="http://localhost:3000/docs">
+        <div>
+          <div class="card-name">Backend API + Swagger</div>
+          <div class="card-desc">OpenAPI docs for the OrderFlow backend</div>
+        </div>
+        <span class="card-url">:3000/docs</span>
+      </a>
+
+      <a class="card" href="http://localhost:8080/">
+        <div>
+          <div class="card-name">Cucumber test report</div>
+          <div class="card-desc">BDD suite results — empty until you run <code>pnpm run test &amp;&amp; pnpm run report</code> in <code>tests/</code></div>
+        </div>
+        <span class="card-url">:8080</span>
+      </a>
+
+      <a class="card" href="http://localhost:8080/usage/">
+        <div>
+          <div class="card-name">AI usage / cost log</div>
+          <div class="card-desc">Tokens and cost for every agent call, live</div>
+        </div>
+        <span class="card-url">:8080/usage</span>
+      </a>
+
+      <a class="card" href="http://localhost:8081">
+        <div>
+          <div class="card-name">Kafka UI</div>
+          <div class="card-desc">Cluster admin — topics, messages, consumer groups</div>
+        </div>
+        <span class="card-url">:8081</span>
+      </a>
+
+      <a class="card" href="http://localhost:4400">
+        <div>
+          <div class="card-name">Descriptor editor</div>
+          <div class="card-desc">Edit System Descriptor JSON — needs <code>pnpm admin</code> running in <code>agent-service/</code></div>
+        </div>
+        <span class="card-url">:4400</span>
+      </a>
+    </div>
+
+    <footer>Served by the same <code>report</code> nginx container as the test report above — see <code>README.md</code> for what each service actually needs to be running.</footer>
+  </main>
+</body>
+</html>
