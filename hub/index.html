@@ -8,9 +8,13 @@
   :root {
     --bg: #f5f6f8; --surface: #ffffff; --text: #16181d; --mute: #666e7a;
     --line: #dfe3e8; --accent: #3a63d8; --accent-bg: #e8edfc;
+    --warn-fg: #8a5a1f; --warn-bg: rgba(201, 138, 63, 0.16);
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #14161b; --surface: #1c1f26; --text: #e7e9ed; --mute: #8b93a1; --line: #2b2f38; --accent: #7c9bef; --accent-bg: #232c47; }
+    :root {
+      --bg: #14161b; --surface: #1c1f26; --text: #e7e9ed; --mute: #8b93a1; --line: #2b2f38; --accent: #7c9bef; --accent-bg: #232c47;
+      --warn-fg: #e0ac6c; --warn-bg: rgba(201, 138, 63, 0.18);
+    }
   }
   * { box-sizing: border-box; }
   body {
@@ -49,8 +53,13 @@
     transition: border-color 0.15s ease;
   }
   a.card:hover { border-color: var(--accent); }
-  .card-name { font-weight: 700; font-size: 1.02rem; }
+  .card-name { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 700; font-size: 1.02rem; }
   .card-desc { color: var(--mute); font-size: 0.87rem; margin-top: 0.15rem; }
+  .badge-needs {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+    color: var(--warn-fg); background: var(--warn-bg);
+    padding: 0.15rem 0.5rem; border-radius: 999px; white-space: nowrap;
+  }
   .card-url {
     flex-shrink: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace;
     font-size: 0.78rem; color: var(--accent); background: var(--accent-bg);
@@ -94,7 +103,7 @@
 
       <a class="card" href="http://localhost:8080/">
         <div>
-          <div class="card-name">Cucumber test report</div>
+          <div class="card-name">Cucumber test report <span class="badge-needs">needs a test run first</span></div>
           <div class="card-desc">BDD suite results — empty until you run <code>pnpm run test &amp;&amp; pnpm run report</code> in <code>tests/</code></div>
         </div>
         <span class="card-url">:8080</span>
@@ -118,8 +127,8 @@
 
       <a class="card" href="http://localhost:4400">
         <div>
-          <div class="card-name">Descriptor editor</div>
-          <div class="card-desc">Edit System Descriptor JSON — needs <code>pnpm admin</code> running in <code>agent-service/</code></div>
+          <div class="card-name">Descriptor editor <span class="badge-needs">needs pnpm admin</span></div>
+          <div class="card-desc">Edit System Descriptor JSON — run <code>pnpm admin</code> in <code>agent-service/</code> first, it's not part of <code>docker compose up</code></div>
         </div>
         <span class="card-url">:4400</span>
       </a>
