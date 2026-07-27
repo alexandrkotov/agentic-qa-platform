@@ -138,11 +138,46 @@ function renderHtml(entries: UsageLogEntry[]): string {
     })
     .join('');
 
+  const subtitleHtml = `Live — updates every 5s without reloading the page. ${entries.length} call(s) logged${failedCount > 0 ? ` (${failedCount} failed — errored before any tokens came back, $0, hidden by default)` : ''}.`;
+
+  const summaryHtml = `<div class="stat"><span class="label">Total calls</span><span class="value">${entries.length}</span></div>
+    <div class="stat"><span class="label">Input tokens</span><span class="value">${totalInput.toLocaleString()}</span></div>
+    <div class="stat"><span class="label">Output tokens</span><span class="value">${totalOutput.toLocaleString()}</span></div>
+    ${
+      anyCacheUsage
+        ? `<div class="stat"><span class="label">Cache write</span><span class="value">${totalCacheWrite.toLocaleString()}</span></div>
+    <div class="stat"><span class="label">Cache read</span><span class="value">${totalCacheRead.toLocaleString()}</span></div>`
+        : ''
+    }
+    <div class="stat"><span class="label">Total known cost</span><span class="value">$${totalCost.toFixed(4)}</span></div>`;
+
+  const noteHtml = anyUnknownCost
+    ? '<div class="note">Note: some entries have no cost estimate (e.g. OpenAI calls, or an unpriced model) and are excluded from the total above.</div>'
+    : '';
+
+  const controlsHtml =
+    failedCount > 0
+      ? `<label class="toggle"><span class="switch"><input type="checkbox" id="show-failed"><span class="switch-track"></span></span>Show ${failedCount} failed call${failedCount === 1 ? '' : 's'} (0 tokens, errored before any response)</label>`
+      : '';
+
+  const resultsHtml =
+    entries.length === 0
+      ? '<div class="empty">No usage recorded yet.</div>'
+      : `<table>
+    <thead>
+      <tr>
+        <th>Timestamp</th><th>Operation</th><th>Provider</th><th>Model</th>
+        <th class="num">Input</th><th class="num">Output</th>${anyCacheUsage ? '<th class="num">Cache Write</th><th class="num">Cache Read</th>' : ''}<th class="num">Cost</th>
+      </tr>
+    </thead>
+    <tbody>${rows}
+    </tbody>
+  </table>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="5">
 <title>Agent Service — AI Usage Log</title>
 <style>
   :root { color-scheme: dark; }
@@ -178,54 +213,54 @@ function renderHtml(entries: UsageLogEntry[]): string {
 </head>
 <body>
   <h1>Agent Service — AI Usage Log</h1>
-  <div class="subtitle">Auto-refreshes every 5s. ${entries.length} call(s) logged${failedCount > 0 ? ` (${failedCount} failed — errored before any tokens came back, $0, hidden by default)` : ''}.</div>
-  <div class="summary">
-    <div class="stat"><span class="label">Total calls</span><span class="value">${entries.length}</span></div>
-    <div class="stat"><span class="label">Input tokens</span><span class="value">${totalInput.toLocaleString()}</span></div>
-    <div class="stat"><span class="label">Output tokens</span><span class="value">${totalOutput.toLocaleString()}</span></div>
-    ${
-      anyCacheUsage
-        ? `<div class="stat"><span class="label">Cache write</span><span class="value">${totalCacheWrite.toLocaleString()}</span></div>
-    <div class="stat"><span class="label">Cache read</span><span class="value">${totalCacheRead.toLocaleString()}</span></div>`
-        : ''
-    }
-    <div class="stat"><span class="label">Total known cost</span><span class="value">$${totalCost.toFixed(4)}</span></div>
-  </div>
-  ${anyUnknownCost ? '<div class="note">Note: some entries have no cost estimate (e.g. OpenAI calls, or an unpriced model) and are excluded from the total above.</div>' : ''}
-  ${
-    failedCount > 0
-      ? `<div class="controls"><label class="toggle"><span class="switch"><input type="checkbox" id="show-failed"><span class="switch-track"></span></span>Show ${failedCount} failed call${failedCount === 1 ? '' : 's'} (0 tokens, errored before any response)</label></div>`
-      : ''
-  }
-  ${
-    entries.length === 0
-      ? '<div class="empty">No usage recorded yet.</div>'
-      : `<table>
-    <thead>
-      <tr>
-        <th>Timestamp</th><th>Operation</th><th>Provider</th><th>Model</th>
-        <th class="num">Input</th><th class="num">Output</th>${anyCacheUsage ? '<th class="num">Cache Write</th><th class="num">Cache Read</th>' : ''}<th class="num">Cost</th>
-      </tr>
-    </thead>
-    <tbody>${rows}
-    </tbody>
-  </table>`
-  }
+  <div class="subtitle" id="subtitle">${subtitleHtml}</div>
+  <div class="summary" id="summary">${summaryHtml}</div>
+  <div id="note">${noteHtml}</div>
+  <div class="controls" id="controls">${controlsHtml}</div>
+  <div id="results">${resultsHtml}</div>
   <script>
-    // Page reloads every 5s (meta refresh above), so the toggle's state has
-    // to persist itself via localStorage -- a plain in-memory checked flag
-    // would reset back to hidden on every refresh.
+    // No meta-refresh / full reload -- fetches this same page every 5s and
+    // patches just the regions that can change, so the toggle below (and
+    // anything else with live DOM state) survives an update instead of
+    // needing localStorage just to get through a reload.
     (function () {
       var KEY = 'usage-log-show-failed';
-      var checkbox = document.getElementById('show-failed');
-      if (!checkbox) return;
-      var show = localStorage.getItem(KEY) === '1';
-      checkbox.checked = show;
-      document.body.classList.toggle('show-failed', show);
-      checkbox.addEventListener('change', function () {
-        localStorage.setItem(KEY, checkbox.checked ? '1' : '0');
-        document.body.classList.toggle('show-failed', checkbox.checked);
-      });
+
+      function applyToggleState() {
+        var checkbox = document.getElementById('show-failed');
+        if (!checkbox) return;
+        var show = localStorage.getItem(KEY) === '1';
+        checkbox.checked = show;
+        document.body.classList.toggle('show-failed', show);
+        checkbox.addEventListener('change', function () {
+          localStorage.setItem(KEY, checkbox.checked ? '1' : '0');
+          document.body.classList.toggle('show-failed', checkbox.checked);
+        });
+      }
+
+      function swap(id, doc) {
+        var live = document.getElementById(id);
+        var fresh = doc.getElementById(id);
+        if (live && fresh) live.innerHTML = fresh.innerHTML;
+      }
+
+      async function poll() {
+        try {
+          var res = await fetch(window.location.href, { cache: 'no-store' });
+          var html = await res.text();
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          ['subtitle', 'summary', 'note', 'controls', 'results'].forEach(function (id) {
+            swap(id, doc);
+          });
+          applyToggleState();
+        } catch (err) {
+          console.warn('[usage-log] refresh failed', err);
+        }
+        setTimeout(poll, 5000);
+      }
+
+      applyToggleState();
+      setTimeout(poll, 5000);
     })();
   </script>
 </body>
