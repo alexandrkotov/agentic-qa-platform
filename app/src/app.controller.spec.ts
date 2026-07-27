@@ -15,8 +15,11 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return an HTML landing page linking to the API docs and the app', () => {
+      const html = appController.getHello();
+      expect(html).toContain('OrderFlow API');
+      expect(html).toContain('href="/docs"');
+      expect(html).toContain('href="http://localhost:5173"');
     });
   });
 });
