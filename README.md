@@ -9,6 +9,7 @@
 ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
+![Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=flat&logo=apachekafka&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-Claude%20%2B%20OpenAI-8A2BE2?style=flat)
 
 An SDET / AI-automation portfolio project: a small containerized order-processing app, **OrderFlow**
@@ -50,17 +51,22 @@ product break existing orders that reference it, does a status change in the UI 
 written to the database and reflected back in the API response, is a duplicate customer email
 rejected, do business rules hold consistently across both the UI and the API.
 
+The backend also publishes an `orders.status-changed` event to Kafka on every order creation and
+status change (same moments that already write to `OrderStatusHistory`) — a real, best-effort
+side channel (a Kafka outage never blocks the request), not demo data seeded by hand.
+
 | Part | Stack | Path |
 |---|---|---|
 | Backend | NestJS + TypeScript, Prisma ORM, OpenAPI/Swagger at `/docs` | [`app/`](app/) |
 | Database | PostgreSQL 16 | (via `docker-compose.yml`) |
 | Frontend | React 19 + TypeScript + Tailwind | [`frontend/`](frontend/) |
+| Events | Kafka (single-node KRaft, `apache/kafka`) + `provectuslabs/kafka-ui` at `:8081` | (via `docker-compose.yml`) |
 
 ### The agents
 
 | Agent | Role | Path |
 |---|---|---|
-| **System Discovery Agent** | Explores the *live* running app — reads the OpenAPI spec, walks the Postgres schema, navigates the UI, and performs a real write scenario (create → submit an order) to observe actual behavior rather than guess at it. Uses a real agentic tool-use loop with **Playwright MCP** (browser) and **Postgres MCP** (database) — not a single prompt. Produces a structured JSON report (`agent-service/reports/discovery-*.json`): endpoints, schema, UI pages, business rules, candidate test scenarios. | [`agent-service/src/bootstrap/discovery.ts`](agent-service/src/bootstrap/discovery.ts) |
+| **System Discovery Agent** | Explores a *live* target system and produces a structured JSON report (`agent-service/reports/discovery-*.json`): schema/endpoints/UI pages/topics, business rules, candidate test scenarios. The target system is described declaratively by a **System Descriptor** (JSON, see below) rather than hardcoded — which components to explore (Postgres, REST API, browser UI, Kafka) and which MCP servers/tools that needs is assembled from the descriptor at runtime. Uses a real agentic tool-use loop, not a single prompt; also performs a real write scenario (create → submit an order) to observe actual behavior rather than guess at it. Verified against two independent systems: this app, and a standalone Kafka cluster with nothing else in it. | [`agent-service/src/bootstrap/discovery.ts`](agent-service/src/bootstrap/discovery.ts) |
 | **Generate** | Takes that discovery report and generates a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) — one call per business domain (customers, products, orders-status, orders-items, orders-validation, security). One-shot per domain, no tool use, no execution feedback loop. | [`agent-service/src/bootstrap/generate.ts`](agent-service/src/bootstrap/generate.ts) |
 | **E2E Agent** | Closes the loop on the test suite above, in two explicit stages a human triggers separately. **Suggest mode** (`pnpm e2e`): runs an existing scenario as a real Playwright process — pass/fail is always the real exit code, never an LLM's opinion — and only on failure calls Claude once to classify the cause (`application_bug` / `test_bug` / `environment_issue` / `test_data_issue` / `tool_error` / `unknown`) and propose a fix; nothing is written to disk. **Execute with approval** (`pnpm apply-fix`): reads that report, shows the exact before/after, and — only after an explicit `y`/`yes` typed by a human — applies the fix to the one file it targets, type-checks it, and re-runs the scenario with no further AI involvement. Guardrails (no touching `app/`/`frontend/`, no patch at all when the cause is an app bug, exact-match-only file edits) are enforced in code, not just prompted. All 35 scenarios are auto-discovered from the `.feature` files; `--scenario` accepts an id, an exact title, or a Gherkin tag. | [`agent-service/src/agents/e2e/`](agent-service/src/agents/e2e/) |
 
@@ -75,6 +81,42 @@ verification runs across each failure type.
 Every AI call, from any of the three agents, is logged with its token usage and (where priced)
 its cost to a persistent local report, viewable live at `http://localhost:8080/usage/` (served
 by the same `report` container as the test report below).
+
+### The System Descriptor
+
+What the System Discovery Agent above explores is a JSON file, not code — a **System
+Descriptor** ([`agent-service/src/descriptor/schema.ts`](agent-service/src/descriptor/schema.ts),
+validated with zod) describing a target system as a list of typed components:
+
+| Component | Fields | What it gets discovery access to |
+|---|---|---|
+| `postgres` | `connectionString` | Schema + sample rows, via `@modelcontextprotocol/server-postgres` |
+| `rest-api` | `swaggerUrl`, optional `baseUrl` | The full OpenAPI spec |
+| `web-ui` | `baseUrl`, `routes` | Live browser navigation, via Playwright MCP |
+| `kafka` | `brokers`, optional `sasl`/`tls` | Topics, configs, sample messages, consumer groups, via [`tuannvm/kafka-mcp-server`](https://github.com/tuannvm/kafka-mcp-server) |
+
+A [`registry`](agent-service/src/descriptor/registry.ts) maps each component type to a **builder**
+([`agent-service/src/descriptor/components/`](agent-service/src/descriptor/components/)) — which
+MCP server/tools it needs, plus its own hand-written prompt section — so the prompt engineering
+for each component type stays small, explicit, and visible, rather than folded into one monolithic
+discovery prompt. Adding a new target system means writing a descriptor JSON, not touching code;
+adding a new *kind* of component means one new builder file plus one line in the registry.
+
+Two descriptors exist today, both under
+[`agent-service/descriptors/`](agent-service/descriptors/): `orderflow.json` (this app: postgres +
+rest-api + web-ui) and `kafka-demo.json` (a bare Kafka cluster, nothing else) — proof that the
+descriptor genuinely describes an arbitrary system, not just this one. Point discovery at either
+with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag defaults to
+`orderflow.json`, so `pnpm discovery` behaves exactly as before.
+
+A small web editor for these descriptor files —
+[`agent-service/src/admin/`](agent-service/src/admin/), `pnpm admin`, `http://localhost:4400` —
+lists, creates, and edits them from a browser: pick a component type, fill in its fields, save.
+Writes are validated through the same zod schema the CLI uses, so a bad save comes back with the
+exact field-level error instead of silently writing an invalid file. Deliberately not part of
+`app`/`frontend` (the system *under test* has no business managing the QA framework's own
+configuration) and deliberately a single static HTML page, not a React/Vite app — the feature
+isn't big enough to justify that tooling.
 
 ### The test suite
 
@@ -142,10 +184,15 @@ constants committed directly in `agent-service/src/bootstrap/*.ts`, not external
 docker compose up -d --build
 ```
 
-Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres, `:5432`), and
-`report` (nginx, `:8080` — serves the Cucumber test report at `/` once you generate one in step 4,
-and the AI usage/cost log at `/usage/`, which shows a friendly placeholder until any agent call
-happens in step 5 or 6).
+Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres, `:5432`), `kafka`
+(single-node broker, external listener `:9094`), `kafka-ui` (cluster admin UI, `:8081` — for
+humans only, nothing in this repo depends on it), and `report` (nginx, `:8080` — serves the
+Cucumber test report at `/` once you generate one in step 4, and the AI usage/cost log at
+`/usage/`, which shows a friendly placeholder until any agent call happens in step 5 or 6).
+
+Kafka is intentionally not persisted across rebuilds (no volume) — it's a derived event stream,
+not data worth keeping, and `app`'s health-gated dependency on it means a full `--build` always
+comes up clean regardless.
 
 ### 3. Run database migrations
 
@@ -184,8 +231,12 @@ pnpm install
 # one-time: install the Chromium build Playwright MCP needs
 node_modules/.pnpm/@playwright+mcp@*/node_modules/@playwright/mcp/node_modules/.bin/playwright install chromium
 
-pnpm discovery          # Phase 1 — writes agent-service/reports/discovery-<timestamp>.json
+pnpm discovery          # Phase 1 — explores descriptors/orderflow.json by default, writes agent-service/reports/discovery-<timestamp>.json
+pnpm discovery -- --descriptor descriptors/kafka-demo.json   # or point it at the bare-Kafka descriptor instead
 pnpm testgen            # Phase 2 — reads the latest discovery report, writes tests/features + tests/steps
+
+# Web editor for the descriptor JSON files above:
+pnpm admin              # http://localhost:4400
 ```
 
 See [`agent-service/README.md`](agent-service/README.md) for provider switching
