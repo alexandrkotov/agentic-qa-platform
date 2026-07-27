@@ -1,0 +1,15 @@
+FROM node:22-alpine
+WORKDIR /usr/src/app
+
+# The descriptor editor only ever needs express + zod (confirmed against its
+# actual imports) -- installed standalone here rather than via the main
+# package.json's `pnpm install`, which would also pull in the Claude/OpenAI
+# SDKs, Playwright MCP, and the Postgres MCP driver that this service never
+# touches.
+RUN npm install express@5 zod@4 tsx@4
+
+COPY src/descriptor/schema.ts src/descriptor/schema.ts
+COPY src/admin/ src/admin/
+
+EXPOSE 4400
+CMD ["npx", "tsx", "src/admin/server.ts"]
