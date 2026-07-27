@@ -95,6 +95,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
   let totalCost = 0;
   let anyUnknownCost = false;
   let failedCount = 0;
+  let anyCacheUsage = false;
   for (const e of entries) {
     totalInput += e.inputTokens;
     totalOutput += e.outputTokens;
@@ -107,11 +108,23 @@ function renderHtml(entries: UsageLogEntry[]): string {
     // still gets logged) -- never a real, billed call. Used to hide these
     // by default, since they're not interesting for "what did this cost".
     if (e.inputTokens === 0 && e.outputTokens === 0) failedCount++;
+    if (e.cacheCreationTokens > 0 || e.cacheReadTokens > 0) anyCacheUsage = true;
   }
+
+  // Cache write/read only ever show non-zero once prompt caching is actually
+  // wired up (a `cache_control` breakpoint on a request) -- neither provider
+  // sets one today, so these columns would otherwise be all zeros, always.
+  // Hidden until an entry actually has cache activity, not deleted outright,
+  // so they reappear on their own the day that changes.
 
   const rows = sorted
     .map((e) => {
       const failed = e.inputTokens === 0 && e.outputTokens === 0;
+      const cacheCells = anyCacheUsage
+        ? `
+        <td class="num">${e.cacheCreationTokens.toLocaleString()}</td>
+        <td class="num">${e.cacheReadTokens.toLocaleString()}</td>`
+        : '';
       return `
       <tr${failed ? ' data-failed="true"' : ''}>
         <td>${esc(e.timestamp)}</td>
@@ -119,9 +132,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
         <td>${esc(e.provider)}</td>
         <td>${esc(e.model)}</td>
         <td class="num">${e.inputTokens.toLocaleString()}</td>
-        <td class="num">${e.outputTokens.toLocaleString()}</td>
-        <td class="num">${e.cacheCreationTokens.toLocaleString()}</td>
-        <td class="num">${e.cacheReadTokens.toLocaleString()}</td>
+        <td class="num">${e.outputTokens.toLocaleString()}</td>${cacheCells}
         <td class="num">${fmtCost(e.costUsd)}</td>
       </tr>`;
     })
@@ -172,8 +183,12 @@ function renderHtml(entries: UsageLogEntry[]): string {
     <div class="stat"><span class="label">Total calls</span><span class="value">${entries.length}</span></div>
     <div class="stat"><span class="label">Input tokens</span><span class="value">${totalInput.toLocaleString()}</span></div>
     <div class="stat"><span class="label">Output tokens</span><span class="value">${totalOutput.toLocaleString()}</span></div>
-    <div class="stat"><span class="label">Cache write</span><span class="value">${totalCacheWrite.toLocaleString()}</span></div>
-    <div class="stat"><span class="label">Cache read</span><span class="value">${totalCacheRead.toLocaleString()}</span></div>
+    ${
+      anyCacheUsage
+        ? `<div class="stat"><span class="label">Cache write</span><span class="value">${totalCacheWrite.toLocaleString()}</span></div>
+    <div class="stat"><span class="label">Cache read</span><span class="value">${totalCacheRead.toLocaleString()}</span></div>`
+        : ''
+    }
     <div class="stat"><span class="label">Total known cost</span><span class="value">$${totalCost.toFixed(4)}</span></div>
   </div>
   ${anyUnknownCost ? '<div class="note">Note: some entries have no cost estimate (e.g. OpenAI calls, or an unpriced model) and are excluded from the total above.</div>' : ''}
@@ -189,7 +204,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
     <thead>
       <tr>
         <th>Timestamp</th><th>Operation</th><th>Provider</th><th>Model</th>
-        <th class="num">Input</th><th class="num">Output</th><th class="num">Cache Write</th><th class="num">Cache Read</th><th class="num">Cost</th>
+        <th class="num">Input</th><th class="num">Output</th>${anyCacheUsage ? '<th class="num">Cache Write</th><th class="num">Cache Read</th>' : ''}<th class="num">Cost</th>
       </tr>
     </thead>
     <tbody>${rows}
