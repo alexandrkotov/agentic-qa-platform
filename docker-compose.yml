@@ -9,7 +9,7 @@ services:
       db:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
     environment:
       DATABASE_URL: postgres://user:pass@db:5432/testdb
       KAFKA_BROKERS: kafka:9092
@@ -67,6 +67,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # Admin UI for the broker above — convenience for humans, not used by the
   # discovery agent (which talks to Kafka via kafka-mcp-server instead).
