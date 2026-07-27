@@ -1,12 +1,14 @@
 import { expect } from '@playwright/test';
 import { createBdd } from 'playwright-bdd';
 import { db, ensureDbConnected } from '../support/db';
+import { ensureKafkaConsumerReady, waitForKafkaMessage } from '../support/kafka';
 import { orderCtx, resetOrderCtx } from '../support/orderCtx';
 import { orderCardLocator } from '../support/orderCardLocator';
 
 const { Given, When, Then, Before } = createBdd();
 
 const BASE_URL = 'http://localhost:3000';
+const ORDER_STATUS_CHANGED_TOPIC = 'orders.status-changed';
 
 let ctx: any = {};
 
@@ -14,6 +16,9 @@ Before({ tags: '@orders_status' }, async () => {
   ctx = {};
   resetOrderCtx();
   await ensureDbConnected();
+  // Must be subscribed and joined before any action below can publish —
+  // otherwise a message produced during "When" could be missed.
+  await ensureKafkaConsumerReady([ORDER_STATUS_CHANGED_TOPIC]);
 });
 
 // NOTE: "an order test customer exists", "an order test product exists with
@@ -83,6 +88,14 @@ Then('the API response body should contain message {string}', async ({}, templat
   const expectedMsg = template.replace('{id}', String(orderCtx.orderId));
   const bodyStr = JSON.stringify(ctx.apiBody);
   expect(bodyStr).toContain(expectedMsg);
+});
+
+Then('a Kafka {string} message should report status {word} for the order', async ({}, topic: string, status: string) => {
+  const msg = await waitForKafkaMessage(
+    topic,
+    (m) => m.orderId === orderCtx.orderId && m.status === status,
+  );
+  expect(msg.status).toBe(status);
 });
 
 Then('the history panel should display status entries with timestamps', async ({ page }) => {

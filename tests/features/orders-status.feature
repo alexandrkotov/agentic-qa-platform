@@ -8,6 +8,7 @@ Feature: Order status management
     When I submit the order via the UI
     Then the order status should be SUBMITTED
     And the order status history should contain entries DRAFT, SUBMITTED in order
+    And a Kafka "orders.status-changed" message should report status SUBMITTED for the order
 
   @edge_case @orders_status
   Scenario: Delete SUBMITTED order via UI

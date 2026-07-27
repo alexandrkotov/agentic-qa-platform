@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      kafkajs:
+        specifier: ^2.2.4
+        version: 2.2.4
     devDependencies:
       '@playwright/test':
         specifier: ^1.56.0
@@ -188,6 +192,10 @@ packages:
 
   jsonfile@6.2.1:
     resolution: {integrity: sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q==}
+
+  kafkajs@2.2.4:
+    resolution: {integrity: sha512-j/YeapB1vfPT2iOIUn/vxdyKEuhuY2PxMBvf5JWux6iSaukAccrMtXEY/Lb7OvavDhOWME589bpLrEdnVHjfjA==}
+    engines: {node: '>=14.0.0'}
 
   liquidjs@10.27.2:
     resolution: {integrity: sha512-kvknfAEtOHjHkAAv7GxLEJh8ghpMQm3Fc4uWVyF7hERSTsSRsdC7saWs0p5aDG7GDcWsu5o+T4232O+8KZO55w==}
@@ -504,6 +512,8 @@ snapshots:
       universalify: 2.0.1
     optionalDependencies:
       graceful-fs: 4.2.11
+
+  kafkajs@2.2.4: {}
 
   liquidjs@10.27.2:
     dependencies:
