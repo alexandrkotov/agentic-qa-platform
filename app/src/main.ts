@@ -14,7 +14,7 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Agentic QA Platform API')
-    .setDescription('Order Management System — Customers, Products, Orders')
+    .setDescription('OrderFlow — Customers, Products, Orders')
     .setVersion('0.1')
     .build();
   const document = SwaggerModule.createDocument(app, config);
