@@ -166,6 +166,12 @@ by the same `report` container on the default port, no `:8080` to remember):
 | Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) | `docker compose up` |
 | Descriptor editor | `http://localhost:4400` | Edit System Descriptor JSON files | `docker compose up` |
 
+A full tour of all of them, starting from the hub: create an order, verify it in Swagger, find
+its Kafka message, open the biggest Cucumber scenario, toggle the AI usage log, and browse the
+descriptor editor.
+
+![Hub tour: from the landing page through the app, Swagger, Kafka UI, the Cucumber report, the AI usage log, and the descriptor editor](docs/assets/hub-tour-demo.gif)
+
 ### Prerequisites
 
 - **Windows 11 + WSL2 (Debian)** — everything below assumes a WSL2 Debian shell, not native
