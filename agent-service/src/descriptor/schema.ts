@@ -85,6 +85,13 @@ export const SystemDescriptorSchema = z
      * into the generic component builders.
      */
     extraInstructions: z.string().optional(),
+    /**
+     * Raw SQL statements run, in order, via a direct (write-capable) Postgres
+     * connection after the discovery agent finishes — not exposed to the LLM at
+     * all. For cleaning up test fixtures the agent's own (deliberately
+     * read-only) postgres tool cannot delete itself.
+     */
+    cleanupSql: z.array(z.string()).optional(),
   })
   .refine(
     (descriptor) => {

@@ -1,7 +1,9 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Client } from 'pg';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { parseSystemDescriptor } from '../descriptor/schema.ts';
+import type { SystemDescriptor, PostgresComponent } from '../descriptor/schema.ts';
 import { assembleDiscovery } from '../descriptor/registry.ts';
 import { config } from '../config.ts';
 
@@ -47,6 +49,36 @@ After completing all exploration, output ONLY a valid JSON object (no markdown f
 const USER_MESSAGE = `Start system discovery on the target system described in your instructions. Follow each component's exploration steps, then any additional verification instructions, and return the JSON report.`;
 
 // ---------------------------------------------------------------------------
+// Cleanup — runs after the LLM finishes, via a direct (write-capable)
+// Postgres connection, never exposed to the agent itself. Exists because the
+// agent's own postgres tool is deliberately read-only (see components/postgres.ts)
+// and can't remove the test fixtures a write-scenario in extraInstructions creates.
+// ---------------------------------------------------------------------------
+
+async function runCleanupSql(descriptor: SystemDescriptor): Promise<void> {
+  if (!descriptor.cleanupSql || descriptor.cleanupSql.length === 0) return;
+
+  const postgresComponent = descriptor.components.find(
+    (c): c is PostgresComponent => c.type === 'postgres',
+  );
+  if (!postgresComponent) {
+    console.warn('[cleanup] cleanupSql defined but no postgres component found — skipping');
+    return;
+  }
+
+  const client = new Client({ connectionString: postgresComponent.connectionString });
+  await client.connect();
+  try {
+    for (const sql of descriptor.cleanupSql) {
+      const result = await client.query(sql);
+      console.log(`[cleanup] ${result.rowCount} row(s): ${sql.slice(0, 80)}`);
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
 
@@ -90,4 +122,6 @@ export async function runDiscovery(
   await writeFile(reportPath, reportContent, 'utf-8');
   console.log(`\n=== Report saved: ${reportPath} ===\n`);
   console.log(reportContent.slice(0, 800) + (reportContent.length > 800 ? '\n...(truncated)' : ''));
+
+  await runCleanupSql(descriptor);
 }
