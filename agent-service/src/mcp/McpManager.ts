@@ -12,7 +12,6 @@ export interface McpToolDefinition {
 
 export class McpManager {
   private clients = new Map<string, Client>();
-  private toolIndex = new Map<string, string>(); // prefixedName → serverName
 
   async connect(servers: McpServerConfig[]): Promise<void> {
     for (const server of servers) {
@@ -37,7 +36,6 @@ export class McpManager {
 
       for (const tool of tools) {
         const prefixedName = `${serverName}__${tool.name}`;
-        this.toolIndex.set(prefixedName, serverName);
 
         const schema = tool.inputSchema as {
           properties?: Record<string, { type?: string; description?: string }>;
@@ -90,6 +88,5 @@ export class McpManager {
       }
     }
     this.clients.clear();
-    this.toolIndex.clear();
   }
 }
