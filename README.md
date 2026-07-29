@@ -24,7 +24,9 @@ Claude is the default provider for every agent; OpenAI is supported through the 
 abstraction, mainly to compare the two on the same task (see
 [`agent-service/README.md`](agent-service/README.md)).
 
-Running tests doesn't need AI — that's not the interesting part. What this actually proves:
+> Running tests doesn't need AI. The interesting part is what happens after a real failure.
+
+What this actually proves:
 
 - An AI agent explores an unfamiliar system (UI + API + database) on its own and writes a
   real, executable BDD test suite from what it finds.
