@@ -41,6 +41,14 @@ const KafkaComponentSchema = z.object({
     .optional(),
 });
 
+const KafkaConsumerComponentSchema = z.object({
+  type: z.literal('kafka-consumer'),
+  name: z.string().optional(),
+  brokers: z.array(z.string()).min(1),
+  topic: z.string(),
+  sampleSize: z.number().int().positive().optional(),
+});
+
 const WebUiComponentSchema = z.object({
   type: z.literal('web-ui'),
   name: z.string().optional(),
@@ -52,12 +60,14 @@ const WebUiComponentSchema = z.object({
 export type PostgresComponent = z.infer<typeof PostgresComponentSchema>;
 export type RestApiComponent = z.infer<typeof RestApiComponentSchema>;
 export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
+export type KafkaConsumerComponent = z.infer<typeof KafkaConsumerComponentSchema>;
 export type WebUiComponent = z.infer<typeof WebUiComponentSchema>;
 
 const SystemComponentSchema = z.discriminatedUnion('type', [
   PostgresComponentSchema,
   RestApiComponentSchema,
   KafkaComponentSchema,
+  KafkaConsumerComponentSchema,
   WebUiComponentSchema,
 ]);
 

@@ -1,0 +1,11 @@
+{
+  "name": "kafka-consumer-demo",
+  "components": [
+    {
+      "type": "kafka-consumer",
+      "brokers": ["localhost:9094"],
+      "topic": "orders.status-changed",
+      "sampleSize": 5
+    }
+  ]
+}

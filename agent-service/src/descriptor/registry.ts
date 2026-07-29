@@ -3,6 +3,7 @@ import { componentKey, type SystemComponent, type SystemDescriptor } from './sch
 import { postgresBuilder } from './components/postgres.ts';
 import { restApiBuilder } from './components/restApi.ts';
 import { kafkaBuilder } from './components/kafka.ts';
+import { kafkaConsumerBuilder } from './components/kafkaConsumer.ts';
 import { webUiBuilder } from './components/webUi.ts';
 
 /**
@@ -25,6 +26,7 @@ export const componentRegistry: BuilderMap = {
   postgres: postgresBuilder,
   'rest-api': restApiBuilder,
   kafka: kafkaBuilder,
+  'kafka-consumer': kafkaConsumerBuilder,
   'web-ui': webUiBuilder,
 };
 
