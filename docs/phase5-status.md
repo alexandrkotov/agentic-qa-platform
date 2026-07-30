@@ -839,3 +839,23 @@ clicking "Approve grouping," the freshly-approved file saved to disk fine but ne
 (already used by every other report/grouping dropdown on this page) picks up the new one for free.
 Verified live and for free: approved a real grouping, confirmed the new filename appears in Stage 2's
 dropdown and is the one auto-selected, no page reload needed.
+
+A second, genuinely useful finding while actually driving the pipeline: the user asked whether setting
+Stage 2's "Max scenarios/group" to 15 would likely fail — checked `budget.ts` and `ClaudeProvider.ts`
+rather than guessing, and yes: `max_tokens: 8096` is hardcoded per call, `DEFAULT_MAX_SCENARIOS_PER_GROUP
+= 6` was chosen empirically against that exact ceiling (the old hand-maintained suite needed to cut a
+~19-scenario "orders" domain into 3 files of ≤9 to stay under it), and 15 wouldn't split their
+15-scenario "orders" group at all — sending it as one call, over twice the safe precedent. Worse,
+`ClaudeProvider.ts` treats `stop_reason === 'max_tokens'` the same as a normal completion, just
+returning whatever text was generated so far — a truncated response, which then fails to parse as
+valid JSON in Stage 2 rather than surfacing as an obvious "ran out of tokens" error.
+
+That answer surfaced a real naming problem: "group" already means something concrete and specific from
+Stage 1 (the group a human just hand-built on screen, e.g. "orders — 15 scenarios") — a field called
+"Max scenarios/group" sitting right next to that concept in Stage 2 reads as capping or dropping
+scenarios from it, backwards from what `splitByBudget` actually does (never drops anything; splits an
+oversized group into multiple Claude calls and recombines the results). Renamed to "Scenarios per
+Claude call" — describing the actual mechanism instead of overloading "group" — plus a hover tooltip
+spelling out the "nothing capped or dropped" guarantee explicitly. Internal identifiers (`maxScenarios`,
+`DEFAULT_MAX_SCENARIOS_PER_GROUP`, the `spec-max-scenarios` element id) deliberately left alone, same
+principle as every other display-only rename this session.
