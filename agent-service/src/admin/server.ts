@@ -5,8 +5,17 @@ import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema } from '../descriptor/schema.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
-import { ProposedGroupingSchema, ApprovedGroupingSchema, CorrectionsSchema } from '../agents/generate/contract.ts';
+import { splitByBudget } from '../agents/generate/budget.ts';
+import { generateSpec } from '../agents/generate/spec.ts';
+import {
+  ProposedGroupingSchema,
+  ApprovedGroupingSchema,
+  ProposedSpecSchema,
+  ApprovedSpecSchema,
+  CorrectionsSchema,
+} from '../agents/generate/contract.ts';
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
+import { ClaudeProvider } from '../providers/ClaudeProvider.ts';
 import { config } from '../config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,6 +47,16 @@ function descriptorPath(name: string): string {
 function reportFilePath(name: string): string {
   if (!REPORT_NAME_PATTERN.test(name)) {
     throw Object.assign(new Error('Report name must be an exact "discovery-*.json" filename'), { status: 400 });
+  }
+  return join(config.reportsDir, name);
+}
+
+const GROUPING_NAME_PATTERN = /^generate-grouping-approved-[A-Za-z0-9:_.-]+\.json$/;
+function groupingFilePath(name: string): string {
+  if (!GROUPING_NAME_PATTERN.test(name)) {
+    throw Object.assign(new Error('Grouping name must be an exact "generate-grouping-approved-*.json" filename'), {
+      status: 400,
+    });
   }
   return join(config.reportsDir, name);
 }
@@ -178,6 +197,74 @@ app.put('/api/generate/corrections/:descriptorName', async (req, res) => {
     const parsed = CorrectionsSchema.parse(req.body);
     await saveCorrections(path, parsed);
     res.json(parsed);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Generate pipeline — Stage 2 (spec) proposal/approval. Makes a real LLM call
+// (ClaudeProvider), unlike every other route on this server.
+// ---------------------------------------------------------------------------
+
+app.get('/api/generate/groupings', async (_req, res) => {
+  const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+  const names = files.filter((f) => GROUPING_NAME_PATTERN.test(f)).sort();
+  res.json(names);
+});
+
+app.post('/api/generate/spec', async (req, res) => {
+  try {
+    const { grouping, descriptor, maxScenarios, groups } = req.body as {
+      grouping?: string;
+      descriptor?: string;
+      maxScenarios?: number;
+      groups?: string[];
+    };
+    if (!grouping) {
+      res.status(400).json({ error: '"grouping" is required' });
+      return;
+    }
+    const groupingPath = groupingFilePath(grouping);
+    const approvedGrouping = ApprovedGroupingSchema.parse(JSON.parse(await readFile(groupingPath, 'utf-8')));
+
+    const reportRaw = JSON.parse(await readFile(approvedGrouping.sourceReportPath, 'utf-8'));
+    const report = parseDiscoveryReport(reportRaw);
+    const reportJson = JSON.stringify(reportRaw, null, 2);
+    const corrections = descriptor ? await loadCorrections(descriptorPath(descriptor)) : {};
+
+    let renderGroups = splitByBudget(approvedGrouping, typeof maxScenarios === 'number' ? maxScenarios : undefined);
+    if (groups?.length) renderGroups = renderGroups.filter((g) => groups.includes(g.key));
+    if (renderGroups.length === 0) {
+      res.status(400).json({ error: '"groups" matched no render groups for this grouping' });
+      return;
+    }
+
+    const provider = new ClaudeProvider();
+    const { spec, failures } = await generateSpec(provider, renderGroups, report, reportJson, corrections, groupingPath);
+    res.json({ spec, failures });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/generate/spec/approve', async (req, res) => {
+  try {
+    const proposed = ProposedSpecSchema.parse(req.body);
+    const approved = ApprovedSpecSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
+    await mkdir(config.reportsDir, { recursive: true });
+    const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
+    const outPath = join(config.reportsDir, `generate-spec-approved-${timestamp}.json`);
+    await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
+    res.status(201).json({ path: outPath, approved });
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });

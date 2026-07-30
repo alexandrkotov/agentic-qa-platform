@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { runDiscovery } from './bootstrap/discovery.ts';
 import { runGenerate } from './bootstrap/generate.ts';
 import { runGenerateGroup } from './bootstrap/generateGroup.ts';
+import { runGenerateSpec } from './bootstrap/generateSpec.ts';
 import { runE2EAgent } from './agents/e2e/index.ts';
 import { applyFix } from './agents/e2e/apply.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
@@ -23,6 +24,9 @@ const domainArg = getArg('--domain', '');
 const scenarioArg = getArg('--scenario', '');
 const descriptorArg = getArg('--descriptor', '');
 const thresholdArg = getArg('--threshold', '');
+const groupingArg = getArg('--grouping', '');
+const maxScenariosArg = getArg('--max-scenarios', '');
+const groupArg = getArg('--group', '');
 
 // Same derivation agent-service/src/agents/e2e/index.ts uses to find the
 // sibling tests/ directory from agent-service/reports/.
@@ -71,9 +75,23 @@ async function main() {
       // generate.ts is rewritten to orchestrate group/spec/render together.
       await runGenerateGroup(reportPathArg || undefined, thresholdArg ? Number(thresholdArg) : undefined);
       break;
+    case 'generate-spec':
+      // Temporary phase for the Generate Agent redesign (milestone 5): Stage
+      // 2 structured spec only, one LLM call per render group. Superseded
+      // once bootstrap/generate.ts is rewritten to orchestrate all stages.
+      await runGenerateSpec(
+        createProvider(),
+        groupingArg || undefined,
+        descriptorArg || undefined,
+        maxScenariosArg ? Number(maxScenariosArg) : undefined,
+        groupArg ? groupArg.split(',') : undefined,
+      );
+      break;
     default:
       console.error(`Unknown phase: ${phase}`);
-      console.error('Usage: tsx src/index.ts discovery|generate|generate-group|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>]');
+      console.error(
+        'Usage: tsx src/index.ts discovery|generate|generate-group|generate-spec|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>] [--grouping <path>] [--max-scenarios <n>] [--group <keys>]',
+      );
       process.exit(1);
   }
 }

@@ -107,6 +107,29 @@
   </section>
 
   <section>
+    <h2>Stage 2: Structured spec <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
+    <div class="row">
+      <label>Approved grouping</label>
+      <select id="spec-grouping-select"></select>
+      <label>Descriptor</label>
+      <input type="text" id="spec-descriptor" value="orderflow" style="width:8rem">
+      <label>Max scenarios/group</label>
+      <input type="number" id="spec-max-scenarios" value="6" style="width:4rem">
+      <label>Groups (optional, comma-separated)</label>
+      <input type="text" id="spec-groups-filter" placeholder="e.g. security,customers" style="width:12rem">
+    </div>
+    <div class="row">
+      <button class="primary" id="spec-generate-btn">Generate spec</button>
+      <span id="spec-gen-status"></span>
+    </div>
+    <div id="spec-body"></div>
+    <div class="row">
+      <button class="primary" id="spec-approve-btn" disabled>Approve spec</button>
+      <span id="spec-status"></span>
+    </div>
+  </section>
+
+  <section>
     <h2>Scenario corrections</h2>
     <div class="row">
       <label>Descriptor</label>
@@ -269,6 +292,94 @@ document.getElementById('approve-btn').onclick = async () => {
   }
 };
 
+// --- Stage 2: spec ----------------------------------------------------------
+
+let specState = null; // { generatedAt, sourceGroupingPath, scenarios: [...] }
+
+async function loadGroupingList() {
+  const names = await api('/api/generate/groupings');
+  const select = document.getElementById('spec-grouping-select');
+  select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (names.length > 0) select.value = names[names.length - 1];
+}
+
+function renderSpec() {
+  const body = document.getElementById('spec-body');
+  body.innerHTML = '';
+  document.getElementById('spec-approve-btn').disabled = !specState || specState.scenarios.length === 0;
+  if (!specState) return;
+
+  for (const scenario of specState.scenarios) {
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.innerHTML = `<strong>${scenario.scenarioName}</strong>`;
+    const meta = document.createElement('span');
+    meta.style.color = 'var(--text-mute)'; meta.style.fontSize = '0.78rem';
+    meta.textContent = `[${scenario.group}] ${scenario.type}`;
+    head.appendChild(meta);
+    card.appendChild(head);
+
+    const ta = document.createElement('textarea');
+    ta.rows = 10;
+    ta.style.width = '100%';
+    ta.style.fontFamily = 'ui-monospace, "SF Mono", Consolas, monospace';
+    ta.style.fontSize = '0.78rem';
+    ta.value = JSON.stringify({ given: scenario.given, when: scenario.when, then: scenario.then, unconfirmed: scenario.unconfirmed ?? null }, null, 2);
+    const err = document.createElement('div');
+    err.style.color = 'var(--danger)'; err.style.fontSize = '0.76rem'; err.style.marginTop = '0.2rem';
+    ta.oninput = () => {
+      try {
+        const parsed = JSON.parse(ta.value);
+        Object.assign(scenario, parsed);
+        err.textContent = '';
+      } catch (e) {
+        err.textContent = 'Invalid JSON — edit not applied yet: ' + e.message;
+      }
+    };
+    card.appendChild(ta);
+    card.appendChild(err);
+    body.appendChild(card);
+  }
+}
+
+document.getElementById('spec-generate-btn').onclick = async () => {
+  const grouping = document.getElementById('spec-grouping-select').value;
+  const descriptor = document.getElementById('spec-descriptor').value;
+  const maxScenarios = Number(document.getElementById('spec-max-scenarios').value);
+  const groupsRaw = document.getElementById('spec-groups-filter').value.trim();
+  const groups = groupsRaw ? groupsRaw.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  const statusEl = document.getElementById('spec-gen-status');
+  setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
+  try {
+    const result = await api('/api/generate/spec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grouping, descriptor, maxScenarios, groups }),
+    });
+    specState = result.spec;
+    renderSpec();
+    setStatus(statusEl, result.failures.length ? `Done, but failed: ${result.failures.join(', ')}` : 'Done.', result.failures.length ? 'err' : 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+document.getElementById('spec-approve-btn').onclick = async () => {
+  const statusEl = document.getElementById('spec-status');
+  try {
+    const result = await api('/api/generate/spec/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(specState),
+    });
+    setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
 // --- Corrections -----------------------------------------------------------
 
 let corrections = {};
@@ -338,6 +449,7 @@ document.getElementById('save-corr-btn').onclick = async () => {
 };
 
 loadReportList();
+loadGroupingList();
 </script>
 </body>
 </html>
