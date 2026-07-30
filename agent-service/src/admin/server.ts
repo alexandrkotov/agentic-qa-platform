@@ -19,6 +19,9 @@ import {
   CorrectionsSchema,
 } from '../agents/generate/contract.ts';
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
+import { proposeWorkflow } from '../agents/workflow/propose.ts';
+import { renderErDiagram, renderStateDiagram } from '../agents/workflow/render.ts';
+import { ProposedWorkflowSchema, ApprovedWorkflowSchema } from '../agents/workflow/contract.ts';
 import { ClaudeProvider } from '../providers/ClaudeProvider.ts';
 import { config } from '../config.ts';
 
@@ -296,6 +299,69 @@ app.post('/api/discovery/run', async (req, res) => {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   } finally {
     if (initScriptPath) await unlink(initScriptPath).catch(() => {});
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Visualize — turns a discovery report into diagrams a human can read before
+// working with the raw report. Entity relationships are fully mechanical
+// (no LLM, no approval needed — same reasoning as budget.ts's split in the
+// generate pipeline: this is rendering, not a decision). The business
+// workflow model is a real, costed LLM call (like Discovery/Stage 2 above),
+// so it goes through the same propose -> human edits -> approve cycle.
+// ---------------------------------------------------------------------------
+
+app.post('/api/workflow/render-er', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const report = parseDiscoveryReport(JSON.parse(await readFile(reportFilePath(reportName), 'utf-8')));
+    res.json({ mermaid: renderErDiagram(report) });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/propose', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const path = reportFilePath(reportName);
+    const report = parseDiscoveryReport(JSON.parse(await readFile(path, 'utf-8')));
+    const provider = new ClaudeProvider();
+    const proposed = await proposeWorkflow(provider, report, path);
+    res.json(proposed);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Model response failed validation', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/approve', async (req, res) => {
+  try {
+    const proposed = ProposedWorkflowSchema.parse(req.body);
+    const approved = ApprovedWorkflowSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
+    await mkdir(config.reportsDir, { recursive: true });
+    const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
+    const outPath = join(config.reportsDir, `generate-workflow-approved-${timestamp}.json`);
+    await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
+    const rendered = approved.entities.map(renderStateDiagram);
+    res.status(201).json({ path: outPath, approved, rendered });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
 

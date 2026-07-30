@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visualize</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eef0f3;
+    --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
+    --accent: #3a63d8; --accent-bg: #e8edfc;
+    --danger: #b3261e; --danger-bg: #fbe9e7;
+    --warn: #9a6700; --warn-bg: #fff3d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --surface: #1b1e27; --surface-2: #232733;
+      --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
+      --accent: #7c9bef; --accent-bg: #232c47;
+      --danger: #f0847c; --danger-bg: #3a1f1e;
+      --warn: #e0b04d; --warn-bg: #332a10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-nav {
+    display: flex; gap: 0.25rem; padding: 0.6rem 1rem;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .app-nav a {
+    font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
+    color: var(--text-mute); text-decoration: none;
+  }
+  .app-nav a:hover { background: var(--surface-2); color: var(--text); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
+  main { max-width: 920px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
+  .page-head { margin-bottom: 1.5rem; }
+  .page-head h1 { font-size: 0.95rem; margin: 0; }
+  .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
+
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
+  section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
+
+  .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .row label { font-size: 0.78rem; color: var(--text-mute); }
+  select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit; }
+  textarea {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.4rem 0.55rem; font-size: 0.83rem; color: var(--text); font-family: inherit;
+    width: 100%; resize: vertical; min-height: 3rem;
+  }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 0.95rem; font-size: 0.83rem; font-weight: 600; cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: none; border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+  }
+  button.ghost:hover { background: var(--surface-2); }
+
+  #er-status, #wf-gen-status, #wf-status { font-size: 0.83rem; }
+  #er-status.ok, #wf-gen-status.ok, #wf-status.ok { color: #2f8f5b; }
+  #er-status.err, #wf-gen-status.err, #wf-status.err { color: var(--danger); }
+
+  .diagram-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; background: var(--bg); }
+  .diagram-card h3 { margin: 0 0 0.5rem; font-size: 0.88rem; }
+  pre.mermaid { background: var(--surface); border-radius: 6px; padding: 0.6rem; overflow-x: auto; }
+  .rule-list { font-size: 0.8rem; margin: 0.35rem 0 0; padding-left: 1.1rem; }
+  .rule-list.guards li { color: var(--warn); }
+</style>
+</head>
+<body>
+<header class="app-nav">
+  <a href="/index.html">Discovery</a>
+  <a href="/visualize.html" class="active">Visualize</a>
+  <a href="/generate.html">Test Generation</a>
+</header>
+<main>
+  <div class="page-head">
+    <h1>Visualize</h1>
+    <div class="subtitle">See how the target system works before grouping scenarios — entity relationships (free, instant) and business workflow (calls Claude, costs money)</div>
+  </div>
+
+  <section>
+    <h2>Entity relationships</h2>
+    <div class="row">
+      <label>Report</label>
+      <select id="er-report-select"></select>
+      <button class="ghost" id="er-render-btn">Render</button>
+      <span id="er-status"></span>
+    </div>
+    <div id="er-diagram"></div>
+  </section>
+
+  <section>
+    <h2>Business workflow <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
+    <div class="row">
+      <label>Report</label>
+      <select id="wf-report-select"></select>
+      <button class="primary" id="wf-propose-btn">Generate workflow model</button>
+      <span id="wf-gen-status"></span>
+    </div>
+    <div id="wf-body"></div>
+    <div class="row">
+      <button class="primary" id="wf-approve-btn" disabled>Approve</button>
+      <span id="wf-status"></span>
+    </div>
+    <div id="wf-diagrams"></div>
+  </section>
+</main>
+
+<script src="/vendor/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+  startOnLoad: false,
+  theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+});
+
+const state = { workflow: null };
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error || res.statusText);
+  return body;
+}
+
+function setStatus(el, text, kind) {
+  el.textContent = text;
+  el.className = kind || '';
+}
+
+async function loadReportOptions(selectId) {
+  const names = await api('/api/generate/reports');
+  const select = document.getElementById(selectId);
+  select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (names.length > 0) select.value = names[names.length - 1];
+}
+
+// --- Entity relationships ---------------------------------------------------
+
+document.getElementById('er-render-btn').onclick = async () => {
+  const report = document.getElementById('er-report-select').value;
+  const statusEl = document.getElementById('er-status');
+  const container = document.getElementById('er-diagram');
+  try {
+    const { mermaid: text } = await api('/api/workflow/render-er', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    container.innerHTML = '<pre class="mermaid"></pre>';
+    container.querySelector('pre').textContent = text;
+    await mermaid.run({ querySelector: '#er-diagram pre.mermaid' });
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+// --- Business workflow -------------------------------------------------------
+
+function renderWorkflowEditor() {
+  const body = document.getElementById('wf-body');
+  body.innerHTML = '';
+  document.getElementById('wf-approve-btn').disabled = !state.workflow || state.workflow.entities.length === 0;
+  if (!state.workflow) return;
+
+  for (const entity of state.workflow.entities) {
+    const card = document.createElement('div');
+    card.className = 'diagram-card';
+    const head = document.createElement('h3');
+    head.textContent = entity.name;
+    card.appendChild(head);
+
+    const ta = document.createElement('textarea');
+    ta.rows = 10;
+    ta.style.fontFamily = 'ui-monospace, "SF Mono", Consolas, monospace';
+    ta.style.fontSize = '0.78rem';
+    ta.value = JSON.stringify({ states: entity.states, rules: entity.rules }, null, 2);
+    const err = document.createElement('div');
+    err.style.color = 'var(--danger)'; err.style.fontSize = '0.76rem'; err.style.marginTop = '0.2rem';
+    ta.oninput = () => {
+      try {
+        const parsed = JSON.parse(ta.value);
+        Object.assign(entity, parsed);
+        err.textContent = '';
+      } catch (e) {
+        err.textContent = 'Invalid JSON — edit not applied yet: ' + e.message;
+      }
+    };
+    card.appendChild(ta);
+    card.appendChild(err);
+    body.appendChild(card);
+  }
+}
+
+document.getElementById('wf-propose-btn').onclick = async () => {
+  const report = document.getElementById('wf-report-select').value;
+  const statusEl = document.getElementById('wf-gen-status');
+  setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
+  try {
+    state.workflow = await api('/api/workflow/propose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    renderWorkflowEditor();
+    document.getElementById('wf-diagrams').innerHTML = '';
+    setStatus(
+      statusEl,
+      state.workflow.entities.length === 0 ? 'Done — no entities with real state/workflow found.' : 'Done.',
+      'ok',
+    );
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+async function renderDiagrams(rendered) {
+  const container = document.getElementById('wf-diagrams');
+  container.innerHTML = '';
+  for (const entity of rendered) {
+    const card = document.createElement('div');
+    card.className = 'diagram-card';
+    const head = document.createElement('h3');
+    head.textContent = entity.name;
+    card.appendChild(head);
+
+    const pre = document.createElement('pre');
+    pre.className = 'mermaid';
+    pre.textContent = entity.mermaid;
+    card.appendChild(pre);
+
+    const addList = (title, items, cls) => {
+      if (items.length === 0) return;
+      const label = document.createElement('div');
+      label.style.fontSize = '0.78rem'; label.style.fontWeight = '600'; label.style.marginTop = '0.6rem';
+      label.textContent = title;
+      card.appendChild(label);
+      const ul = document.createElement('ul');
+      ul.className = 'rule-list' + (cls ? ' ' + cls : '');
+      for (const item of items) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+    };
+    addList('Guards', entity.guards, 'guards');
+    addList('Invariants', entity.invariants, '');
+
+    container.appendChild(card);
+  }
+  await mermaid.run({ querySelector: '#wf-diagrams pre.mermaid' });
+}
+
+document.getElementById('wf-approve-btn').onclick = async () => {
+  const statusEl = document.getElementById('wf-status');
+  try {
+    const result = await api('/api/workflow/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.workflow),
+    });
+    setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+    await renderDiagrams(result.rendered);
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+loadReportOptions('er-report-select');
+loadReportOptions('wf-report-select');
+</script>
+</body>
+</html>
