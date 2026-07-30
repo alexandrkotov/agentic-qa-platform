@@ -122,9 +122,10 @@
     <div class="row">
       <label>Report</label>
       <select id="report-select"></select>
-      <label>Give up and show one flat list if more than this % of scenarios don't fit a group</label>
-      <input type="number" id="threshold-percent" value="30" step="5" min="0" max="100" style="width:4.5rem">%
+      <label title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">Ungrouped threshold ⓘ</label>
+      <input type="number" id="threshold-percent" value="30" step="5" min="0" max="100" style="width:4.5rem" title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">%
       <button class="ghost" id="recompute-btn">Generate grouping</button>
+      <button class="ghost" id="show-approved-grouping-btn" style="display:none">Show last approved grouping</button>
     </div>
     <div id="grouping-body"></div>
     <div class="row">
@@ -230,6 +231,37 @@ async function loadReportList() {
   select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.length > 0) select.value = names[names.length - 1];
 }
+
+// Lets a report reselect reveal "Show last approved grouping" for free,
+// instead of forcing a fresh (re-)grouping just to see what was already
+// approved for this report in an earlier session.
+async function onReportChanged() {
+  const btn = document.getElementById('show-approved-grouping-btn');
+  btn.style.display = 'none';
+  state.existingApprovedGrouping = null;
+  const report = document.getElementById('report-select').value;
+  if (!report) return;
+  try {
+    const existing = await api('/api/generate/grouping-for-report?report=' + encodeURIComponent(report));
+    if (!existing) return;
+    state.existingApprovedGrouping = existing;
+    btn.style.display = '';
+  } catch (e) {
+    setStatus(document.getElementById('status'), 'Failed to check for an existing approved grouping: ' + e.message, 'err');
+  }
+}
+// Native <select> only fires "change" when the value actually differs, so
+// re-picking the already-selected report fires nothing — "click" catches
+// that case too (same reasoning as visualize.html's onArchReportChanged).
+document.getElementById('report-select').addEventListener('change', onReportChanged);
+document.getElementById('report-select').addEventListener('click', onReportChanged);
+
+document.getElementById('show-approved-grouping-btn').onclick = () => {
+  if (!state.existingApprovedGrouping) return;
+  state.grouping = state.existingApprovedGrouping.approved;
+  renderGrouping();
+  setStatus(document.getElementById('status'), 'Loaded approved grouping from ' + state.existingApprovedGrouping.path, 'ok');
+};
 
 function allGroupKeys() {
   return state.grouping ? state.grouping.groups.map((g) => g.key) : [];
@@ -524,7 +556,7 @@ document.getElementById('save-corr-btn').onclick = async () => {
   }
 };
 
-loadReportList();
+loadReportList().then(onReportChanged);
 loadGroupingList();
 </script>
 </body>

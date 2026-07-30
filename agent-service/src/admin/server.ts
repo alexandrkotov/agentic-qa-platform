@@ -581,6 +581,31 @@ app.get('/api/generate/reports', async (_req, res) => {
   res.json(valid);
 });
 
+/** Latest approved grouping whose sourceReportPath matches this report, if any — same reuse-existing-approval idea as /api/workflow/for-report, so re-selecting a report doesn't force a fresh (re-)grouping to see what was already approved for it. */
+app.get('/api/generate/grouping-for-report', async (req, res) => {
+  try {
+    const reportName = req.query.report;
+    if (typeof reportName !== 'string' || !reportName) {
+      res.status(400).json({ error: '"report" query param is required' });
+      return;
+    }
+    const targetPath = reportFilePath(reportName);
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => GROUPING_NAME_PATTERN.test(f)).sort();
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const candidatePath = join(config.reportsDir, candidates[i]);
+      const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
+      if (raw.sourceReportPath !== targetPath) continue;
+      const approved = ApprovedGroupingSchema.parse(raw);
+      res.json({ path: candidatePath, approved });
+      return;
+    }
+    res.json(null);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/generate/group', async (req, res) => {
   try {
     const { report, threshold } = req.body as { report?: string; threshold?: number };
