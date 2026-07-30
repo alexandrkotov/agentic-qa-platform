@@ -67,7 +67,11 @@ app.use(express.static(join(__dirname, 'static')));
 
 app.get('/api/descriptors', async (_req, res) => {
   const files = await readdir(DESCRIPTORS_DIR);
-  const names = files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
+  // Exclude sibling *.corrections.json files (see corrections.ts) — they live
+  // in the same directory as real descriptors but aren't one themselves.
+  const names = files
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.corrections.json'))
+    .map((f) => f.replace(/\.json$/, ''));
   res.json(names);
 });
 
