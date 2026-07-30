@@ -859,3 +859,27 @@ Claude call" — describing the actual mechanism instead of overloading "group" 
 spelling out the "nothing capped or dropped" guarantee explicitly. Internal identifiers (`maxScenarios`,
 `DEFAULT_MAX_SCENARIOS_PER_GROUP`, the `spec-max-scenarios` element id) deliberately left alone, same
 principle as every other display-only rename this session.
+
+## Addendum: "Groups" filter was matching the wrong layer (2026-07-30)
+
+Same overloaded-"group" problem from the rename above turned out to also be a real logic bug, not
+just a wording one. Stage 2's "Groups (optional, comma-separated)" field was implemented to filter the
+*post-budget-split* render groups — so a Stage 1 group like "orders" (15 scenarios), once
+`splitByBudget` had chunked it into `orders-1`/`orders-2`/`orders-3` for the "Scenarios per Claude
+call" limit, could only be selected by typing those exact split keys. Typing the plain group name a
+user actually sees on screen — "orders" — matched nothing and generated for zero groups.
+
+Corrected the `/api/generate/spec` handler in [server.ts](../agent-service/src/admin/server.ts) to
+filter `approvedGrouping.groups`/`.ungrouped` by the requested Stage 1 keys *before* calling
+`splitByBudget`, not after. Typing "orders" now means the whole Stage 1 group, however many Claude
+calls it internally needs — the chunking happens automatically and invisibly downstream, exactly like
+it does when no filter is applied at all. Relabeled the field to "Limit to groups (optional)" in
+[generate.html](../agent-service/src/admin/static/generate.html) with a tooltip explaining it matches
+Stage 1 group names regardless of internal batching.
+
+Verified for free, without any real Claude calls: a standalone script imported the real
+`splitByBudget` from `budget.ts` and ran the same filter-then-split logic against a fake grouping
+containing a 15-scenario "orders" group, confirming (a) filtering by plain "orders" alone selects and
+fully batches all 15 scenarios into `orders-1/2/3`, (b) unrequested groups are excluded entirely, (c)
+"ungrouped" is only included when explicitly named, (d) an empty match still hits the existing 400
+error path. `pnpm --dir agent-service typecheck` also passed clean.

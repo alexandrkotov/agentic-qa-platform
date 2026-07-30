@@ -142,8 +142,8 @@
       <input type="text" id="spec-descriptor" value="orderflow" style="width:8rem">
       <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
       <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
-      <label>Groups (optional, comma-separated)</label>
-      <input type="text" id="spec-groups-filter" placeholder="e.g. security,customers" style="width:12rem">
+      <label title="Same Stage 1 group names shown above (e.g. &quot;orders&quot;) — matches the whole group regardless of how many Claude calls it internally needs. Leave empty to generate every group.">Limit to groups (optional) ⓘ</label>
+      <input type="text" id="spec-groups-filter" placeholder="e.g. security,customers" style="width:12rem" title="Same Stage 1 group names shown above (e.g. &quot;orders&quot;) — matches the whole group regardless of how many Claude calls it internally needs. Leave empty to generate every group.">
     </div>
     <div class="row">
       <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate spec</button>

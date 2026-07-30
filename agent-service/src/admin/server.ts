@@ -680,10 +680,24 @@ app.post('/api/generate/spec', async (req, res) => {
     const reportJson = JSON.stringify(reportRaw, null, 2);
     const corrections = descriptor ? await loadCorrections(descriptorPath(descriptor)) : {};
 
-    let renderGroups = splitByBudget(approvedGrouping, typeof maxScenarios === 'number' ? maxScenarios : undefined);
-    if (groups?.length) renderGroups = renderGroups.filter((g) => groups.includes(g.key));
+    // Filter by Stage 1 group keys (e.g. "orders") *before* budget-splitting,
+    // not after — filtering the post-split render groups would require the
+    // human to already know internal "orders-1"/"orders-2" chunk keys, which
+    // are purely an artifact of how big a group happens to be relative to
+    // "Scenarios per Claude call", not something this field should expose.
+    // Typing "orders" here means the whole group, batched however many
+    // Claude calls it actually needs.
+    let filteredGrouping = approvedGrouping;
+    if (groups?.length) {
+      filteredGrouping = {
+        ...approvedGrouping,
+        groups: approvedGrouping.groups.filter((g) => groups.includes(g.key)),
+        ungrouped: groups.includes('ungrouped') ? approvedGrouping.ungrouped : [],
+      };
+    }
+    const renderGroups = splitByBudget(filteredGrouping, typeof maxScenarios === 'number' ? maxScenarios : undefined);
     if (renderGroups.length === 0) {
-      res.status(400).json({ error: '"groups" matched no render groups for this grouping' });
+      res.status(400).json({ error: '"groups" matched no groups for this grouping' });
       return;
     }
 
