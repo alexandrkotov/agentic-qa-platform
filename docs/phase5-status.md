@@ -1052,3 +1052,26 @@ interception (`page.route`) stubbed `/api/generate/spec` with a 1.5s-delayed fak
 letting it reach Claude, then drove the actual page — confirmed the button starts enabled, the confirm
 modal opens on click, clicking through it disables the button for the full duration the (fake) request
 is pending, and it re-enables once the response resolves.
+
+## Addendum: checkboxes instead of free text for "Limit to groups" (2026-07-30)
+
+The "Limit to groups" field was free-text, comma-separated, with no validation — a typo'd group name
+matched nothing and only surfaced as a 400 after clicking the (paid) Generate spec button, instead of
+being impossible to type in the first place.
+
+Replaced it with one checkbox per group key in
+[generate.html](../agent-service/src/admin/static/generate.html), rendered from the *selected
+grouping's own* content — reusing the same `GET /api/generate/groupings/:name` fetch already added for
+the Descriptor field, and for the identical reason: the selected grouping in Stage 2 can be a different,
+older one than whatever Stage 1's own editing state currently holds, so the checkbox options have to
+come from the grouping actually being acted on, not from Stage 1's live UI. `renderGroupsFilterCheckboxes()`
+rebuilds the list from scratch on every grouping change, so switching groupings can't leave a stale
+checked box from a different grouping's key set lying around. Leaving everything unchecked still means
+"generate every group," matching the old empty-field behavior exactly.
+
+Verified live against the real running container, again via `page.route` interception so no real
+Claude call was made: selecting a grouping renders one checkbox per its actual group keys (`security,
+customers, products, orders`); checking only "products" and clicking through Generate spec sends
+`groups: ["products"]` in the request body; switching to a different grouping re-renders a fresh
+checkbox set for its own keys; leaving nothing checked sends `groups: undefined`, same as the old
+empty-text-field case.
