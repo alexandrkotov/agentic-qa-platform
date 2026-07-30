@@ -555,7 +555,9 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   const groupsRaw = document.getElementById('spec-groups-filter').value.trim();
   const groups = groupsRaw ? groupsRaw.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
   const statusEl = document.getElementById('spec-gen-status');
+  const btn = document.getElementById('spec-generate-btn');
   if (!(await confirmPaidAction(`Generate a structured spec from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
+  btn.disabled = true;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     const result = await api('/api/generate/spec', {
@@ -572,6 +574,8 @@ document.getElementById('spec-generate-btn').onclick = async () => {
     setStatus(statusEl, result.failures.length ? `Done, but failed: ${result.failures.join(', ')}` : 'Done.', result.failures.length ? 'err' : 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
   }
 };
 
