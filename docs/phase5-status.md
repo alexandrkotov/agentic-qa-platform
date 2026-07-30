@@ -605,3 +605,48 @@ order, Create Customer, Update product price), each using real component keys as
 `User`, concrete labels (`POST /orders`, `INSERT Order (status=DRAFT, customerId)`, `Publish to
 orders.status-changed {...}`), and correct request/response step ordering. All five diagrams rendered
 as real `<svg>` output with zero console errors.
+
+## Addendum: click-to-enlarge diagram modal + zoom (2026-07-30)
+
+All five diagrams render small and dense inline, worse in a non-maximized browser window. Clicking any
+rendered diagram (all five sections, one delegated click listener on `<main>` keyed off a
+`data-source`/`data-title` pair each render site stamps onto its own `<pre class="mermaid">`) now opens
+a shared modal that re-renders the same Mermaid source at a bigger font size (Mermaid lays the whole
+diagram out larger, not a blurry CSS zoom on the small version) inside a scrollable container.
+
+Interactive +/- zoom controls (semi-transparent, floating over the diagram, positioned as a sibling of
+the scroll container so they stay put regardless of scroll offset) let the human zoom further from that
+100% baseline — needed because the modal itself is still capped by the actual browser window size, so a
+fixed "bigger" render alone isn't enough on a small window. Getting the zoom to actually produce
+scrollbars took three failed attempts, each found and diagnosed live rather than assumed away:
+
+1. **`transform: scale()` on a wrapper** — didn't grow the scroll container's `scrollWidth`/
+   `scrollHeight` at all; confirmed via direct measurement before and after zooming in.
+2. **CSS `zoom` on the same wrapper** — same null result, despite `zoom` normally being a real
+   layout-affecting property (unlike `transform`). Turned out irrelevant to the actual bug (see below).
+3. **Setting the `<svg>`'s own pixel width/height directly** — still no scrollbars, and a full DOM chain
+   dump (computed `overflow-x`/`overflow-y` at every ancestor) found the real cause: the shared
+   `pre.mermaid` rule sets `overflow-x: auto` for the page's small inline diagrams; per CSS 11.1.1,
+   mixing that with the default `overflow-y: visible` makes browsers compute `overflow-y` as `auto` too
+   — so the modal's own `<pre>` was quietly acting as its own private scroll container the whole time,
+   swallowing the zoomed `<svg>`'s overflow internally no matter which of the three techniques was used,
+   before it ever reached the outer modal container.
+
+Fixing that (`.diagram-modal-scroll pre.mermaid { overflow: visible; }`, making the outer modal
+container the sole scroll owner) still wasn't enough on its own — a second bug stacked on top of it: a
+`.diagram-zoom-wrap` div (an `inline-block` with no explicit width, left over from the abandoned
+`transform` attempt) sat between the scroll container and the `<pre>`. Mermaid's `<svg>` uses
+`width="100%"`, a percentage that needs a definite containing-block width to resolve against; with an
+indeterminate-width `inline-block` in the chain, the browser fell back to the SVG spec's default
+300×150 replaced-element size — so even the *un-zoomed* baseline render was tiny, confirmed by dumping
+the `<svg>`'s actual attributes/computed size at each step. Removing the now-redundant wrapper (the
+zoom logic already targets the `<svg>` element directly, not a wrapper) restored the direct
+scroll-container → `pre` → `svg` chain that resolves percentages correctly.
+
+Verified live end to end after both fixes, in a deliberately small (900×600) viewport — the exact
+"non-maximized window" scenario that prompted this: at 100% the modal `<svg>` measured a correct ~768px
+(matching the container), zooming to 220% grew it to ~1690px, `scrollWidth` (1714) exceeded
+`clientWidth` (811) in both axes, and setting `scrollLeft`/`scrollTop` programmatically actually moved
+the visible content — not just that the numbers looked right. Zoom clamps correctly at 40%/400%, and a
+screenshot in a large (1600×1000) viewport confirmed the same zoom controls work with no unwanted
+scrollbars when the diagram already fits.
