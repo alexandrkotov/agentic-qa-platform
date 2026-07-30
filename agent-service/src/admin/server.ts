@@ -2,6 +2,7 @@ import express from 'express';
 import { readFile, writeFile, readdir, mkdir, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { lookup } from 'node:dns/promises';
 import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
 import type { SystemDescriptor, SystemComponent } from '../descriptor/schema.ts';
@@ -196,6 +197,29 @@ function restApiOrigin(descriptor: SystemDescriptor): string | null {
 }
 
 /**
+ * Chromium's *browser-context* networking (an in-page fetch/XHR — not
+ * Node's own fetch, and not Playwright's out-of-page page.request client,
+ * neither of which are affected) silently upgrades cross-origin sub-resource
+ * requests to bare, dot-less hostnames like "app" to HTTPS and does not fall
+ * back on failure (`net::ERR_SSL_PROTOCOL_ERROR` — this compose service only
+ * speaks plain HTTP). Confirmed live via the response's own
+ * `non-authoritative-reason: HSTS` header — a Chromium-internal label, this
+ * compose network never sends that header itself. Confirmed the fix too:
+ * the *resolved IP address* of the same service is exempt from this
+ * heuristic (IPs don't look like a real, upgradeable domain to Chromium the
+ * way a short hostname does), so the frontend-facing rewrite target below
+ * uses the IP, not the "app" hostname `rewriteForContainerNetwork` itself
+ * uses elsewhere (fine there — Postgres/rest-api/web-ui-navigation traffic
+ * doesn't go through a browser's networking stack, only this one path does).
+ */
+async function resolveToIpOrigin(origin: string): Promise<string> {
+  const url = new URL(origin);
+  const { address } = await lookup(url.hostname);
+  url.hostname = address;
+  return url.origin;
+}
+
+/**
  * A browser page loaded via web-ui's rewritten URL (e.g. "frontend:5173")
  * still runs the *frontend app's own* client-side JS, which calls the
  * backend at whatever origin is baked into its own bundle — this project's
@@ -249,8 +273,9 @@ app.post('/api/discovery/run', async (req, res) => {
     const fromOrigin = restApiOrigin(descriptor);
     const toOrigin = restApiOrigin(rewritten);
     if (hasWebUi && fromOrigin && toOrigin && fromOrigin !== toOrigin) {
+      const toOriginForBrowser = await resolveToIpOrigin(toOrigin);
       initScriptPath = join(tmpdir(), `discovery-frontend-api-rewrite-${Date.now()}.js`);
-      await writeFile(initScriptPath, buildFrontendApiRewriteScript(fromOrigin, toOrigin), 'utf-8');
+      await writeFile(initScriptPath, buildFrontendApiRewriteScript(fromOrigin, toOriginForBrowser), 'utf-8');
     }
     const savedInitScriptPath = initScriptPath;
 
