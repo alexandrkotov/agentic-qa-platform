@@ -1075,3 +1075,34 @@ customers, products, orders`); checking only "products" and clicking through Gen
 `groups: ["products"]` in the request body; switching to a different grouping re-renders a fresh
 checkbox set for its own keys; leaving nothing checked sends `groups: undefined`, same as the old
 empty-text-field case.
+
+## Addendum: fixed a real Descriptor mismatch the user hit live (2026-07-30)
+
+The two prior addenda each independently derived one Descriptor field — Scenario corrections' from
+Stage 1's report-select, Stage 2's from Stage 2's own selected grouping — each individually correct by
+its own stated reasoning, but wrong as a pair: those two dropdowns are independently choosable, so they
+can point at two different systems at once. The user hit exactly that live (screenshot): Stage 1's
+report-select still on an `orderflow` report, Stage 2's "Approved grouping" switched to a
+`kafka-demo`-sourced grouping — Stage 2's own Descriptor correctly followed to `kafka-demo`, but
+Scenario corrections' Descriptor stayed on `orderflow`, silently left over from Stage 1, with nothing
+on screen indicating the two had diverged.
+
+Fixed by dropping Stage 1's report-select as a Descriptor source entirely — `onReportChanged` no longer
+touches either Descriptor field. Both `#spec-descriptor` and `#descriptor-name` now derive from the same
+single place, `onGroupingChanged`'s fetch of the selected grouping's own `sourceReportPath`. This is the
+correct single source of truth for both: it's exactly the descriptor whose corrections a real Generate
+spec call against that grouping would actually use, and it's what the corrections-highlighting feature
+(prior addendum) implicitly assumes Scenario corrections is scoped to as well.
+
+Verified live against the real running container by reproducing the exact reported scenario: Stage 1's
+report-select left on the `orderflow` report (untouched), Stage 2's grouping switched to the
+`kafka-demo`-sourced `generate-grouping-approved-2026-07-30T23-32-01-661Z.json` — confirmed both
+Descriptor fields now read `kafka-demo` in lockstep, instead of the previous `kafka-demo` /
+`orderflow` split shown in the user's screenshot.
+
+One loose end surfaced by this fix, not yet acted on: Stage 1's report-select still only lists reports
+whose filename carries a descriptor label (an earlier addendum's filter, added specifically because
+Corrections used to auto-fill from that selection). That reason is now gone — nothing on this page
+derives a descriptor from Stage 1's report-select anymore — so the six early reports without a label
+could safely be un-hidden from Stage 1's dropdown. Left as-is pending the user's call, since they'd
+explicitly signed off on hiding them under the old (now superseded) reasoning.
