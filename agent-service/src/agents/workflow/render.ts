@@ -197,15 +197,16 @@ export function renderArchitectureDiagram(report: DiscoveryReport): string | nul
 
 export interface RenderedUiFlow {
   mermaid: string;
-  actionsByPage: { route: string; actions: string[] }[];
 }
 
 /**
  * A single combined flowchart for the whole page graph, not one diagram per
  * page — unlike entity workflows, navigation is inherently cross-page.
- * `navigation` transitions become edges; `in_place_action` transitions aren't
- * graph edges (they don't leave the page) and come back as a plain list per
- * page instead, the same way guards/invariants do for renderStateDiagram.
+ * `navigation` transitions become edges between two different pages;
+ * `in_place_action` transitions become self-loop edges on their own page's
+ * node (`page -->|action| page`) — they don't leave the page, but they're
+ * still real graph structure, not a footnote, so a page's full action surface
+ * is visible directly on the diagram instead of a separate text list.
  */
 export function renderUiFlowDiagram(flow: { pages: UiPageFlow[] }): RenderedUiFlow | null {
   if (flow.pages.length === 0) return null;
@@ -230,20 +231,18 @@ export function renderUiFlowDiagram(flow: { pages: UiPageFlow[] }): RenderedUiFl
   }
 
   const edgeLines: string[] = [];
-  const actionsByPage: { route: string; actions: string[] }[] = [];
   for (const page of flow.pages) {
-    const inPlace: string[] = [];
+    const pageId = ensureId(page.route);
     for (const t of page.transitions) {
       if (t.kind === 'navigation') {
-        edgeLines.push(`    ${ensureId(page.route)} -->|${sanitizeLabel(t.action)}| ${ensureId(t.to)}`);
+        edgeLines.push(`    ${pageId} -->|${sanitizeLabel(t.action)}| ${ensureId(t.to)}`);
       } else {
-        inPlace.push(`${t.action}: ${t.description}`);
+        edgeLines.push(`    ${pageId} -->|${sanitizeLabel(t.action)}| ${pageId}`);
       }
     }
-    if (inPlace.length > 0) actionsByPage.push({ route: page.route, actions: inPlace });
   }
 
   const nodeLines = [...idByRoute.entries()].map(([route, id]) => `    ${id}["${sanitizeLabel(route)}"]`);
   const lines = ['flowchart LR', ...nodeLines, ...edgeLines];
-  return { mermaid: lines.join('\n'), actionsByPage };
+  return { mermaid: lines.join('\n') };
 }

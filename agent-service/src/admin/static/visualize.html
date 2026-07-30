@@ -91,7 +91,6 @@
   }
   .rule-list.guards li { border-left-color: var(--warn); background: var(--warn-bg); }
   .rule-list.invariants li { border-left-color: var(--accent); background: var(--accent-bg); }
-  .rule-list.actions li { border-left-color: var(--text-mute); }
 </style>
 </head>
 <body>
@@ -512,21 +511,6 @@ async function renderUiFlowDiagrams(rendered) {
   card.appendChild(pre);
   container.appendChild(card);
   await mermaid.run({ querySelector: '#uf-diagrams pre.mermaid' });
-
-  for (const page of rendered.actionsByPage) {
-    const label = document.createElement('div');
-    label.className = 'rule-section-label';
-    label.textContent = page.route;
-    container.appendChild(label);
-    const ul = document.createElement('ul');
-    ul.className = 'rule-list actions';
-    for (const item of page.actions) {
-      const li = document.createElement('li');
-      li.textContent = item;
-      ul.appendChild(li);
-    }
-    container.appendChild(ul);
-  }
 }
 
 document.getElementById('uf-approve-btn').onclick = async () => {
