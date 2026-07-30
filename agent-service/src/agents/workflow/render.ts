@@ -95,9 +95,14 @@ export function renderStateDiagram(entity: EntityWorkflow): RenderedEntityWorkfl
  * already uses), and foreign keys are inferred by the `<name>Id` naming
  * convention this system's own schema happens to follow, matched against
  * the other table names actually present in the same report.
+ *
+ * Returns null when the report has no `.tables[]` anywhere (e.g. a
+ * kafka-only descriptor) — there's nothing to draw, and an empty
+ * `erDiagram` block would render as a blank canvas with no explanation.
  */
-export function renderErDiagram(report: DiscoveryReport): string {
+export function renderErDiagram(report: DiscoveryReport): string | null {
   const tables = Object.values(report.components).flatMap((c) => c.tables ?? []);
+  if (tables.length === 0) return null;
   const tableNames = new Set(tables.map((t) => t.name));
   const lines = ['erDiagram'];
 

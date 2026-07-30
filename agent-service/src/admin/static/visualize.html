@@ -168,6 +168,11 @@ document.getElementById('er-render-btn').onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ report }),
     });
+    if (!text) {
+      // Stays collapsed, button label unchanged — nothing to toggle open.
+      setStatus(statusEl, 'This report has no database structure to diagram.', 'err');
+      return;
+    }
     container.innerHTML = '<pre class="mermaid"></pre>';
     container.querySelector('pre').textContent = text;
     await mermaid.run({ querySelector: '#er-diagram pre.mermaid' });
