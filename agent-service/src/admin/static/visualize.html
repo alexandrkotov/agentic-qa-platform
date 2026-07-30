@@ -184,7 +184,7 @@
     <div class="row">
       <label>Report</label>
       <select id="arch-report-select"></select>
-      <button class="primary" id="arch-render-btn">Render</button>
+      <button class="primary" id="arch-render-btn">Show</button>
       <span id="arch-status"></span>
     </div>
     <div id="arch-diagram"></div>
@@ -195,7 +195,7 @@
     <div class="row">
       <label>Report</label>
       <select id="er-report-select"></select>
-      <button class="primary" id="er-render-btn">Render</button>
+      <button class="primary" id="er-render-btn">Show</button>
       <span id="er-status"></span>
     </div>
     <div id="er-diagram"></div>
@@ -483,7 +483,7 @@ async function loadReportOptions(selectId) {
 
 function collapseArch() {
   document.getElementById('arch-diagram').innerHTML = '';
-  document.getElementById('arch-render-btn').textContent = 'Render';
+  document.getElementById('arch-render-btn').textContent = 'Show';
 }
 
 document.getElementById('arch-render-btn').onclick = async () => {
@@ -539,7 +539,7 @@ document.getElementById('arch-report-select').addEventListener('click', onArchRe
 
 function collapseEr() {
   document.getElementById('er-diagram').innerHTML = '';
-  document.getElementById('er-render-btn').textContent = 'Render';
+  document.getElementById('er-render-btn').textContent = 'Show';
 }
 
 document.getElementById('er-render-btn').onclick = async () => {
@@ -627,7 +627,7 @@ document.getElementById('uf-propose-btn').onclick = async () => {
   const btn = document.getElementById('uf-propose-btn');
   const statusEl = document.getElementById('uf-gen-status');
 
-  if (btn.textContent === 'Show UI inventory') {
+  if (btn.textContent === 'Show') {
     setButtonLabel(btn, 'Generate UI inventory', true);
     const existing = state.existingUiFlow;
     if (!existing) return;
@@ -716,7 +716,7 @@ async function onUiFlowReportChanged() {
     const existing = await api('/api/workflow/ui-flow-for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
     state.existingUiFlow = existing;
-    setButtonLabel(document.getElementById('uf-propose-btn'), 'Show UI inventory', false);
+    setButtonLabel(document.getElementById('uf-propose-btn'), 'Show', false);
     setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
@@ -771,7 +771,7 @@ document.getElementById('seq-propose-btn').onclick = async () => {
   const btn = document.getElementById('seq-propose-btn');
   const statusEl = document.getElementById('seq-gen-status');
 
-  if (btn.textContent === 'Show sequence flow') {
+  if (btn.textContent === 'Show') {
     setButtonLabel(btn, 'Generate sequence flow', true);
     const existing = state.existingSequenceFlow;
     if (!existing) return;
@@ -862,7 +862,7 @@ async function onSequenceReportChanged() {
     const existing = await api('/api/workflow/sequence-for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
     state.existingSequenceFlow = existing;
-    setButtonLabel(document.getElementById('seq-propose-btn'), 'Show sequence flow', false);
+    setButtonLabel(document.getElementById('seq-propose-btn'), 'Show', false);
     setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
@@ -917,7 +917,7 @@ document.getElementById('wf-propose-btn').onclick = async () => {
   // An approved model already exists for this report — show it instead of
   // generating a new one, then flip the button back to its normal "Generate"
   // behavior in case the human wants a fresh one anyway.
-  if (btn.textContent === 'Show workflow model') {
+  if (btn.textContent === 'Show') {
     setButtonLabel(btn, 'Generate workflow model', true);
     const existing = state.existingWorkflow;
     if (!existing) return;
@@ -1031,7 +1031,7 @@ async function onWorkflowReportChanged() {
     const existing = await api('/api/workflow/for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
     state.existingWorkflow = existing;
-    setButtonLabel(document.getElementById('wf-propose-btn'), 'Show workflow model', false);
+    setButtonLabel(document.getElementById('wf-propose-btn'), 'Show', false);
     setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
