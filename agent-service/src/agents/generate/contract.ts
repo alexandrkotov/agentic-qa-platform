@@ -20,7 +20,7 @@ export const ProposedGroupingSchema = z.object({
   threshold: z.number(),
   groups: z.array(GroupSchema),
   ungrouped: z.array(z.string()),
-  /** true when ungrouped scenarios exceeded `threshold`: the whole result collapses to one flat group rather than pretending there's structure. */
+  /** true when ungrouped scenarios exceeded `threshold` — a warning that `groups` below may not be reliable, not a data transform: `groups`/`ungrouped` are still the real heuristic output either way, so a human can actually act on the warning (reassign by hand) instead of it being replaced by a single opaque group. */
   flatFallback: z.boolean(),
 });
 export type ProposedGrouping = z.infer<typeof ProposedGroupingSchema>;

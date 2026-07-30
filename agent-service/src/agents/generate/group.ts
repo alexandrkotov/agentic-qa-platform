@@ -10,7 +10,7 @@ import type { Group, ProposedGrouping } from './contract.ts';
 /** Scenario types that always form their own group regardless of which entity they touch. */
 export const DEFAULT_CROSS_FUNCTIONAL_TYPES = ['security'];
 
-/** Above this fraction of ungrouped scenarios, stop pretending there's structure — see flatFallback. */
+/** Above this fraction of ungrouped scenarios, flag the proposal as low-confidence (`flatFallback: true`) — see proposeGrouping. */
 export const DEFAULT_UNGROUPED_FALLBACK_RATIO = 0.3;
 
 export interface GroupingOptions {
@@ -143,25 +143,13 @@ export function proposeGrouping(
   }
 
   const totalScenarios = report.testScenarios.length;
+  // A pure warning flag, not a data transform: the real per-entity groups and
+  // the real ungrouped list are always returned below, even when this is
+  // true. Collapsing everything into one "all" group here used to also
+  // throw away the only information a human needs to act on the warning —
+  // there was no way to actually "reassign scenarios by hand" once the real
+  // groups no longer existed in the response.
   const flatFallback = totalScenarios > 0 && ungrouped.length / totalScenarios > threshold;
-
-  if (flatFallback) {
-    return {
-      generatedAt: new Date().toISOString(),
-      sourceReportPath,
-      crossFunctionalTypes,
-      threshold,
-      groups: [
-        {
-          key: 'all',
-          scenarioNames: report.testScenarios.map((s) => s.name),
-          rationale: `flatFallback: ${ungrouped.length}/${totalScenarios} scenarios did not match exactly one entity — refusing to pretend the rest has real structure`,
-        },
-      ],
-      ungrouped: [],
-      flatFallback: true,
-    };
-  }
 
   const groups: Group[] = [
     ...[...crossFunctional.entries()].map(([type, scenarioNames]) => ({
@@ -183,6 +171,6 @@ export function proposeGrouping(
     threshold,
     groups,
     ungrouped,
-    flatFallback: false,
+    flatFallback,
   };
 }
