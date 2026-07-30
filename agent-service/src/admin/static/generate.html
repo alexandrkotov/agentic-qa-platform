@@ -53,6 +53,9 @@
     padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
   }
   input[readonly] { background: var(--surface-2); color: var(--text-mute); cursor: default; }
+  .checkbox-list { display: flex; gap: 0.85rem; flex-wrap: wrap; font-size: 0.82rem; }
+  .checkbox-list label { display: flex; align-items: center; gap: 0.3rem; color: var(--text); cursor: pointer; }
+  .checkbox-list .empty-note { color: var(--text-mute); font-size: 0.78rem; }
   textarea {
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.4rem 0.55rem; font-size: 0.83rem; color: var(--text); font-family: inherit;
@@ -145,8 +148,8 @@
       <input type="text" id="spec-descriptor" readonly style="width:8rem" title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">
       <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
       <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
-      <label title="Same Stage 1 group names shown above (e.g. &quot;orders&quot;) — matches the whole group regardless of how many Claude calls it internally needs. Leave empty to generate every group.">Limit to groups (optional) ⓘ</label>
-      <input type="text" id="spec-groups-filter" placeholder="e.g. security,customers" style="width:12rem" title="Same Stage 1 group names shown above (e.g. &quot;orders&quot;) — matches the whole group regardless of how many Claude calls it internally needs. Leave empty to generate every group.">
+      <label title="Same Stage 1 group names shown above — checking a group includes it whole, batched however many Claude calls it internally needs. Leave all unchecked to generate every group.">Limit to groups (optional) ⓘ</label>
+      <span id="spec-groups-filter" class="checkbox-list"></span>
     </div>
     <div class="row">
       <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate spec</button>
@@ -457,6 +460,30 @@ async function loadGroupingList() {
 // free to flip to a different report while an older grouping stays selected
 // here; deriving from that would silently point corrections lookups at the
 // wrong system.
+// Renders one checkbox per group key from a grouping's own content — pass
+// null to clear (no grouping selected, or its content failed to load).
+// Deliberately built from the SELECTED GROUPING's own groups, same source as
+// the Descriptor derivation above, not from Stage 1's live editing state —
+// for the same reason: Stage 1 can be showing a different, possibly
+// unapproved grouping than whatever is actually selected here.
+function renderGroupsFilterCheckboxes(groupingDetails) {
+  const container = document.getElementById('spec-groups-filter');
+  container.innerHTML = '';
+  if (!groupingDetails) return;
+  const keys = groupingDetails.groups.map((g) => g.key);
+  if (groupingDetails.ungrouped.length > 0) keys.push('ungrouped');
+  if (keys.length === 0) return;
+  for (const key of keys) {
+    const label = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = key;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(key));
+    container.appendChild(label);
+  }
+}
+
 async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
@@ -465,11 +492,13 @@ async function onGroupingChanged() {
   const grouping = document.getElementById('spec-grouping-select').value;
   const descriptorInput = document.getElementById('spec-descriptor');
   descriptorInput.value = '';
+  renderGroupsFilterCheckboxes(null);
   if (!grouping) return;
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
     const reportName = groupingDetails.sourceReportPath.split('/').pop();
     descriptorInput.value = descriptorFromReportName(reportName) ?? '';
+    renderGroupsFilterCheckboxes(groupingDetails);
   } catch (e) {
     setStatus(document.getElementById('spec-gen-status'), "Failed to read this grouping's source report: " + e.message, 'err');
   }
@@ -552,8 +581,8 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   const grouping = document.getElementById('spec-grouping-select').value;
   const descriptor = document.getElementById('spec-descriptor').value;
   const maxScenarios = Number(document.getElementById('spec-max-scenarios').value);
-  const groupsRaw = document.getElementById('spec-groups-filter').value.trim();
-  const groups = groupsRaw ? groupsRaw.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  const groupsChecked = Array.from(document.querySelectorAll('#spec-groups-filter input:checked')).map((cb) => cb.value);
+  const groups = groupsChecked.length ? groupsChecked : undefined;
   const statusEl = document.getElementById('spec-gen-status');
   const btn = document.getElementById('spec-generate-btn');
   if (!(await confirmPaidAction(`Generate a structured spec from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
