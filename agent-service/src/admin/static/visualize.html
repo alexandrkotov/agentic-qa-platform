@@ -111,7 +111,8 @@
     cursor: pointer; padding: 0.1rem 0.5rem; border-radius: 6px;
   }
   .diagram-modal-close:hover { background: var(--surface-2); color: var(--text); }
-  .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; border: 1px solid var(--line); border-radius: 8px; }
+  .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; border: 1px solid var(--line); border-radius: 8px; cursor: grab; }
+  .diagram-modal-scroll.panning { cursor: grabbing; user-select: none; }
   /* The shared `pre.mermaid` rule sets overflow-x: auto for the small
      inline diagrams — mixing that with the default overflow-y: visible
      makes browsers compute overflow-y as auto too, so the <pre> becomes its
@@ -358,6 +359,33 @@ document.querySelector('main').addEventListener('click', (e) => {
   const pre = e.target.closest('pre.mermaid');
   if (!pre || !pre.dataset.source) return;
   openDiagramModal(pre.dataset.title || 'Diagram', pre.dataset.source);
+});
+
+// Click-and-drag panning, in addition to the scrollbars — mousemove/mouseup
+// listen on the whole document (not modalScroll) so a fast drag that leaves
+// the container's own bounds mid-gesture keeps panning instead of stopping
+// dead at the edge.
+let isPanning = false;
+let panStartX = 0, panStartY = 0, panScrollLeft = 0, panScrollTop = 0;
+modalScroll.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  isPanning = true;
+  panStartX = e.clientX;
+  panStartY = e.clientY;
+  panScrollLeft = modalScroll.scrollLeft;
+  panScrollTop = modalScroll.scrollTop;
+  modalScroll.classList.add('panning');
+  e.preventDefault();
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  modalScroll.scrollLeft = panScrollLeft - (e.clientX - panStartX);
+  modalScroll.scrollTop = panScrollTop - (e.clientY - panStartY);
+});
+document.addEventListener('mouseup', () => {
+  if (!isPanning) return;
+  isPanning = false;
+  modalScroll.classList.remove('panning');
 });
 
 const state = {
