@@ -650,3 +650,11 @@ Verified live end to end after both fixes, in a deliberately small (900×600) vi
 the visible content — not just that the numbers looked right. Zoom clamps correctly at 40%/400%, and a
 screenshot in a large (1600×1000) viewport confirmed the same zoom controls work with no unwanted
 scrollbars when the diagram already fits.
+
+Also added click-and-drag panning as an alternative to the scrollbars: `mousedown` on the scroll
+container starts a drag (cursor flips `grab` → `grabbing`), `mousemove` adjusts `scrollLeft`/
+`scrollTop` by the drag delta, listening on `document` rather than the container itself so a fast drag
+that leaves the container mid-gesture keeps panning instead of stopping dead at the edge. Verified live
+with real synthesized mouse events (`page.mouse.down()`/`move()`/`up()`, not just direct DOM property
+pokes): cursor and a `panning` class toggle correctly across the gesture, and a 150×100px drag actually
+moved `scrollLeft`/`scrollTop` by exactly that delta.
