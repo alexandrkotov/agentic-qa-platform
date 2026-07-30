@@ -562,3 +562,46 @@ classified all thirteen other actions across `/customers`, `/products`, and `/or
 matching the actual (fairly flat, single-page-per-resource) app being tested. Both confirmed via a
 headless browser rendering real `<svg>` output with zero console errors, not just plausible-looking
 Mermaid text.
+
+### Follow-up: same-report reselect didn't collapse the section (2026-07-30)
+
+Reselecting the *same* report from any of the report dropdowns left a stale diagram/model on screen —
+first fix attempt (listening on `blur` in addition to `change`) turned out wrong on live testing:
+picking the same option in a native `<select>` closes the popup but never moves focus off the element,
+so `blur` never fires for that case either. The real, verified-live signal is `click` — exactly one
+click event fires on a `<select>` for the whole open-dropdown-then-pick gesture, regardless of whether
+the picked value changed. All four report dropdowns (and the two more added below) now listen on both
+`change` and `click`.
+
+## Addendum: Visualize — Sequence flow diagram + page reorder (2026-07-30)
+
+A fifth diagram, closing the gap the first four didn't cover: a "before coding" whiteboard-style
+diagram — an ordered, cross-component trace of what happens for one specific scenario (`User` clicks
+something → which endpoint → which tables → which Kafka topic), not Architecture's static topology or
+UI Inventory's unordered action list. Same reasoning as the other two propose/approve steps: the
+report lists `uiPages`/`endpoints`/`tables`/Kafka topics separately, but never says which UI action
+calls which endpoint or writes which table — that's inferred, not given.
+
+`agents/workflow/proposeSequenceFlow.ts` deliberately asks for **3–6 representative cross-component
+scenarios**, not one per `testScenarios[]` entry — most of a typical report's scenarios are trivial
+single-component reads that would just be redundant, costed diagrams. Participants are constrained to
+the report's own component keys (explicitly listed in the prompt) plus a reserved `"User"` actor for
+the human — never invented names, same shape-driven discipline as Architecture. `renderSequenceDiagram`
+renders **one Mermaid `sequenceDiagram` per scenario** (like Business workflow's per-entity diagrams,
+not UI Inventory's single combined graph) — a sequence is inherently about one scenario, so combining
+several would just be a tangle.
+
+Also reordered the whole page from general to specific, free tier first: **Architecture → Entity
+relationships → UI Inventory → Sequence flow → Business workflow** (Sequence flow sits right after UI
+Inventory since it traces from a UI action; Business workflow — entity-level state/rule detail — stays
+last as the deepest dive). The new section reused every already-hardened pattern from the start (the
+`click`+`change` listener fix above, the "flip button to Show instead of auto-displaying" UX) rather
+than repeating the earlier debugging.
+
+Verified live: page order confirmed correct after the reorder, all four pre-existing sections still
+worked. The sequence flow model (one real Claude call, confirmed with the user first) on the real
+orderflow report produced five sensible scenarios (Create Order, Submit DRAFT order, Delete DRAFT
+order, Create Customer, Update product price), each using real component keys as participants plus
+`User`, concrete labels (`POST /orders`, `INSERT Order (status=DRAFT, customerId)`, `Publish to
+orders.status-changed {...}`), and correct request/response step ordering. All five diagrams rendered
+as real `<svg>` output with zero console errors.
