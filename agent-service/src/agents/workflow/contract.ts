@@ -37,3 +37,36 @@ export const ApprovedWorkflowSchema = ProposedWorkflowSchema.extend({
   approvedAt: z.string(),
 });
 export type ApprovedWorkflow = z.infer<typeof ApprovedWorkflowSchema>;
+
+// ---------------------------------------------------------------------------
+// UI navigation flow — same propose-structure-not-prose idea as Rule above,
+// but for `components.*.uiPages[]` instead of `businessRules`. A page's own
+// action list is already structured in the report; what's missing is which
+// actions navigate to another route vs. stay in place, which requires
+// interpretation the report doesn't spell out.
+// ---------------------------------------------------------------------------
+
+const UiTransitionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('navigation'), action: z.string(), to: z.string() }),
+  z.object({ kind: z.literal('in_place_action'), action: z.string(), description: z.string() }),
+]);
+export type UiTransition = z.infer<typeof UiTransitionSchema>;
+
+export const UiPageFlowSchema = z.object({
+  /** Should match a `uiPages[].route` from the source report. */
+  route: z.string(),
+  transitions: z.array(UiTransitionSchema),
+});
+export type UiPageFlow = z.infer<typeof UiPageFlowSchema>;
+
+export const ProposedUiFlowSchema = z.object({
+  generatedAt: z.string(),
+  sourceReportPath: z.string(),
+  pages: z.array(UiPageFlowSchema),
+});
+export type ProposedUiFlow = z.infer<typeof ProposedUiFlowSchema>;
+
+export const ApprovedUiFlowSchema = ProposedUiFlowSchema.extend({
+  approvedAt: z.string(),
+});
+export type ApprovedUiFlow = z.infer<typeof ApprovedUiFlowSchema>;

@@ -66,9 +66,9 @@
   }
   button.ghost:hover { background: var(--surface-2); }
 
-  #er-status, #wf-gen-status, #wf-status { font-size: 0.83rem; }
-  #er-status.ok, #wf-gen-status.ok, #wf-status.ok { color: #2f8f5b; }
-  #er-status.err, #wf-gen-status.err, #wf-status.err { color: var(--danger); }
+  #arch-status, #er-status, #wf-gen-status, #wf-status, #uf-gen-status, #uf-status { font-size: 0.83rem; }
+  #arch-status.ok, #er-status.ok, #wf-gen-status.ok, #wf-status.ok, #uf-gen-status.ok, #uf-status.ok { color: #2f8f5b; }
+  #arch-status.err, #er-status.err, #wf-gen-status.err, #wf-status.err, #uf-gen-status.err, #uf-status.err { color: var(--danger); }
 
   .diagram-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; background: var(--bg); }
   .diagram-card h3 { margin: 0 0 0.5rem; font-size: 0.88rem; }
@@ -91,6 +91,7 @@
   }
   .rule-list.guards li { border-left-color: var(--warn); background: var(--warn-bg); }
   .rule-list.invariants li { border-left-color: var(--accent); background: var(--accent-bg); }
+  .rule-list.actions li { border-left-color: var(--text-mute); }
 </style>
 </head>
 <body>
@@ -102,8 +103,19 @@
 <main>
   <div class="page-head">
     <h1>Visualize</h1>
-    <div class="subtitle">See how the target system works before grouping scenarios — entity relationships (free, instant) and business workflow (calls Claude, costs money)</div>
+    <div class="subtitle">See how the target system works before grouping scenarios — architecture and entity relationships (free, instant), business workflow and UI flow (calls Claude, costs money)</div>
   </div>
+
+  <section>
+    <h2>Architecture</h2>
+    <div class="row">
+      <label>Report</label>
+      <select id="arch-report-select"></select>
+      <button class="ghost" id="arch-render-btn">Render</button>
+      <span id="arch-status"></span>
+    </div>
+    <div id="arch-diagram"></div>
+  </section>
 
   <section>
     <h2>Entity relationships</h2>
@@ -130,6 +142,22 @@
       <span id="wf-status"></span>
     </div>
     <div id="wf-diagrams"></div>
+  </section>
+
+  <section>
+    <h2>UI flow <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
+    <div class="row">
+      <label>Report</label>
+      <select id="uf-report-select"></select>
+      <button class="primary" id="uf-propose-btn">Generate UI flow model</button>
+      <span id="uf-gen-status"></span>
+    </div>
+    <div id="uf-body"></div>
+    <div class="row">
+      <button class="primary" id="uf-approve-btn" disabled>Approve</button>
+      <span id="uf-status"></span>
+    </div>
+    <div id="uf-diagrams"></div>
   </section>
 </main>
 
@@ -163,7 +191,7 @@ mermaid.initialize({
   },
 });
 
-const state = { workflow: null };
+const state = { workflow: null, uiFlow: null };
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -183,6 +211,48 @@ async function loadReportOptions(selectId) {
   select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.length > 0) select.value = names[names.length - 1];
 }
+
+// --- Architecture -------------------------------------------------------
+
+function collapseArch() {
+  document.getElementById('arch-diagram').innerHTML = '';
+  document.getElementById('arch-render-btn').textContent = 'Render';
+}
+
+document.getElementById('arch-render-btn').onclick = async () => {
+  const btn = document.getElementById('arch-render-btn');
+  if (btn.textContent === 'Hide') {
+    collapseArch();
+    return;
+  }
+
+  const report = document.getElementById('arch-report-select').value;
+  const statusEl = document.getElementById('arch-status');
+  const container = document.getElementById('arch-diagram');
+  try {
+    const { mermaid: text } = await api('/api/workflow/render-architecture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    if (!text) {
+      setStatus(statusEl, "This report doesn't have enough distinct components to diagram an architecture.", 'err');
+      return;
+    }
+    container.innerHTML = '<pre class="mermaid"></pre>';
+    container.querySelector('pre').textContent = text;
+    await mermaid.run({ querySelector: '#arch-diagram pre.mermaid' });
+    btn.textContent = 'Hide';
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+document.getElementById('arch-report-select').onchange = () => {
+  collapseArch();
+  setStatus(document.getElementById('arch-status'), '');
+};
 
 // --- Entity relationships ---------------------------------------------------
 
@@ -373,8 +443,138 @@ async function onWorkflowReportChanged() {
 }
 document.getElementById('wf-report-select').onchange = onWorkflowReportChanged;
 
+// --- UI flow ------------------------------------------------------------
+
+function renderUiFlowEditor() {
+  const body = document.getElementById('uf-body');
+  body.innerHTML = '';
+  document.getElementById('uf-approve-btn').disabled = !state.uiFlow || state.uiFlow.pages.length === 0;
+  if (!state.uiFlow) return;
+
+  // One combined textarea for the whole page graph, not one per page — the
+  // diagram itself is a single flowchart, so the editable unit matches what
+  // gets rendered (unlike Business workflow, which renders one diagram per
+  // entity and so edits per entity).
+  const card = document.createElement('div');
+  card.className = 'diagram-card';
+  const ta = document.createElement('textarea');
+  ta.rows = 16;
+  ta.style.fontFamily = 'ui-monospace, "SF Mono", Consolas, monospace';
+  ta.style.fontSize = '0.78rem';
+  ta.value = JSON.stringify(state.uiFlow.pages, null, 2);
+  const err = document.createElement('div');
+  err.style.color = 'var(--danger)'; err.style.fontSize = '0.76rem'; err.style.marginTop = '0.2rem';
+  ta.oninput = () => {
+    try {
+      state.uiFlow.pages = JSON.parse(ta.value);
+      err.textContent = '';
+    } catch (e) {
+      err.textContent = 'Invalid JSON — edit not applied yet: ' + e.message;
+    }
+  };
+  card.appendChild(ta);
+  card.appendChild(err);
+  body.appendChild(card);
+}
+
+document.getElementById('uf-propose-btn').onclick = async () => {
+  const report = document.getElementById('uf-report-select').value;
+  const statusEl = document.getElementById('uf-gen-status');
+  setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
+  try {
+    state.uiFlow = await api('/api/workflow/propose-ui-flow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    renderUiFlowEditor();
+    document.getElementById('uf-diagrams').innerHTML = '';
+    setStatus(
+      statusEl,
+      state.uiFlow.pages.length === 0 ? 'Done — this report has no UI pages to diagram.' : 'Done.',
+      'ok',
+    );
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+async function renderUiFlowDiagrams(rendered) {
+  const container = document.getElementById('uf-diagrams');
+  container.innerHTML = '';
+  if (!rendered) return;
+
+  const card = document.createElement('div');
+  card.className = 'diagram-card';
+  const pre = document.createElement('pre');
+  pre.className = 'mermaid';
+  pre.textContent = rendered.mermaid;
+  card.appendChild(pre);
+  container.appendChild(card);
+  await mermaid.run({ querySelector: '#uf-diagrams pre.mermaid' });
+
+  for (const page of rendered.actionsByPage) {
+    const label = document.createElement('div');
+    label.className = 'rule-section-label';
+    label.textContent = page.route;
+    container.appendChild(label);
+    const ul = document.createElement('ul');
+    ul.className = 'rule-list actions';
+    for (const item of page.actions) {
+      const li = document.createElement('li');
+      li.textContent = item;
+      ul.appendChild(li);
+    }
+    container.appendChild(ul);
+  }
+}
+
+document.getElementById('uf-approve-btn').onclick = async () => {
+  const statusEl = document.getElementById('uf-status');
+  try {
+    const result = await api('/api/workflow/approve-ui-flow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.uiFlow),
+    });
+    setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+    await renderUiFlowDiagrams(result.rendered);
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+function resetUiFlowSection() {
+  state.uiFlow = null;
+  document.getElementById('uf-body').innerHTML = '';
+  document.getElementById('uf-diagrams').innerHTML = '';
+  document.getElementById('uf-approve-btn').disabled = true;
+  setStatus(document.getElementById('uf-gen-status'), '');
+  setStatus(document.getElementById('uf-status'), '');
+}
+
+async function onUiFlowReportChanged() {
+  resetUiFlowSection();
+  const report = document.getElementById('uf-report-select').value;
+  if (!report) return;
+  const statusEl = document.getElementById('uf-gen-status');
+  try {
+    const existing = await api('/api/workflow/ui-flow-for-report?report=' + encodeURIComponent(report));
+    if (!existing) return;
+    state.uiFlow = existing.approved;
+    renderUiFlowEditor();
+    await renderUiFlowDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
+  }
+}
+document.getElementById('uf-report-select').onchange = onUiFlowReportChanged;
+
+loadReportOptions('arch-report-select');
 loadReportOptions('er-report-select');
 loadReportOptions('wf-report-select').then(onWorkflowReportChanged);
+loadReportOptions('uf-report-select').then(onUiFlowReportChanged);
 </script>
 </body>
 </html>

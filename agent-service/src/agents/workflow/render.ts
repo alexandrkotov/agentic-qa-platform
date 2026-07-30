@@ -1,5 +1,5 @@
 import type { DiscoveryReport } from '../generate/reportSchema.ts';
-import type { EntityWorkflow } from './contract.ts';
+import type { EntityWorkflow, UiPageFlow } from './contract.ts';
 
 // ---------------------------------------------------------------------------
 // Pure functions, no LLM: structured data -> Mermaid diagram text. Mirrors
@@ -15,6 +15,12 @@ function sanitizeId(name: string): string {
 /** Strips characters that would break out of a Mermaid label/note context. */
 function sanitizeLabel(text: string): string {
   return text.replace(/[\r\n]+/g, ' ').replace(/["`]/g, "'");
+}
+
+/** `web_ui` -> "Web ui", `rest-api` -> "Rest api" — a readable node label from a report component key, without hardcoding any specific key name. */
+function prettifyKey(key: string): string {
+  const words = key.replace(/[_-]+/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export interface RenderedEntityWorkflow {
@@ -136,4 +142,108 @@ export function renderErDiagram(report: DiscoveryReport): string | null {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Entirely mechanical, no LLM: which components exist and what shape each one
+ * has (`.uiPages`/`.endpoints`/`.tables`/`.topic`/`.topics` — same shape-based
+ * convention as the ER diagram, never a hardcoded component key) is enough to
+ * draw a generic three-layer architecture (UI -> API -> DB, API -> Kafka).
+ * These edges are a standard-architecture assumption, not a claim the report
+ * verified — the same kind of inference the ER diagram already makes for
+ * foreign keys by naming convention.
+ *
+ * Returns null when fewer than two components were classified — nothing
+ * meaningful to connect.
+ */
+export function renderArchitectureDiagram(report: DiscoveryReport): string | null {
+  interface ArchNode {
+    id: string;
+    label: string;
+  }
+  const uiNodes: ArchNode[] = [];
+  const apiNodes: ArchNode[] = [];
+  const dbNodes: ArchNode[] = [];
+  const kafkaNodes: ArchNode[] = [];
+
+  for (const [key, component] of Object.entries(report.components)) {
+    const id = sanitizeId(key);
+    const label = prettifyKey(key);
+    const c = component as {
+      uiPages?: unknown[];
+      endpoints?: unknown[];
+      tables?: unknown[];
+      topic?: unknown;
+      topics?: unknown[];
+    };
+    if (Array.isArray(c.uiPages)) uiNodes.push({ id, label: `${label}<br/>${c.uiPages.length} pages` });
+    if (Array.isArray(c.endpoints)) apiNodes.push({ id, label: `${label}<br/>${c.endpoints.length} endpoints` });
+    if (Array.isArray(c.tables)) dbNodes.push({ id, label: `${label}<br/>${c.tables.length} tables` });
+    if (typeof c.topic === 'string') kafkaNodes.push({ id, label: `${label}<br/>topic: ${sanitizeLabel(c.topic)}` });
+    else if (Array.isArray(c.topics)) kafkaNodes.push({ id, label: `${label}<br/>${c.topics.length} topics` });
+  }
+
+  const allNodes = [...uiNodes, ...apiNodes, ...dbNodes, ...kafkaNodes];
+  if (allNodes.length < 2) return null;
+
+  const lines = ['flowchart LR'];
+  for (const n of allNodes) lines.push(`    ${n.id}["${n.label}"]`);
+  for (const ui of uiNodes) for (const api of apiNodes) lines.push(`    ${ui.id} -->|HTTP| ${api.id}`);
+  for (const api of apiNodes) for (const db of dbNodes) lines.push(`    ${api.id} -->|SQL| ${db.id}`);
+  for (const api of apiNodes) for (const kafka of kafkaNodes) lines.push(`    ${api.id} -->|events| ${kafka.id}`);
+
+  return lines.join('\n');
+}
+
+export interface RenderedUiFlow {
+  mermaid: string;
+  actionsByPage: { route: string; actions: string[] }[];
+}
+
+/**
+ * A single combined flowchart for the whole page graph, not one diagram per
+ * page — unlike entity workflows, navigation is inherently cross-page.
+ * `navigation` transitions become edges; `in_place_action` transitions aren't
+ * graph edges (they don't leave the page) and come back as a plain list per
+ * page instead, the same way guards/invariants do for renderStateDiagram.
+ */
+export function renderUiFlowDiagram(flow: { pages: UiPageFlow[] }): RenderedUiFlow | null {
+  if (flow.pages.length === 0) return null;
+
+  const idByRoute = new Map<string, string>();
+  const ensureId = (route: string): string => {
+    let id = idByRoute.get(route);
+    if (!id) {
+      id = `p${idByRoute.size}_${sanitizeId(route)}`;
+      idByRoute.set(route, id);
+    }
+    return id;
+  };
+  // Two passes: first every page's own route, then every navigation target —
+  // a target route the model referenced but didn't separately describe (e.g.
+  // a detail page) still gets a proper node with its route path as the label.
+  for (const page of flow.pages) ensureId(page.route);
+  for (const page of flow.pages) {
+    for (const t of page.transitions) {
+      if (t.kind === 'navigation') ensureId(t.to);
+    }
+  }
+
+  const edgeLines: string[] = [];
+  const actionsByPage: { route: string; actions: string[] }[] = [];
+  for (const page of flow.pages) {
+    const inPlace: string[] = [];
+    for (const t of page.transitions) {
+      if (t.kind === 'navigation') {
+        edgeLines.push(`    ${ensureId(page.route)} -->|${sanitizeLabel(t.action)}| ${ensureId(t.to)}`);
+      } else {
+        inPlace.push(`${t.action}: ${t.description}`);
+      }
+    }
+    if (inPlace.length > 0) actionsByPage.push({ route: page.route, actions: inPlace });
+  }
+
+  const nodeLines = [...idByRoute.entries()].map(([route, id]) => `    ${id}["${sanitizeLabel(route)}"]`);
+  const lines = ['flowchart LR', ...nodeLines, ...edgeLines];
+  return { mermaid: lines.join('\n'), actionsByPage };
 }

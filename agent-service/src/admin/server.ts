@@ -20,8 +20,19 @@ import {
 } from '../agents/generate/contract.ts';
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
 import { proposeWorkflow } from '../agents/workflow/propose.ts';
-import { renderErDiagram, renderStateDiagram } from '../agents/workflow/render.ts';
-import { ProposedWorkflowSchema, ApprovedWorkflowSchema } from '../agents/workflow/contract.ts';
+import { proposeUiFlow } from '../agents/workflow/proposeUiFlow.ts';
+import {
+  renderErDiagram,
+  renderStateDiagram,
+  renderArchitectureDiagram,
+  renderUiFlowDiagram,
+} from '../agents/workflow/render.ts';
+import {
+  ProposedWorkflowSchema,
+  ApprovedWorkflowSchema,
+  ProposedUiFlowSchema,
+  ApprovedUiFlowSchema,
+} from '../agents/workflow/contract.ts';
 import { ClaudeProvider } from '../providers/ClaudeProvider.ts';
 import { config } from '../config.ts';
 
@@ -383,6 +394,86 @@ app.post('/api/workflow/approve', async (req, res) => {
     await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
     const rendered = approved.entities.map(renderStateDiagram);
     res.status(201).json({ path: outPath, approved, rendered });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/render-architecture', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const report = parseDiscoveryReport(JSON.parse(await readFile(reportFilePath(reportName), 'utf-8')));
+    res.json({ mermaid: renderArchitectureDiagram(report) });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+const UI_FLOW_APPROVED_NAME_PATTERN = /^generate-ui-flow-approved-[A-Za-z0-9:_.-]+\.json$/;
+
+/** Same reuse-existing-approved-model idea as /api/workflow/for-report, for UI flow models instead. */
+app.get('/api/workflow/ui-flow-for-report', async (req, res) => {
+  try {
+    const reportName = req.query.report;
+    if (typeof reportName !== 'string' || !reportName) {
+      res.status(400).json({ error: '"report" query param is required' });
+      return;
+    }
+    const targetPath = reportFilePath(reportName);
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => UI_FLOW_APPROVED_NAME_PATTERN.test(f)).sort();
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const candidatePath = join(config.reportsDir, candidates[i]);
+      const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
+      if (raw.sourceReportPath !== targetPath) continue;
+      const approved = ApprovedUiFlowSchema.parse(raw);
+      res.json({ path: candidatePath, approved, rendered: renderUiFlowDiagram(approved) });
+      return;
+    }
+    res.json(null);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/propose-ui-flow', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const path = reportFilePath(reportName);
+    const report = parseDiscoveryReport(JSON.parse(await readFile(path, 'utf-8')));
+    const provider = new ClaudeProvider();
+    const proposed = await proposeUiFlow(provider, report, path);
+    res.json(proposed);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Model response failed validation', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/approve-ui-flow', async (req, res) => {
+  try {
+    const proposed = ProposedUiFlowSchema.parse(req.body);
+    const approved = ApprovedUiFlowSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
+    await mkdir(config.reportsDir, { recursive: true });
+    const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
+    const outPath = join(config.reportsDir, `generate-ui-flow-approved-${timestamp}.json`);
+    await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
+    res.status(201).json({ path: outPath, approved, rendered: renderUiFlowDiagram(approved) });
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
