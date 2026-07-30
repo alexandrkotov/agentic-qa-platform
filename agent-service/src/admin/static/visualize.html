@@ -102,7 +102,7 @@
   .diagram-modal {
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
     width: 95vw; height: 90vh; display: flex; flex-direction: column;
-    padding: 1rem 1.25rem 1.25rem;
+    padding: 1rem 1.25rem 1.25rem; position: relative;
   }
   .diagram-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-shrink: 0; }
   .diagram-modal-head h3 { margin: 0; font-size: 0.95rem; }
@@ -113,6 +113,30 @@
   .diagram-modal-close:hover { background: var(--surface-2); color: var(--text); }
   .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; border: 1px solid var(--line); border-radius: 8px; }
   .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: default; }
+  .diagram-zoom-wrap { display: inline-block; transform-origin: top left; }
+
+  /* Floats over the scroll container as a sibling, not a descendant — stays
+     put in the corner regardless of scroll position instead of scrolling
+     away with the (possibly zoomed way past the viewport) diagram. */
+  .diagram-zoom-controls {
+    position: absolute; right: 1.75rem; bottom: 1.75rem; z-index: 10;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .diagram-zoom-btn {
+    width: 2.1rem; height: 2.1rem; border-radius: 50%; border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    color: var(--text); font-size: 1.15rem; font-weight: 700; line-height: 1;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  .diagram-zoom-btn:hover { background: color-mix(in srgb, var(--surface) 92%, transparent); }
+  .diagram-zoom-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .diagram-zoom-level {
+    min-width: 3.2rem; text-align: center; font-size: 0.72rem; font-weight: 600; color: var(--text-mute);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.5rem;
+    backdrop-filter: blur(3px);
+  }
 </style>
 </head>
 <body>
@@ -205,6 +229,11 @@
       <button class="diagram-modal-close" id="diagram-modal-close" aria-label="Close">&times;</button>
     </div>
     <div class="diagram-modal-scroll" id="diagram-modal-scroll"></div>
+    <div class="diagram-zoom-controls">
+      <button class="diagram-zoom-btn" id="diagram-zoom-out" aria-label="Zoom out">−</button>
+      <span class="diagram-zoom-level" id="diagram-zoom-level">100%</span>
+      <button class="diagram-zoom-btn" id="diagram-zoom-in" aria-label="Zoom in">+</button>
+    </div>
   </div>
 </div>
 
@@ -256,12 +285,40 @@ mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThe
 const modalOverlay = document.getElementById('diagram-modal-overlay');
 const modalTitle = document.getElementById('diagram-modal-title');
 const modalScroll = document.getElementById('diagram-modal-scroll');
+const zoomLevelEl = document.getElementById('diagram-zoom-level');
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.2;
+let zoomLevel = 1;
+
+// The bigger MODAL_FONT_SIZE render is the 100% baseline — these buttons
+// zoom further from there via a plain CSS transform on a wrapper around the
+// <pre>, so the scroll container's scrollable area grows with it (modern
+// browsers size an ancestor's scrollable overflow off the *post-transform*
+// box) rather than needing any manual width/height bookkeeping.
+function applyZoom() {
+  const wrap = modalScroll.querySelector('.diagram-zoom-wrap');
+  if (wrap) wrap.style.transform = `scale(${zoomLevel})`;
+  zoomLevelEl.textContent = Math.round(zoomLevel * 100) + '%';
+  document.getElementById('diagram-zoom-out').disabled = zoomLevel <= ZOOM_MIN;
+  document.getElementById('diagram-zoom-in').disabled = zoomLevel >= ZOOM_MAX;
+}
+document.getElementById('diagram-zoom-in').onclick = () => {
+  zoomLevel = Math.min(ZOOM_MAX, +(zoomLevel + ZOOM_STEP).toFixed(2));
+  applyZoom();
+};
+document.getElementById('diagram-zoom-out').onclick = () => {
+  zoomLevel = Math.max(ZOOM_MIN, +(zoomLevel - ZOOM_STEP).toFixed(2));
+  applyZoom();
+};
 
 async function openDiagramModal(title, mermaidSource) {
   modalTitle.textContent = title;
-  modalScroll.innerHTML = '<pre class="mermaid"></pre>';
+  modalScroll.innerHTML = '<div class="diagram-zoom-wrap"><pre class="mermaid"></pre></div>';
   modalScroll.querySelector('pre').textContent = mermaidSource;
   modalOverlay.classList.add('open');
+  zoomLevel = 1;
+  applyZoom();
   mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(MODAL_FONT_SIZE) });
   await mermaid.run({ querySelector: '#diagram-modal-scroll pre.mermaid' });
   mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(BASE_FONT_SIZE) });
