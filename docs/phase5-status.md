@@ -303,3 +303,53 @@ app (`discovery-2026-07-29T01-34-42-142Z.json`), used throughout this session fo
 verification, which happened to add a `kafka_consumer` component and formulate/group scenarios
 differently. See the Problem section above — this exact discrepancy is the concrete evidence that
 motivated the whole redesign, not something introduced by it.
+
+## Addendum: admin UI fixes after the first real look (2026-07-30)
+
+Everything above was verified via the CLI and one headless-browser pass; the first time a human
+actually opened the admin UI in a real browser surfaced several more issues, all fixed the same
+day:
+
+- **`docker-compose.yml`'s `descriptor-admin` service was stale and crash-looping.** It builds a
+  separate image from `Dockerfile.admin` with a hand-picked `COPY` list, written back when the
+  admin server only imported `express` + `zod`. Once it started running Stage 2 spec generation
+  itself (the same `ClaudeProvider`/MCP/pricing/usage-log machinery the main CLI uses), that list
+  was missing most of what it now needs, and the container failed at startup with
+  `MODULE_NOT_FOUND`. Fixed by copying the whole `src/` tree and installing from the real
+  `package.json` instead of maintaining a hand-picked list — the exact same "hand-maintained list
+  silently drifts from reality" failure class this whole redesign exists to eliminate elsewhere,
+  just found one layer down in the Docker build.
+- **The service was renamed `descriptor-admin` → `admin`**, and every doc reference updated — it
+  now serves two pages (descriptor editor + Test Generation), not one.
+- **`reports/` was never bind-mounted into the container** — only `descriptors/` was — so
+  `/api/generate/reports` and `/api/generate/groupings` silently returned `[]` inside Docker (the
+  directory didn't exist at all in the container), even though the exact same code worked
+  correctly when run locally via `pnpm admin` against a real `reports/` on disk. Added the mount.
+- **A real, unrelated bug**: `GET /api/descriptors` listed *every* `*.json` file in
+  `descriptors/`, including `orderflow.corrections.json` — so it showed up in the descriptor
+  sidebar as a selectable (but not actually openable — `NAME_PATTERN` rejects the dot) descriptor
+  named `orderflow.corrections`. Excluded `*.corrections.json` from that listing.
+- **No shared visual identity between the two admin pages** — "System Descriptors" was a compact
+  sidebar `h1`, "Generate Pipeline — Stage 1: Grouping" was an unrelated full-width page title that
+  also mislabeled the whole page as just its first section (it covers all three stages). Added a
+  shared top nav (identical markup/CSS on both pages, current page highlighted) and renamed the
+  page's own heading to "Test Generation" at the same size/weight as "System Descriptors".
+- **The ungrouped-fallback threshold field went through three iterations before it read clearly to
+  someone unfamiliar with the heuristic**: `"Ungrouped fallback threshold"` (0.3) → `"Flatten to
+  one group if ungrouped share is above"` (0.3) → its final form, a plain-language label with a
+  0–100 `%` input (`"Give up and show one flat list if more than this % of scenarios don't fit a
+  group"`, 30%), converting to the 0–1 fraction the API expects only at request time. Worth noting
+  as a data point on its own: jargon-free UI copy for a technical concept took real iteration, not
+  one pass.
+- **A genuine design defect in `flatFallback` itself**, not just wording: `proposeGrouping()`
+  collapsed the entire result into one opaque `"all"` group whenever `flatFallback` was true — which
+  also destroyed the only information a human needs to act on the accompanying UI banner ("reassign
+  scenarios below by hand"). With no other group in the response, every scenario's dropdown had
+  exactly one option (`"all"`), making the banner's own suggestion impossible to follow. Fixed by
+  making `flatFallback` a pure warning flag: `groups`/`ungrouped` are now always the real heuristic
+  output, `flatFallback: true` just means "trust this less, review before approving" rather than
+  "structure has been discarded." This reverses part of Milestone 2's original design (which
+  deliberately collapsed to one group "without pretending there's structure") — the *problem* that
+  design was solving (don't silently present fake confidence) was correct, but the specific
+  *mechanism* it used (deleting the underlying data) turned out to make the human's actual review
+  task impossible rather than honest.
