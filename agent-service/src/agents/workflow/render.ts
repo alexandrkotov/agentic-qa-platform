@@ -65,9 +65,14 @@ export function renderStateDiagram(entity: EntityWorkflow): RenderedEntityWorkfl
         }
         break;
       case 'forbidden_transition':
-        transitionLines.push(`    note right of ${ensureId(rule.from)}`);
-        transitionLines.push(`        Forbidden: -> ${sanitizeLabel(rule.to)} (${sanitizeLabel(rule.reason)})`);
-        transitionLines.push(`    end note`);
+        // A real edge between the two (already-existing) states, not a
+        // floating note — reads as part of the graph instead of a
+        // disconnected annotation. stateDiagram-v2 has no per-edge color/
+        // dash styling hook, so the "✗ Forbidden" prefix is what carries the
+        // distinction instead.
+        transitionLines.push(
+          `    ${ensureId(rule.from)} --> ${ensureId(rule.to)} : ✗ Forbidden — ${sanitizeLabel(rule.reason)}`,
+        );
         break;
       case 'guard':
         guards.push(`${rule.action}: ${rule.condition} — ${rule.description}`);
