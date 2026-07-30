@@ -152,6 +152,16 @@
      fixes it without needing any extra scroll, since the container is
      already sized well past what these diagrams actually need. */
   .diagram-modal-scroll svg { overflow: visible; }
+  /* Not enough on its own, per a real screenshot from a real browser: edge
+     labels are HTML content Mermaid wraps in its own <foreignObject
+     width="200" height="132">, which carries the *same* UA-default
+     overflow: hidden independently of the outer <svg> — a separate clipping
+     box the outer fix above never touched. Whether a given label actually
+     overflows that fixed 200px depends on real glyph metrics (this only
+     reproduces with an actual system font wide enough to exceed it — not
+     reliably in every environment), which is why it slipped through the
+     first pass. */
+  .diagram-modal-scroll svg foreignObject { overflow: visible; }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
      put in the corner regardless of scroll position instead of scrolling
