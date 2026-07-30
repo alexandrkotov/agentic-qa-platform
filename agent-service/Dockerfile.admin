@@ -1,15 +1,18 @@
 FROM node:22-alpine
 WORKDIR /usr/src/app
 
-# The descriptor editor only ever needs express + zod (confirmed against its
-# actual imports) -- installed standalone here rather than via the main
-# package.json's `pnpm install`, which would also pull in the Claude/OpenAI
-# SDKs, Playwright MCP, and the Postgres MCP driver that this service never
-# touches.
-RUN npm install express@5 zod@4 tsx@4
+# Installs from the real package.json rather than a hand-picked package list,
+# and copies the whole src/ tree rather than a hand-picked file list. The
+# admin service's own imports grew substantially once it started running
+# Stage 2 spec-generation calls itself (the same Claude/MCP/usage-logging
+# machinery the main CLI uses, not just express + zod) — a hand-maintained
+# list that silently drifts out of sync with the code's actual imports is
+# exactly the failure class this repo's Generate Agent redesign exists to
+# eliminate elsewhere; no reason to keep that pattern here.
+COPY package.json ./
+RUN npm install
 
-COPY src/descriptor/schema.ts src/descriptor/schema.ts
-COPY src/admin/ src/admin/
+COPY src/ src/
 
 EXPOSE 4400
 CMD ["npx", "tsx", "src/admin/server.ts"]
