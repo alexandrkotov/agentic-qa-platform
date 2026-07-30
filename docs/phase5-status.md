@@ -910,3 +910,25 @@ that the endpoint returns the latest approved grouping for a report with groupin
 for one without, then drove the actual page with a headless Playwright session — selecting the report
 with history shows the button and clicking it renders all 4 of its approved groups; selecting a report
 with no grouping history keeps the button hidden.
+
+## Addendum: Stage 1 button styling + Show/Hide toggle (2026-07-30)
+
+Follow-up polish on the two Stage 1 buttons added above. `recompute-btn` ("Generate grouping") and
+`show-approved-grouping-btn` were both still `class="ghost"`, out of step with every other action
+button on the page (`primary` — blue background, white text). Switched both to `primary`.
+
+`show-approved-grouping-btn` also gained real Show/Hide toggle behavior, matching the pattern already
+used by Visualize's Render buttons: clicking it while collapsed loads the approved grouping and
+relabels itself "Hide last approved grouping"; clicking again clears the grouping block and relabels
+back to "Show last approved grouping". Clicking "Generate grouping" while the approved snapshot is
+showing also resets the label back to "Show ..." — the block on screen is a fresh recompute at that
+point, not the approved one the button was previously showing, so leaving it labeled "Hide" would
+misdescribe what collapsing it does. The existing rule from the prior addendum — hide the button
+entirely when the selected report has no approved grouping at all — was already correct and needed no
+change.
+
+Verified live with the same headless-Playwright approach as the prior addendum, against the real
+`workbench` container and real `reports/` data: both buttons render with the blue `primary` style;
+selecting the report with grouping history, clicking the button once shows "Hide last approved
+grouping" with all 4 approved groups rendered, clicking again returns to "Show last approved grouping"
+with the block empty; selecting a report with no grouping history keeps the button hidden throughout.
