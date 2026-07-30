@@ -82,15 +82,23 @@ async function runCleanupSql(descriptor: SystemDescriptor): Promise<void> {
 // Runner
 // ---------------------------------------------------------------------------
 
-export async function runDiscovery(
+/**
+ * Core runner, taking an already-parsed descriptor rather than a path —
+ * lets a caller run discovery against a descriptor it has modified in
+ * memory (see admin/server.ts's discovery route, which rewrites
+ * postgres/rest-api/web-ui URLs to compose service names before calling
+ * this, since it runs the agent from inside a container on the app's own
+ * Docker network rather than on the host `pnpm discovery` runs on).
+ * `descriptorLabel` is used only for the saved report's filename suffix.
+ */
+export async function runDiscoveryForDescriptor(
   provider: AgentProvider,
-  descriptorPath: string = DEFAULT_DESCRIPTOR_PATH,
+  descriptor: SystemDescriptor,
+  descriptorLabel: string,
 ): Promise<string> {
   console.log('\n=== Phase 1: System Discovery ===\n');
-  console.log(`Descriptor: ${descriptorPath}`);
+  console.log(`Descriptor: ${descriptorLabel}`);
 
-  const descriptorJson = JSON.parse(await readFile(descriptorPath, 'utf-8'));
-  const descriptor = parseSystemDescriptor(descriptorJson);
   const { mcpServers, tools, componentPromptSections } = assembleDiscovery(descriptor);
 
   const raw = await provider.run({
@@ -109,8 +117,7 @@ export async function runDiscovery(
   // admin/server.ts) keeps working unchanged.
   await mkdir(config.reportsDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const descriptorName = basename(descriptorPath, '.json');
-  const reportPath = join(config.reportsDir, `discovery-${timestamp}-${descriptorName}.json`);
+  const reportPath = join(config.reportsDir, `discovery-${timestamp}-${descriptorLabel}.json`);
 
   // Try to extract JSON from the response (agent might wrap it in prose)
   let reportContent = raw;
@@ -131,4 +138,13 @@ export async function runDiscovery(
   await runCleanupSql(descriptor);
 
   return reportPath;
+}
+
+export async function runDiscovery(
+  provider: AgentProvider,
+  descriptorPath: string = DEFAULT_DESCRIPTOR_PATH,
+): Promise<string> {
+  const descriptorJson = JSON.parse(await readFile(descriptorPath, 'utf-8'));
+  const descriptor = parseSystemDescriptor(descriptorJson);
+  return runDiscoveryForDescriptor(provider, descriptor, basename(descriptorPath, '.json'));
 }

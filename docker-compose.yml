@@ -95,32 +95,35 @@ services:
   # read discovery reports and write/read their own generate-*.json
   # artifacts).
   #
-  # network_mode: host (Linux only — fine here, this whole stack assumes
-  # Linux) instead of a `ports:` mapping: every descriptor's component URLs
-  # (orderflow.json etc.) are written as plain `localhost:PORT`, assuming
-  # whatever runs discovery shares the host's network — exactly what running
-  # `pnpm discovery` directly on the host already gets for free. This is the
-  # same reason the Kafka MCP server itself launches with `--network=host`
-  # (descriptor/components/kafka.ts) — matching that instead of rewriting
-  # every descriptor's URLs to compose service names.
+  # Plain bridge networking + `ports:` (NOT network_mode: host — tried that
+  # first; it doesn't reliably forward to a real host browser under Docker
+  # Desktop/WSL2, unlike native Linux, and broke access to this page
+  # entirely). Every descriptor's component URLs are written as plain
+  # `localhost:PORT`, correct for `pnpm discovery` run directly on the host
+  # but *wrong* for a bridge-network container, where "localhost" is the
+  # container's own loopback. admin/server.ts's discovery route rewrites
+  # postgres/rest-api/web-ui URLs to this compose network's service names
+  # (db/app/frontend) before calling runDiscoveryForDescriptor() — but
+  # deliberately leaves Kafka broker addresses alone: the Kafka MCP server is
+  # a *sibling* container this one launches via the mounted Docker socket
+  # below, with its own `--network=host` (descriptor/components/kafka.ts) —
+  # that's a peer of the Docker daemon, not a child of this container's own
+  # network namespace, so it reaches the real host-published broker port
+  # (`localhost:9094`) regardless of which network *this* container is on.
   #
-  # /var/run/docker.sock: the Kafka component's MCP server is itself a
-  # sibling Docker container the discovery agent launches on demand (`docker
-  # run ...`, see kafka.ts/kafkaConsumer.ts) — this container needs the
-  # host's Docker socket to be able to start it.
+  # /var/run/docker.sock: see above — needed to launch that sibling
+  # container at all.
   #
   # env_file: this service had no ANTHROPIC_API_KEY at all before Discovery
   # and Stage 2 spec generation were added to it — neither had ever actually
   # been exercised through this container (only through `pnpm admin` on the
   # host, which picks up agent-service/.env itself via dotenv). Same file
-  # here, so container and host stay in sync automatically; its
-  # REPORTS_DIR=reports and *_URL=http://localhost:* values already match
-  # what this container needs now that it has host networking.
+  # here, so container and host stay in sync automatically.
   admin:
     build:
       context: ./agent-service
       dockerfile: Dockerfile.admin
-    network_mode: host
+    ports: ["4400:4400"]
     env_file: ./agent-service/.env
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors

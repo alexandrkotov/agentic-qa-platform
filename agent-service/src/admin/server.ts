@@ -2,8 +2,9 @@ import express from 'express';
 import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SystemDescriptorSchema } from '../descriptor/schema.ts';
-import { runDiscovery } from '../bootstrap/discovery.ts';
+import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
+import type { SystemDescriptor, SystemComponent } from '../descriptor/schema.ts';
+import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
@@ -136,18 +137,68 @@ app.post('/api/descriptors', async (req, res) => {
 // already sitting in descriptors/. A real, costed, long-running Claude call
 // (up to 60 tool-use iterations) — like /api/generate/spec below, not
 // something to call on every page load.
+//
+// This server runs inside a container on the app stack's own Docker
+// network (see docker-compose.yml's admin service — plain bridge + `ports:`,
+// not network_mode: host, which doesn't reliably forward to a real host
+// browser under Docker Desktop/WSL2). Every descriptor's component URLs are
+// written as plain "localhost:PORT", correct for `pnpm discovery` running on
+// the host but wrong here — rewrite postgres/rest-api/web-ui host names to
+// this compose network's service names before running. Kafka is
+// deliberately left alone: its MCP server is a *sibling* container spawned
+// via the mounted Docker socket, with its own --network=host
+// (descriptor/components/kafka.ts) — a peer of the daemon, not a child of
+// this container's network namespace, so it already reaches the real
+// host-published broker port regardless.
 // ---------------------------------------------------------------------------
+
+const CONTAINER_NETWORK_HOSTS: Record<string, string> = {
+  postgres: 'db',
+  'rest-api': 'app',
+  'web-ui': 'frontend',
+};
+
+function rewriteHost(url: string, host: string): string {
+  const parsed = new URL(url);
+  parsed.hostname = host;
+  return parsed.toString();
+}
+
+/** Returns a copy of the descriptor with postgres/rest-api/web-ui URLs pointed at this compose network's service names instead of "localhost". */
+function rewriteForContainerNetwork(descriptor: SystemDescriptor): SystemDescriptor {
+  const components: SystemComponent[] = descriptor.components.map((component) => {
+    const host = CONTAINER_NETWORK_HOSTS[component.type];
+    if (!host) return component;
+    switch (component.type) {
+      case 'postgres':
+        return { ...component, connectionString: rewriteHost(component.connectionString, host) };
+      case 'rest-api':
+        return {
+          ...component,
+          swaggerUrl: rewriteHost(component.swaggerUrl, host),
+          baseUrl: component.baseUrl ? rewriteHost(component.baseUrl, host) : component.baseUrl,
+        };
+      case 'web-ui':
+        return { ...component, baseUrl: rewriteHost(component.baseUrl, host) };
+      default:
+        return component;
+    }
+  });
+  return { ...descriptor, components };
+}
 
 app.post('/api/discovery/run', async (req, res) => {
   try {
-    const { descriptor } = req.body as { descriptor?: string };
-    if (!descriptor) {
+    const { descriptor: name } = req.body as { descriptor?: string };
+    if (!name) {
       res.status(400).json({ error: '"descriptor" is required' });
       return;
     }
-    const path = descriptorPath(descriptor);
+    const path = descriptorPath(name);
+    const descriptor = parseSystemDescriptor(JSON.parse(await readFile(path, 'utf-8')));
+    const rewritten = rewriteForContainerNetwork(descriptor);
     const provider = new ClaudeProvider();
-    const reportPath = await runDiscovery(provider, path);
+    const reportPath = await runDiscoveryForDescriptor(provider, rewritten, name);
     res.json({ path: reportPath });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
