@@ -752,3 +752,21 @@ the real file: switched the body to a plain rectangle with a seam line (a trapez
 a rectangle doesn't) and moved the two tools to cross centrally over the opening instead of attaching
 to the rim corners like basket handles. Confirmed by screenshotting the actual hub card afterward, not
 just the isolated test page.
+
+### Follow-up: modal SVG clipping a long edge label, thicker dollar icon (2026-07-30)
+
+A real bug this time, caught from a user screenshot: Business workflow's enlarged diagram modal
+cropped the "✗ Forbidden — SUBMITTED orders cannot be reverted to DRAFT" edge label hard at a vertical
+edge, with acres of unused space visible in the rest of the modal. Not a scroll problem — the scroll
+container had already sized itself correctly to the `<svg>`'s own (303×393px) bounding box, which was
+simply too narrow for that label's actual rendered width at the modal's bumped font size. Mermaid's
+`<svg>` keeps the browser's UA-default `overflow: hidden`, so content painted past its own
+self-computed viewBox — plausible for a `stateDiagram-v2` edge label, HTML-rendered via foreignObject —
+just vanished instead of pushing the box wider. `#diagram-modal-scroll svg { overflow: visible; }`
+fixes it for free, since the container already had room to spare. Confirmed live: the full label text
+now renders, screenshot in hand.
+
+Also thickened the hub's cost-log dollar icon with a second vertical stroke (matching a common "$"
+style) per feedback that the single-line version read less clearly at a glance — verified in an
+isolated test page at both 21px and 120px before touching the real file, the lesson from the toolbox
+icon saga just above.
