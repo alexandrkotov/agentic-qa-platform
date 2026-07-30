@@ -162,6 +162,16 @@
      reliably in every environment), which is why it slipped through the
      first pass. */
   .diagram-modal-scroll svg foreignObject { overflow: visible; }
+  /* Text now fully renders, but its green background box (Mermaid's own
+     .labelBkg div / p, not the foreignObject) still stays pinned to the
+     foreignObject's original 200px — overflow: visible lets content paint
+     outside a box, it doesn't grow the box's own background-color fill.
+     Forcing these to size to their actual text content extends the
+     background to match instead of cutting off mid-label. */
+  .diagram-modal-scroll svg foreignObject div,
+  .diagram-modal-scroll svg foreignObject p {
+    width: max-content !important;
+  }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
      put in the corner regardless of scroll position instead of scrolling
