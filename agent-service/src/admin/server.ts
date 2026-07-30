@@ -685,6 +685,20 @@ app.get('/api/generate/groupings', async (_req, res) => {
   res.json(names);
 });
 
+/** A single approved grouping's own content, by exact filename — lets the UI read back e.g. sourceReportPath (to derive Stage 2's Descriptor field) without duplicating that derivation server-side per caller. */
+app.get('/api/generate/groupings/:name', async (req, res) => {
+  try {
+    const approved = ApprovedGroupingSchema.parse(JSON.parse(await readFile(groupingFilePath(req.params.name), 'utf-8')));
+    res.json(approved);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No grouping named "${req.params.name}"` });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 const SPEC_APPROVED_NAME_PATTERN = /^generate-spec-approved-[A-Za-z0-9:_.-]+\.json$/;
 
 /** Latest approved spec whose sourceGroupingPath matches this grouping, if any — same reuse-existing-approval idea as /api/generate/grouping-for-report, one layer down the pipeline. */

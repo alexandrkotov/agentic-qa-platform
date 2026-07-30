@@ -52,6 +52,7 @@
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
   }
+  input[readonly] { background: var(--surface-2); color: var(--text-mute); cursor: default; }
   textarea {
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.4rem 0.55rem; font-size: 0.83rem; color: var(--text); font-family: inherit;
@@ -139,8 +140,8 @@
     <div class="row">
       <label>Approved grouping</label>
       <select id="spec-grouping-select"></select>
-      <label>Descriptor</label>
-      <input type="text" id="spec-descriptor" value="orderflow" style="width:8rem">
+      <label title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">Descriptor ⓘ</label>
+      <input type="text" id="spec-descriptor" readonly style="width:8rem" title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">
       <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
       <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
       <label title="Same Stage 1 group names shown above (e.g. &quot;orders&quot;) — matches the whole group regardless of how many Claude calls it internally needs. Leave empty to generate every group.">Limit to groups (optional) ⓘ</label>
@@ -161,8 +162,8 @@
   <section>
     <h2>Scenario corrections</h2>
     <div class="row">
-      <label>Descriptor</label>
-      <input type="text" id="descriptor-name" value="orderflow" style="width:10rem">
+      <label title="Derived from the report selected in Stage 1 — not editable.">Descriptor ⓘ</label>
+      <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable.">
       <button class="ghost" id="load-corr-btn">Load</button>
       <button class="ghost" id="add-corr-btn">+ Add correction</button>
     </div>
@@ -226,22 +227,42 @@ function setStatus(el, text, kind) {
 
 // --- Grouping -------------------------------------------------------------
 
+// discovery.ts names every report "discovery-<isoTimestamp>-<descriptorLabel>.json"
+// (timestamp first, so "find the latest" sorting keeps working; see its own
+// comment). The ISO timestamp with ':'/'.' turned into '-' is a fixed shape,
+// so it can be stripped off the front to recover the descriptor label — no
+// need to make the user retype a name that's already sitting in the filename.
+const REPORT_DESCRIPTOR_PATTERN = /^discovery-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(.+)\.json$/;
+function descriptorFromReportName(reportName) {
+  const m = reportName && reportName.match(REPORT_DESCRIPTOR_PATTERN);
+  return m ? m[1] : null;
+}
+
 async function loadReportList() {
   const names = await api('/api/generate/reports');
+  // Only list reports whose filename carries a descriptor label — Stage 1
+  // relies on it to auto-fill "Scenario corrections" and Stage 2's
+  // "Descriptor" field. A handful of early reports predate that naming
+  // convention and have nothing to parse; they're still usable from the CLI,
+  // just not selectable here.
+  const withDescriptor = names.filter((n) => descriptorFromReportName(n) !== null);
   const select = document.getElementById('report-select');
-  select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
-  if (names.length > 0) select.value = names[names.length - 1];
+  select.innerHTML = withDescriptor.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (withDescriptor.length > 0) select.value = withDescriptor[withDescriptor.length - 1];
 }
 
 // Lets a report reselect reveal "Show last approved grouping" for free,
 // instead of forcing a fresh (re-)grouping just to see what was already
-// approved for this report in an earlier session.
+// approved for this report in an earlier session. Also keeps "Scenario
+// corrections"'s Descriptor field in lockstep with whichever report is
+// selected here, instead of letting it be typed (and drift out of sync).
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved grouping';
   state.existingApprovedGrouping = null;
   const report = document.getElementById('report-select').value;
+  document.getElementById('descriptor-name').value = descriptorFromReportName(report) ?? '';
   if (!report) return;
   try {
     const existing = await api('/api/generate/grouping-for-report?report=' + encodeURIComponent(report));
@@ -430,13 +451,27 @@ async function loadGroupingList() {
 // Same "Show/Hide last approved ..." idea as Stage 1's grouping button — lets
 // reselecting a grouping that already has an approved spec reveal it for
 // free, instead of forcing a fresh (paid) Generate spec call just to see it.
+// Also derives Stage 2's Descriptor field from *this grouping's own* source
+// report — deliberately not from Stage 1's report-select, which the user is
+// free to flip to a different report while an older grouping stays selected
+// here; deriving from that would silently point corrections lookups at the
+// wrong system.
 async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved spec';
   existingApprovedSpec = null;
   const grouping = document.getElementById('spec-grouping-select').value;
+  const descriptorInput = document.getElementById('spec-descriptor');
+  descriptorInput.value = '';
   if (!grouping) return;
+  try {
+    const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
+    const reportName = groupingDetails.sourceReportPath.split('/').pop();
+    descriptorInput.value = descriptorFromReportName(reportName) ?? '';
+  } catch (e) {
+    setStatus(document.getElementById('spec-gen-status'), "Failed to read this grouping's source report: " + e.message, 'err');
+  }
   try {
     const existing = await api('/api/generate/spec-for-grouping?grouping=' + encodeURIComponent(grouping));
     if (!existing) return;
