@@ -138,8 +138,24 @@ app.post('/api/descriptors', async (req, res) => {
 
 app.get('/api/generate/reports', async (_req, res) => {
   const files = await readdir(config.reportsDir).catch(() => [] as string[]);
-  const names = files.filter((f) => REPORT_NAME_PATTERN.test(f)).sort();
-  res.json(names);
+  const candidates = files.filter((f) => REPORT_NAME_PATTERN.test(f)).sort();
+
+  // Only list reports that will actually work if picked — e.g. a discovery
+  // run that hit max iterations without ever producing a final JSON answer
+  // writes its raw (non-JSON) text as the "report". Surfacing a cryptic
+  // parse error only after the user has already picked one and clicked
+  // "Generate grouping" is worse than just not offering it in the first place.
+  const valid: string[] = [];
+  for (const name of candidates) {
+    try {
+      const raw = JSON.parse(await readFile(join(config.reportsDir, name), 'utf-8'));
+      parseDiscoveryReport(raw);
+      valid.push(name);
+    } catch {
+      // Not a usable report — omit it rather than let it fail later.
+    }
+  }
+  res.json(valid);
 });
 
 app.post('/api/generate/group', async (req, res) => {
