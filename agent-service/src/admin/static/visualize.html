@@ -166,11 +166,16 @@
      .labelBkg div / p, not the foreignObject) still stays pinned to the
      foreignObject's original 200px — overflow: visible lets content paint
      outside a box, it doesn't grow the box's own background-color fill.
-     Forcing these to size to their actual text content extends the
-     background to match instead of cutting off mid-label. */
+     `width: max-content` was the first attempt, but it forces single-line
+     sizing by definition regardless of white-space — these elements already
+     have white-space: break-spaces (verified live), so it was overriding
+     Mermaid's own wrapping instead of cooperating with it: one very long
+     unwrapped line, wide enough to overlap neighboring diagram elements. A
+     bounded width close to the original, with wrapping left alone, gives
+     the same clean multi-line label Mermaid already knew how to draw. */
   .diagram-modal-scroll svg foreignObject div,
   .diagram-modal-scroll svg foreignObject p {
-    width: max-content !important;
+    width: 230px !important;
   }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
