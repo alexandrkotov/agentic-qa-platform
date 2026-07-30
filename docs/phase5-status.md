@@ -1039,3 +1039,16 @@ rather than folded into this one — it fits the page's forward pipeline reading
 consumes, same direction as Stage 1's approved grouping), but the common edit loop is "generate, notice
 something off, add a correction, regenerate," which reads more naturally with corrections sitting next
 to Stage 2 rather than above it. No change made pending the user's call.
+
+## Addendum: disable Generate spec while the Claude call is in flight (2026-07-30)
+
+`spec-generate-btn` stayed clickable for the whole duration of its Claude call — a second click while
+the first request was still running would fire a second paid call. `index.html`'s Run discovery button
+already guards against exactly this (`btn.disabled = true` before the request, `= false` in a
+`finally`); applied the same pattern here.
+
+Verified live against the real running container without spending real money: Playwright's request
+interception (`page.route`) stubbed `/api/generate/spec` with a 1.5s-delayed fake response instead of
+letting it reach Claude, then drove the actual page — confirmed the button starts enabled, the confirm
+modal opens on click, clicking through it disables the button for the full duration the (fake) request
+is pending, and it re-enables once the response resolves.
