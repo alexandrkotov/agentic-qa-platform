@@ -142,6 +142,16 @@
      so the pan cursor shows over the diagram itself, not just the empty
      canvas around it. */
   .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: inherit; overflow: visible; }
+  /* Mermaid's own <svg> has the UA-default overflow: hidden. Some diagrams
+     (state diagrams with a long edge label in particular) render their HTML
+     label content wider than the viewBox Mermaid itself computed for the
+     layout — verified live: the label was clipped hard at the <svg>'s own
+     boundary despite acres of unused space in the modal's scroll container,
+     which had already sized itself to fit the (too-narrow) <svg> with
+     nothing left to scroll to. Letting the <svg> paint outside its own box
+     fixes it without needing any extra scroll, since the container is
+     already sized well past what these diagrams actually need. */
+  .diagram-modal-scroll svg { overflow: visible; }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
      put in the corner regardless of scroll position instead of scrolling
