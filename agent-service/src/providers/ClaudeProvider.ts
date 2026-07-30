@@ -71,6 +71,10 @@ export class ClaudeProvider implements AgentProvider {
       for (let i = 0; i < maxIterations; i++) {
         const response = await this.client.messages.create({
           model,
+          // If you change this, also check DEFAULT_MAX_SCENARIOS_PER_GROUP in
+          // agents/generate/budget.ts — its default was chosen empirically to
+          // stay safe under this exact ceiling, and nothing keeps the two
+          // numbers in sync automatically.
           max_tokens: 8096,
           system: systemPrompt,
           tools: anthropicTools.length > 0 ? anthropicTools : undefined,

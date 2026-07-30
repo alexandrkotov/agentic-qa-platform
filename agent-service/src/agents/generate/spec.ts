@@ -66,6 +66,26 @@ An Assertion is one of:
 Rules:
 1. "given" lists setup actions in order (e.g. create a customer, then a product, then an order) — an
    empty array if the scenario needs no setup beyond what "when" itself creates.
+1a. Referencing an entity a "given" step just created: NEVER invent a literal id number for it in a
+   later requestBody field (e.g. "customerId", "productId") or an assertion's "where"/"expected" value.
+   Use the literal placeholder string "{<resource>.id}", where <resource> is the plural resource name
+   from that entity's own creating endpoint's path (e.g. "{customers.id}", "{products.id}",
+   "{orders.id}") — it means "the id returned by the most recent given/when POST to that resource in
+   THIS scenario". Example: given steps create a customer then a product; the "when" step creates an
+   order: "requestBody": { "customerId": "{customers.id}", "items": [{"productId": "{products.id}",
+   "quantity": 1}] }. Path parameters (e.g. "/orders/{id}") keep the literal "{id}" form already shown
+   in the report's endpoint path — that is resolved separately, against the path's own resource.
+1b. Any field value a real system is likely to enforce as unique (an email address, a username, a SKU,
+   a slug, etc.) must NOT be a fixed literal you invent (e.g. "jane@example.com") — the same generated
+   test runs more than once, and a fixed value collides with data a previous run already created. Embed
+   the literal token "{{unique}}" at the point in the string where a fresh value must go instead, e.g.
+   "jane-{{unique}}@example.com". Do NOT invent your own "unique-looking" value (like a fake timestamp)
+   — only the runtime can guarantee true uniqueness across runs. If a scenario needs two DIFFERENT
+   unique values in the same scenario (e.g. two distinct customers), give each its own distinguishing
+   literal text around the token (e.g. "customer-a-{{unique}}@example.com" and
+   "customer-b-{{unique}}@example.com") — "{{unique}}" itself resolves to the SAME value everywhere it
+   appears within one scenario run, which is required when a scenario's whole point is reusing the same
+   value twice (e.g. "Duplicate email" creates it once, then reuses the exact same value on purpose).
 2. "when" is the single action under test.
 3. "then" must have at least one assertion, using concrete values from the report or a Known correction
    above — never invent a status code, field name, or table name not present in either.

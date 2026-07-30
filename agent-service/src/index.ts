@@ -3,6 +3,7 @@ import { runDiscovery } from './bootstrap/discovery.ts';
 import { runGenerate } from './bootstrap/generate.ts';
 import { runGenerateGroup } from './bootstrap/generateGroup.ts';
 import { runGenerateSpec } from './bootstrap/generateSpec.ts';
+import { runGenerateRender } from './bootstrap/generateRender.ts';
 import { runE2EAgent } from './agents/e2e/index.ts';
 import { applyFix } from './agents/e2e/apply.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
@@ -27,6 +28,7 @@ const thresholdArg = getArg('--threshold', '');
 const groupingArg = getArg('--grouping', '');
 const maxScenariosArg = getArg('--max-scenarios', '');
 const groupArg = getArg('--group', '');
+const specArg = getArg('--spec', '');
 
 // Same derivation agent-service/src/agents/e2e/index.ts uses to find the
 // sibling tests/ directory from agent-service/reports/.
@@ -43,10 +45,12 @@ function createProvider(): AgentProvider {
 }
 
 async function main() {
-  // apply-fix and generate-group need no LLM call at all (diagnosis/grouping
-  // already happened deterministically) — don't construct a provider (which
-  // requires an API key) or print a misleading "Provider: ..." line for them.
-  if (phase !== 'apply-fix' && phase !== 'generate-group') console.log(`Provider: ${providerName}`);
+  // apply-fix, generate-group, and generate-render need no LLM call at all
+  // (diagnosis/grouping/rendering already happened deterministically) —
+  // don't construct a provider (which requires an API key) or print a
+  // misleading "Provider: ..." line for them.
+  const NO_PROVIDER_PHASES = ['apply-fix', 'generate-group', 'generate-render'];
+  if (!NO_PROVIDER_PHASES.includes(phase)) console.log(`Provider: ${providerName}`);
 
   switch (phase) {
     case 'discovery':
@@ -87,10 +91,16 @@ async function main() {
         groupArg ? groupArg.split(',') : undefined,
       );
       break;
+    case 'generate-render':
+      // Temporary phase for the Generate Agent redesign (milestone 6): Stage
+      // 3 render only, no LLM call — purely mechanical. Superseded once
+      // bootstrap/generate.ts is rewritten to orchestrate all stages.
+      await runGenerateRender(specArg || undefined);
+      break;
     default:
       console.error(`Unknown phase: ${phase}`);
       console.error(
-        'Usage: tsx src/index.ts discovery|generate|generate-group|generate-spec|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>] [--grouping <path>] [--max-scenarios <n>] [--group <keys>]',
+        'Usage: tsx src/index.ts discovery|generate|generate-group|generate-spec|generate-render|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>] [--grouping <path>] [--max-scenarios <n>] [--group <keys>] [--spec <path>]',
       );
       process.exit(1);
   }

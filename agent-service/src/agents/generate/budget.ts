@@ -13,6 +13,12 @@ import type { ApprovedGrouping, RenderGroup } from './contract.ts';
 // in bootstrap/generate.ts's DOMAINS array. 6 is a safe, slightly tighter
 // default given that precedent; callers can pass a different value
 // interactively (see admin UI).
+//
+// This is a scenario-COUNT proxy for a token budget, not an actual token
+// count — a verbose scenario (many given/then entries) costs more output
+// tokens than a terse one, but both count as "1" here. Nothing keeps this
+// number in sync with ClaudeProvider.ts's max_tokens automatically; if that
+// value changes, re-check whether 6 is still safe.
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_MAX_SCENARIOS_PER_GROUP = 6;
