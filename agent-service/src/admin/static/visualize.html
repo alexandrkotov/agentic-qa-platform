@@ -190,7 +190,7 @@ mermaid.initialize({
   },
 });
 
-const state = { workflow: null, uiFlow: null };
+const state = { workflow: null, uiFlow: null, existingWorkflow: null, existingUiFlow: null };
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -337,8 +337,24 @@ function renderWorkflowEditor() {
 }
 
 document.getElementById('wf-propose-btn').onclick = async () => {
-  const report = document.getElementById('wf-report-select').value;
+  const btn = document.getElementById('wf-propose-btn');
   const statusEl = document.getElementById('wf-gen-status');
+
+  // An approved model already exists for this report — show it instead of
+  // generating a new one, then flip the button back to its normal "Generate"
+  // behavior in case the human wants a fresh one anyway.
+  if (btn.textContent === 'Show workflow model') {
+    btn.textContent = 'Generate workflow model';
+    const existing = state.existingWorkflow;
+    if (!existing) return;
+    state.workflow = existing.approved;
+    renderWorkflowEditor();
+    await renderDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+    return;
+  }
+
+  const report = document.getElementById('wf-report-select').value;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.workflow = await api('/api/workflow/propose', {
@@ -413,17 +429,20 @@ document.getElementById('wf-approve-btn').onclick = async () => {
 
 function resetWorkflowSection() {
   state.workflow = null;
+  state.existingWorkflow = null;
   document.getElementById('wf-body').innerHTML = '';
   document.getElementById('wf-diagrams').innerHTML = '';
   document.getElementById('wf-approve-btn').disabled = true;
+  document.getElementById('wf-propose-btn').textContent = 'Generate workflow model';
   setStatus(document.getElementById('wf-gen-status'), '');
   setStatus(document.getElementById('wf-status'), '');
 }
 
 // Same "switching reports invalidates the screen" rule as Entity relationships
 // — but here a report may already have an approved model from an earlier
-// session, so check for one and load it for free instead of leaving the
-// section empty and forcing a fresh (paid) generate call.
+// session. Don't display it right away (a report reselect shouldn't dump a
+// possibly-large diagram on screen unasked) — just flip the button to "Show"
+// so its label itself communicates that something is available for free.
 async function onWorkflowReportChanged() {
   resetWorkflowSection();
   const report = document.getElementById('wf-report-select').value;
@@ -432,10 +451,9 @@ async function onWorkflowReportChanged() {
   try {
     const existing = await api('/api/workflow/for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
-    state.workflow = existing.approved;
-    renderWorkflowEditor();
-    await renderDiagrams(existing.rendered);
-    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+    state.existingWorkflow = existing;
+    document.getElementById('wf-propose-btn').textContent = 'Show workflow model';
+    setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
@@ -477,8 +495,21 @@ function renderUiFlowEditor() {
 }
 
 document.getElementById('uf-propose-btn').onclick = async () => {
-  const report = document.getElementById('uf-report-select').value;
+  const btn = document.getElementById('uf-propose-btn');
   const statusEl = document.getElementById('uf-gen-status');
+
+  if (btn.textContent === 'Show UI inventory') {
+    btn.textContent = 'Generate UI inventory';
+    const existing = state.existingUiFlow;
+    if (!existing) return;
+    state.uiFlow = existing.approved;
+    renderUiFlowEditor();
+    await renderUiFlowDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+    return;
+  }
+
+  const report = document.getElementById('uf-report-select').value;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.uiFlow = await api('/api/workflow/propose-ui-flow', {
@@ -530,13 +561,18 @@ document.getElementById('uf-approve-btn').onclick = async () => {
 
 function resetUiFlowSection() {
   state.uiFlow = null;
+  state.existingUiFlow = null;
   document.getElementById('uf-body').innerHTML = '';
   document.getElementById('uf-diagrams').innerHTML = '';
   document.getElementById('uf-approve-btn').disabled = true;
+  document.getElementById('uf-propose-btn').textContent = 'Generate UI inventory';
   setStatus(document.getElementById('uf-gen-status'), '');
   setStatus(document.getElementById('uf-status'), '');
 }
 
+// Same "don't display an existing model unasked" rule as Business workflow —
+// the button label communicates that a free model is available instead of
+// dumping it on screen right after a report reselect.
 async function onUiFlowReportChanged() {
   resetUiFlowSection();
   const report = document.getElementById('uf-report-select').value;
@@ -545,10 +581,9 @@ async function onUiFlowReportChanged() {
   try {
     const existing = await api('/api/workflow/ui-flow-for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
-    state.uiFlow = existing.approved;
-    renderUiFlowEditor();
-    await renderUiFlowDiagrams(existing.rendered);
-    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+    state.existingUiFlow = existing;
+    document.getElementById('uf-propose-btn').textContent = 'Show UI inventory';
+    setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
