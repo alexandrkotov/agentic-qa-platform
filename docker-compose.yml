@@ -108,11 +108,20 @@ services:
   # sibling Docker container the discovery agent launches on demand (`docker
   # run ...`, see kafka.ts/kafkaConsumer.ts) — this container needs the
   # host's Docker socket to be able to start it.
+  #
+  # env_file: this service had no ANTHROPIC_API_KEY at all before Discovery
+  # and Stage 2 spec generation were added to it — neither had ever actually
+  # been exercised through this container (only through `pnpm admin` on the
+  # host, which picks up agent-service/.env itself via dotenv). Same file
+  # here, so container and host stay in sync automatically; its
+  # REPORTS_DIR=reports and *_URL=http://localhost:* values already match
+  # what this container needs now that it has host networking.
   admin:
     build:
       context: ./agent-service
       dockerfile: Dockerfile.admin
     network_mode: host
+    env_file: ./agent-service/.env
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors
       - ./agent-service/reports:/usr/src/app/reports
