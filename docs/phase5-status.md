@@ -470,3 +470,41 @@ Playwright script, run directly inside the admin container against the real (now
 backend, reproduced the exact browser-context request the discovery agent's own web-ui MCP tool makes
 and confirmed a real page load renders real data — before spending anything on another live agent
 run to prove the same thing.
+
+## Addendum: Visualize — entity diagram + business workflow (2026-07-30)
+
+A fourth, unrelated request: turn a discovery report into diagrams a human can read *before* working
+with the raw report or grouping its scenarios. Added a "Visualize" tab (placed between Discovery and
+Test Generation in the nav on purpose — understand the system first) with two independent halves:
+
+- **Entity relationships** — fully mechanical, no LLM: `agents/workflow/render.ts`'s
+  `renderErDiagram()` builds a Mermaid `erDiagram` straight from whichever components have
+  `.tables[]` (shape-based, same convention `group.ts` already uses — never a hardcoded component
+  key), inferring foreign keys from the `<name>Id` column convention. No approval step — it's
+  rendering, not a decision, same reasoning as `budget.ts`'s split in the generate pipeline.
+- **Business workflow** — the same `businessRules` free text Test Generation's corrections mechanism
+  already treats as untrustworthy-as-code applies here too: parsing prose to draw a flowchart on the
+  fly would be exactly the kind of fuzzy, unreviewable step this whole redesign avoids elsewhere. So
+  it gets the same treatment as Given/When/Then: a `Rule` discriminated union
+  (`state_transition`/`forbidden_transition`/`guard`/`invariant`, `agents/workflow/contract.ts`) the
+  model proposes, a human reviews/edits (same JSON-in-a-textarea pattern as Stage 2) and approves
+  (`generate-workflow-approved-*.json`), then `renderStateDiagram()` — no LLM — turns the approved
+  structure into a Mermaid `stateDiagram-v2` per entity; guards/invariants aren't real graph edges so
+  they render as plain text lists next to the diagram instead of being forced into ambiguous syntax.
+
+Found live, on the very first real proposal call: the model tried to express "an order is created
+directly into DRAFT" as a `state_transition` with `from: null` — a real, sensible case the schema
+hadn't accounted for (`from` was required as a non-null string). Fixed by making `from` nullable and
+documenting the convention in the prompt (`null` = "no prior state, this is creation"), and — since
+the model's explicit signal is more reliable than assuming array order is meaningful — preferring it
+in `render.ts` over the previous `states[0]`-is-the-entry-point fallback.
+
+Mermaid.js is vendored locally (`admin/static/vendor/mermaid.min.js`) rather than loaded from a CDN,
+matching every other admin page never fetching anything over the network.
+
+Verified live: the ER diagram (free) and the approved workflow model (one real Claude call, after the
+`from: null` fix) both confirmed via a headless browser actually rendering real `<svg>` output with
+zero console errors — not just that the Mermaid text looked plausible. The real orderflow report
+produced exactly the expected Order state machine: created into DRAFT, DRAFT→SUBMITTED, the
+SUBMITTED→DRAFT reversal explicitly forbidden, delete/edit guards scoped to non-DRAFT status, and the
+`unitPrice` snapshot invariant.
