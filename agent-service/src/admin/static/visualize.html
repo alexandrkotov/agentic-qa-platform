@@ -291,16 +291,27 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.2;
 let zoomLevel = 1;
 
-// The bigger MODAL_FONT_SIZE render is the 100% baseline — these buttons
-// zoom further from there via CSS `zoom` (not `transform: scale`) on a
-// wrapper around the <pre>. Verified live that `transform: scale` does NOT
-// grow the ancestor's scrollable overflow — scrollWidth/scrollHeight stayed
-// exactly the same after zooming in, no scrollbars appeared. `zoom` actually
-// reflows the box at its new size, so the scroll container's scrollable area
-// grows with it for free.
+// The bigger MODAL_FONT_SIZE render is the 100% baseline. Tried CSS
+// `transform: scale` first, then CSS `zoom`, on a wrapper around the <pre> —
+// verified live that *neither* grew the scroll container's scrollable
+// overflow (scrollWidth/scrollHeight stayed identical after zooming in, no
+// scrollbars ever appeared): Mermaid's <svg> carries its own explicit
+// width/height/max-width, which resists being reflowed by a CSS zoom/
+// transform on an ancestor. What does work, guaranteed, is setting the
+// <svg>'s own pixel width/height directly — an explicit size on the actual
+// scrolled content is standard, unambiguous scrollable-overflow input.
 function applyZoom() {
-  const wrap = modalScroll.querySelector('.diagram-zoom-wrap');
-  if (wrap) wrap.style.zoom = zoomLevel;
+  const svg = modalScroll.querySelector('svg');
+  if (svg) {
+    if (!svg.dataset.naturalWidth) {
+      const rect = svg.getBoundingClientRect();
+      svg.dataset.naturalWidth = rect.width;
+      svg.dataset.naturalHeight = rect.height;
+    }
+    svg.style.maxWidth = 'none';
+    svg.style.width = parseFloat(svg.dataset.naturalWidth) * zoomLevel + 'px';
+    svg.style.height = parseFloat(svg.dataset.naturalHeight) * zoomLevel + 'px';
+  }
   zoomLevelEl.textContent = Math.round(zoomLevel * 100) + '%';
   document.getElementById('diagram-zoom-out').disabled = zoomLevel <= ZOOM_MIN;
   document.getElementById('diagram-zoom-in').disabled = zoomLevel >= ZOOM_MAX;
