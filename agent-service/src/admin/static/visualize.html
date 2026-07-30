@@ -254,11 +254,15 @@ function onArchReportChanged() {
 }
 // Native <select> only fires "change" when the value actually differs, so
 // re-picking the currently-selected report from the dropdown fires nothing
-// and leaves a stale diagram on screen. "blur" fires on every dropdown
-// interaction regardless of whether the value changed, so listen to both —
-// collapsing twice on a real change is harmless, just a redundant reset.
+// and leaves a stale diagram on screen — and re-picking the same option
+// doesn't blur the element either (the popup just closes, focus stays on the
+// select), so blur doesn't catch it. "click" does: exactly one click event
+// fires on the select for the whole open-dropdown-then-pick gesture,
+// regardless of whether the picked value changed. Listen to both "change"
+// and "click" — collapsing twice on a real change is harmless, just a
+// redundant reset.
 document.getElementById('arch-report-select').addEventListener('change', onArchReportChanged);
-document.getElementById('arch-report-select').addEventListener('blur', onArchReportChanged);
+document.getElementById('arch-report-select').addEventListener('click', onArchReportChanged);
 
 // --- Entity relationships ---------------------------------------------------
 
@@ -301,14 +305,13 @@ document.getElementById('er-render-btn').onclick = async () => {
 // Switching reports invalidates whatever's on screen — collapse back to the
 // pre-render state rather than leave a diagram up that no longer matches the
 // selected report; the human has to press Render again. Listen on both
-// "change" and "blur" — see onArchReportChanged's comment for why: a native
-// <select> doesn't fire "change" at all when re-picking the same value.
+// "change" and "click" — see onArchReportChanged's comment for why.
 function onErReportChanged() {
   collapseEr();
   setStatus(document.getElementById('er-status'), '');
 }
 document.getElementById('er-report-select').addEventListener('change', onErReportChanged);
-document.getElementById('er-report-select').addEventListener('blur', onErReportChanged);
+document.getElementById('er-report-select').addEventListener('click', onErReportChanged);
 
 // --- Business workflow -------------------------------------------------------
 
@@ -469,9 +472,9 @@ async function onWorkflowReportChanged() {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
 }
-// Both "change" and "blur" — see onArchReportChanged's comment for why.
+// Both "change" and "click" — see onArchReportChanged's comment for why.
 document.getElementById('wf-report-select').addEventListener('change', onWorkflowReportChanged);
-document.getElementById('wf-report-select').addEventListener('blur', onWorkflowReportChanged);
+document.getElementById('wf-report-select').addEventListener('click', onWorkflowReportChanged);
 
 // --- UI Inventory ---------------------------------------------------------
 
@@ -601,9 +604,9 @@ async function onUiFlowReportChanged() {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
 }
-// Both "change" and "blur" — see onArchReportChanged's comment for why.
+// Both "change" and "click" — see onArchReportChanged's comment for why.
 document.getElementById('uf-report-select').addEventListener('change', onUiFlowReportChanged);
-document.getElementById('uf-report-select').addEventListener('blur', onUiFlowReportChanged);
+document.getElementById('uf-report-select').addEventListener('click', onUiFlowReportChanged);
 
 loadReportOptions('arch-report-select');
 loadReportOptions('er-report-select');
