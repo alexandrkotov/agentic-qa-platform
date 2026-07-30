@@ -407,3 +407,66 @@ constraint found while building, not decided upfront:
   full report, disconnected cleanly, and the file landed on the host filesystem at
   `agent-service/reports/discovery-2026-07-30T14-36-53-210Z-kafka-consumer-demo.json` exactly as
   named.
+
+## Addendum: `network_mode: host` was wrong, and three more layers under it (2026-07-30)
+
+The very next thing after the addendum above — the user's own real browser got
+`ERR_CONNECTION_REFUSED` on `:4400`. `network_mode: host` (chosen specifically to make Discovery work
+in Docker) does not reliably forward to a real host browser under Docker Desktop/WSL2 the way it does
+on native Linux; this agent's own verification had looked fine only because its shell sandbox happens
+to share the Docker daemon's network namespace directly, which a real Windows/WSL2 browser does not.
+**Reverted** to plain bridge networking + `ports: ["4400:4400"]`, the same setup every other service
+in this stack already uses.
+
+That reopened the problem `network_mode: host` was meant to solve — descriptor URLs are plain
+`localhost:PORT`, wrong from inside a bridge-network container. Fixed at the right layer instead:
+`discovery.ts` split into a path-based `runDiscovery()` (CLI, unchanged) and
+`runDiscoveryForDescriptor()` (takes an already-parsed descriptor); `admin/server.ts`'s discovery
+route rewrites postgres/rest-api/web-ui hostnames to this compose network's service names
+(`db`/`app`/`frontend`) before calling it. Kafka is deliberately untouched — its MCP server is a
+*sibling* container spawned via the mounted socket with its own `--network=host`
+(`kafka.ts`/`kafkaConsumer.ts`), a peer of the daemon rather than a child of this container's network
+namespace, so it already reaches the real host-published broker port regardless of what network this
+container is on.
+
+Getting an actual live discovery run of `orderflow.json` to complete then surfaced three more real,
+separate problems — each found by watching a live run in progress and intervening, not decided
+upfront:
+
+1. **Vite's Host-header allowlist** (anti DNS-rebinding hardening) returned 403 to anything reached
+   via `frontend:5173` instead of `localhost:5173`. `frontend/vite.config.ts` gained
+   `server.allowedHosts: true` — a local-only dev stack, not exposed beyond this machine.
+2. **The frontend's own client-side JS hardcodes its backend origin**
+   (`frontend/src/api/client.ts`: `API_BASE_URL = 'http://localhost:3000'`) — correct for a real
+   user's browser, wrong once the page itself is loaded from inside a different container. A live run
+   burned real API iterations watching the model try, and mostly fail, to work around this itself via
+   ad-hoc Playwright network interception (`page.route()`, spoofed Host headers, raw `http.request`
+   attempts) before the run was aborted mid-flight specifically to stop paying for a doomed approach.
+   Fixed deterministically instead: `runDiscoveryForDescriptor()` gained an optional
+   `mcpServersOverride` hook; the discovery route uses it to append a generated `--init-script` to the
+   web-ui MCP server's Chromium launch (`playwright-mcp` already exposes this flag) — a small
+   fetch/XHR monkey-patch, evaluated before the app's own scripts run, redirecting requests from the
+   *original* rest-api origin to the *rewritten* one.
+3. **CORS**: `app/src/main.ts` only allowed `origin: 'http://localhost:5173'`. Once (1) and (2) were
+   both fixed, the browser's own fetch succeeded at the network level but was blocked client-side as
+   cross-origin, since the page's own origin is `http://frontend:5173` from inside this network.
+   Added that origin alongside the existing one.
+4. **A fourth, subtler one, found only after (1)–(3) were all fixed and the rewritten fetch *still*
+   failed**: Chromium's browser-context networking (unlike Node's own `fetch`, and unlike
+   Playwright's out-of-page `page.request` client — neither affected) silently upgrades cross-origin
+   sub-resource requests to bare, dot-less hostnames like `app` to HTTPS, with no fallback on
+   failure. Confirmed via the failed response's own `non-authoritative-reason: HSTS` header — a
+   Chromium-internal label this network never sends itself, so it could only be the browser
+   synthesizing the redirect. Confirmed the fix the same way: the *resolved IP address* of the same
+   service is exempt from the heuristic (bare hostnames look "upgradeable" to Chromium in a way IPs
+   don't). The frontend-rewrite target in `admin/server.ts` now resolves via `dns/promises.lookup()`
+   to an IP before being baked into the init script — the only rewrite path this affects, since it's
+   the only one a real browser's own networking stack touches.
+
+All four were found and fixed one at a time by actually watching a live run's tool-call log in real
+time, not by reasoning about it in the abstract — each fix looked complete on its own until the next
+layer's failure showed up. (3) and (4) were confirmed with **zero further LLM cost**: a standalone
+Playwright script, run directly inside the admin container against the real (now-fixed) frontend and
+backend, reproduced the exact browser-context request the discovery agent's own web-ui MCP tool makes
+and confirmed a real page load renders real data — before spending anything on another live agent
+run to prove the same thing.
