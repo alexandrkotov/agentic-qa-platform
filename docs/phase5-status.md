@@ -1005,3 +1005,37 @@ with a parseable descriptor label; selecting each one correctly filled in `order
 `kafka-consumer-demo`; Stage 2's Descriptor correctly showed `orderflow` for a grouping sourced from an
 `-orderflow.json` report and came back empty (not an error) for the one existing grouping whose source
 report predates the naming convention.
+
+## Addendum: highlight corrections relevant to Stage 2's shown spec (2026-07-30)
+
+Came out of a real question about workflow: after generating a spec for just the "products" group
+(5 scenarios), clicking Load in Scenario corrections pulls in every correction saved for the whole
+`orderflow` descriptor, all groups mixed together — by design, since corrections are stored per
+descriptor rather than per group (see the second addendum above), so they survive regrouping. That's
+correct, but it left no visual way to tell which of the loaded rows actually matter for what's on
+screen right now versus a different group's leftover notes.
+
+`spec.ts`'s `buildCorrectionsBlock()` already answers "which rows matter": it filters the whole
+descriptor's corrections down to just the scenario names present in the current render group before
+building the Claude prompt. [generate.html](../agent-service/src/admin/static/generate.html) mirrors
+that same filter client-side — a `relevantCorrectionNames()` helper builds the set of scenario names in
+Stage 2's *currently shown* spec (freshly generated, or reloaded via "Show last approved spec"), and
+`renderCorrections()` adds a `.relevant` class (accent-tinted background, left border) to any row whose
+name is in that set. Wired into every place `specState` can change — Generate spec's success handler,
+and both branches of the Show/Hide approved-spec toggle — so the highlight tracks whatever Stage 2 is
+actually displaying, not just a one-time snapshot at Load time.
+
+Verified live against the real running container and its real `descriptors/orderflow.corrections.json`
+(no Claude calls, and the verification script never called Save, so no data was written): loaded the 3
+real saved corrections — all for "orders" scenarios — with no Stage 2 spec shown yet, confirmed nothing
+highlighted (0 of 3, since `specState` was still null); showed the "products" group's approved spec (5
+scenarios), confirmed still 0 highlighted (correct — none of the 3 saved corrections are products
+scenarios); added a throwaway new row (never saved) named to exactly match one of the 5 shown
+scenarios, confirmed it was the one row that picked up the `.relevant` class.
+
+Separately raised by the user: since corrections only take effect at spec-generation time, should the
+whole Scenario corrections section move above Stage 2 in the page? Recommended for a later pass
+rather than folded into this one — it fits the page's forward pipeline reading order (an input Stage 2
+consumes, same direction as Stage 1's approved grouping), but the common edit loop is "generate, notice
+something off, add a correction, regenerate," which reads more naturally with corrections sitting next
+to Stage 2 rather than above it. No change made pending the user's call.
