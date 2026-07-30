@@ -112,7 +112,14 @@
   }
   .diagram-modal-close:hover { background: var(--surface-2); color: var(--text); }
   .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; border: 1px solid var(--line); border-radius: 8px; }
-  .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: default; }
+  /* The shared `pre.mermaid` rule sets overflow-x: auto for the small
+     inline diagrams — mixing that with the default overflow-y: visible
+     makes browsers compute overflow-y as auto too, so the <pre> becomes its
+     own private scroll container. That swallowed all the modal's zoomed
+     overflow internally no matter how big the <svg> got, so this container
+     never saw anything to scroll. Override back to overflow: visible here —
+     #diagram-modal-scroll is the one and only scroll owner for the modal. */
+  .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: default; overflow: visible; }
   .diagram-zoom-wrap { display: inline-block; }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
