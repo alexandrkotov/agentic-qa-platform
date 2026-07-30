@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generate Pipeline — Grouping Review</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eef0f3;
+    --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
+    --accent: #3a63d8; --accent-bg: #e8edfc;
+    --danger: #b3261e; --danger-bg: #fbe9e7;
+    --warn: #9a6700; --warn-bg: #fff3d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --surface: #1b1e27; --surface-2: #232733;
+      --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
+      --accent: #7c9bef; --accent-bg: #232c47;
+      --danger: #f0847c; --danger-bg: #3a1f1e;
+      --warn: #e0b04d; --warn-bg: #332a10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1.5rem; }
+  header h1 { font-size: 1.05rem; margin: 0; }
+  header a { color: var(--text-mute); font-size: 0.82rem; text-decoration: none; }
+  header a:hover { text-decoration: underline; }
+
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
+  section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
+
+  .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .row label { font-size: 0.78rem; color: var(--text-mute); }
+  select, input[type=text], input[type=number] {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
+  }
+  textarea {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.4rem 0.55rem; font-size: 0.83rem; color: var(--text); font-family: inherit;
+    width: 100%; resize: vertical; min-height: 3rem;
+  }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 0.95rem; font-size: 0.83rem; font-weight: 600; cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: none; border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+  }
+  button.ghost:hover { background: var(--surface-2); }
+  button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.76rem; padding: 0.1rem 0.3rem; }
+
+  .banner { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.83rem; margin-bottom: 1rem; }
+
+  .group-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
+  .group-card .head { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
+  .group-card .head input { font-weight: 600; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .group-card .rationale { font-size: 0.75rem; color: var(--text-mute); margin-bottom: 0.6rem; }
+  .scenario-row { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0; font-size: 0.85rem; }
+  .scenario-row .name { flex: 1; }
+  .scenario-row select { font-size: 0.78rem; }
+
+  #status { font-size: 0.83rem; margin-left: 0.5rem; }
+  #status.ok { color: #2f8f5b; }
+  #status.err { color: var(--danger); }
+  #corr-status { font-size: 0.83rem; margin-left: 0.5rem; }
+  #corr-status.ok { color: #2f8f5b; }
+  #corr-status.err { color: var(--danger); }
+
+  .corr-row { display: flex; gap: 0.6rem; margin-bottom: 0.6rem; align-items: flex-start; }
+  .corr-row input { flex: 0 0 260px; }
+  .corr-row textarea { flex: 1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Generate Pipeline — Stage 1: Grouping</h1>
+    <a href="/">← System Descriptors</a>
+  </header>
+
+  <section>
+    <h2>Propose grouping</h2>
+    <div class="row">
+      <label>Report</label>
+      <select id="report-select"></select>
+      <label>Ungrouped fallback threshold</label>
+      <input type="number" id="threshold" value="0.3" step="0.05" min="0" max="1" style="width:5rem">
+      <button class="ghost" id="recompute-btn">Recompute</button>
+    </div>
+    <div id="grouping-body"></div>
+    <div class="row">
+      <button class="primary" id="approve-btn" disabled>Approve grouping</button>
+      <span id="status"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Scenario corrections</h2>
+    <div class="row">
+      <label>Descriptor</label>
+      <input type="text" id="descriptor-name" value="orderflow" style="width:10rem">
+      <button class="ghost" id="load-corr-btn">Load</button>
+      <button class="ghost" id="add-corr-btn">+ Add correction</button>
+    </div>
+    <div id="corr-body"></div>
+    <div class="row">
+      <button class="primary" id="save-corr-btn">Save corrections</button>
+      <span id="corr-status"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+const state = { grouping: null };
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error || res.statusText);
+  return body;
+}
+
+function setStatus(el, text, kind) {
+  el.textContent = text;
+  el.className = kind || '';
+}
+
+// --- Grouping -------------------------------------------------------------
+
+async function loadReportList() {
+  const names = await api('/api/generate/reports');
+  const select = document.getElementById('report-select');
+  select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (names.length > 0) select.value = names[names.length - 1];
+}
+
+function allGroupKeys() {
+  return state.grouping ? state.grouping.groups.map((g) => g.key) : [];
+}
+
+function moveScenario(name, fromKey, toKey) {
+  const g = state.grouping;
+  if (fromKey === '__ungrouped__') g.ungrouped = g.ungrouped.filter((n) => n !== name);
+  else {
+    const group = g.groups.find((gr) => gr.key === fromKey);
+    group.scenarioNames = group.scenarioNames.filter((n) => n !== name);
+  }
+  if (toKey === '__ungrouped__') g.ungrouped.push(name);
+  else {
+    const group = g.groups.find((gr) => gr.key === toKey);
+    group.scenarioNames.push(name);
+  }
+  renderGrouping();
+}
+
+function renderScenarioRow(name, currentKey) {
+  const row = document.createElement('div');
+  row.className = 'scenario-row';
+  const label = document.createElement('span');
+  label.className = 'name';
+  label.textContent = name;
+  const select = document.createElement('select');
+  for (const key of allGroupKeys()) {
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = key;
+    if (key === currentKey) opt.selected = true;
+    select.appendChild(opt);
+  }
+  const ungroupedOpt = document.createElement('option');
+  ungroupedOpt.value = '__ungrouped__'; ungroupedOpt.textContent = 'ungrouped';
+  if (currentKey === '__ungrouped__') ungroupedOpt.selected = true;
+  select.appendChild(ungroupedOpt);
+  select.onchange = () => moveScenario(name, currentKey, select.value);
+  row.appendChild(label);
+  row.appendChild(select);
+  return row;
+}
+
+function renderGrouping() {
+  const body = document.getElementById('grouping-body');
+  body.innerHTML = '';
+  document.getElementById('approve-btn').disabled = !state.grouping;
+  if (!state.grouping) return;
+  const g = state.grouping;
+
+  if (g.flatFallback) {
+    const banner = document.createElement('div');
+    banner.className = 'banner';
+    banner.textContent = 'flatFallback: too many scenarios did not match exactly one entity — the heuristic gave up on structure. Reassign scenarios below by hand, or approve as one flat group.';
+    body.appendChild(banner);
+  }
+
+  for (const group of g.groups) {
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    const head = document.createElement('div');
+    head.className = 'head';
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text'; keyInput.value = group.key;
+    keyInput.oninput = () => { group.key = keyInput.value; };
+    const count = document.createElement('span');
+    count.style.color = 'var(--text-mute)'; count.style.fontSize = '0.78rem';
+    count.textContent = `${group.scenarioNames.length} scenario(s)`;
+    head.appendChild(keyInput);
+    head.appendChild(count);
+    card.appendChild(head);
+    if (group.rationale) {
+      const rationale = document.createElement('div');
+      rationale.className = 'rationale';
+      rationale.textContent = group.rationale;
+      card.appendChild(rationale);
+    }
+    for (const name of group.scenarioNames) card.appendChild(renderScenarioRow(name, group.key));
+    body.appendChild(card);
+  }
+
+  if (g.ungrouped.length > 0) {
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.innerHTML = '<strong>ungrouped</strong>';
+    card.appendChild(head);
+    for (const name of g.ungrouped) card.appendChild(renderScenarioRow(name, '__ungrouped__'));
+    body.appendChild(card);
+  }
+}
+
+document.getElementById('recompute-btn').onclick = async () => {
+  const report = document.getElementById('report-select').value;
+  const threshold = Number(document.getElementById('threshold').value);
+  const statusEl = document.getElementById('status');
+  try {
+    state.grouping = await api('/api/generate/group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report, threshold }),
+    });
+    renderGrouping();
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+document.getElementById('approve-btn').onclick = async () => {
+  const statusEl = document.getElementById('status');
+  try {
+    const result = await api('/api/generate/group/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.grouping),
+    });
+    setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+// --- Corrections -----------------------------------------------------------
+
+let corrections = {};
+
+function renderCorrections() {
+  const body = document.getElementById('corr-body');
+  body.innerHTML = '';
+  for (const scenarioName of Object.keys(corrections)) {
+    const row = document.createElement('div');
+    row.className = 'corr-row';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text'; nameInput.value = scenarioName;
+    nameInput.placeholder = 'Exact scenario name';
+    const text = document.createElement('textarea');
+    text.value = corrections[scenarioName];
+    text.oninput = () => { corrections[nameInput.value] = text.value; };
+    nameInput.onchange = () => {
+      if (nameInput.value !== scenarioName) {
+        delete corrections[scenarioName];
+        corrections[nameInput.value] = text.value;
+        renderCorrections();
+      }
+    };
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'link'; removeBtn.textContent = 'Remove';
+    removeBtn.onclick = () => { delete corrections[scenarioName]; renderCorrections(); };
+    row.appendChild(nameInput);
+    row.appendChild(text);
+    row.appendChild(removeBtn);
+    body.appendChild(row);
+  }
+}
+
+document.getElementById('load-corr-btn').onclick = async () => {
+  const name = document.getElementById('descriptor-name').value;
+  const statusEl = document.getElementById('corr-status');
+  try {
+    corrections = await api('/api/generate/corrections/' + encodeURIComponent(name));
+    renderCorrections();
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+document.getElementById('add-corr-btn').onclick = () => {
+  let key = 'New scenario name';
+  let i = 1;
+  while (key in corrections) key = `New scenario name ${++i}`;
+  corrections[key] = '';
+  renderCorrections();
+};
+
+document.getElementById('save-corr-btn').onclick = async () => {
+  const name = document.getElementById('descriptor-name').value;
+  const statusEl = document.getElementById('corr-status');
+  try {
+    await api('/api/generate/corrections/' + encodeURIComponent(name), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corrections),
+    });
+    setStatus(statusEl, 'Saved.', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+loadReportList();
+</script>
+</body>
+</html>

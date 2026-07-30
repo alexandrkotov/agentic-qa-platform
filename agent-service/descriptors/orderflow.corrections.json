@@ -1,0 +1,4 @@
+{
+  "Change order status via API from SUBMITTED to DRAFT": "The report's own description for this scenario (\"verify it succeeds\") is OUTDATED. Fixed via an explicit ALLOWED_STATUS_TRANSITIONS map in OrdersService.updateStatus() (commit \"fix(orders): reject SUBMITTED -> DRAFT status rollback (409)\"). Correct behavior: PATCH /orders/{id}/status changing SUBMITTED -> DRAFT MUST return 409 Conflict, message matching \"Cannot transition order {id} from SUBMITTED to DRAFT\". Write this as an edge_case asserting the 409 and the message — NOT success.",
+  "Edit SUBMITTED order items via API": "The report is ambiguous (\"may be allowed or blocked\"). It is not ambiguous in reality: OrdersService.updateItems() rejects any order where status !== 'DRAFT' with the same 409 Conflict pattern as delete. Write this as an edge_case asserting 409."
+}

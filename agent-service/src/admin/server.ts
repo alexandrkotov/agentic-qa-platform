@@ -1,26 +1,45 @@
 import express from 'express';
-import { readFile, writeFile, readdir } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema } from '../descriptor/schema.ts';
+import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
+import { proposeGrouping } from '../agents/generate/group.ts';
+import { ProposedGroupingSchema, ApprovedGroupingSchema, CorrectionsSchema } from '../agents/generate/contract.ts';
+import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
+import { config } from '../config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DESCRIPTORS_DIR = resolve(__dirname, '../../descriptors');
 const PORT = Number(process.env.ADMIN_PORT ?? 4400);
 
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+/** Plain filename only (no slashes) — same defence-in-depth as descriptorPath()'s NAME_PATTERN below. */
+const REPORT_NAME_PATTERN = /^discovery-[A-Za-z0-9:_.-]+\.json$/;
 
-/** Resolves a descriptor name to a file path, rejecting anything that isn't a
- * plain filename component — this is the only thing standing between an HTTP
- * request body and a path on disk, so it must reject traversal outright
- * rather than merely warn. */
-function descriptorPath(name: string): string {
+/** Resolves a descriptor name to a file path with a given suffix, rejecting
+ * anything that isn't a plain filename component — this is the only thing
+ * standing between an HTTP request body and a path on disk, so it must
+ * reject traversal outright rather than merely warn. */
+function resolveDescriptorFile(name: string, suffix: string): string {
   if (!NAME_PATTERN.test(name)) {
     throw Object.assign(new Error('Descriptor name must be alphanumeric (with - or _ only)'), {
       status: 400,
     });
   }
-  return join(DESCRIPTORS_DIR, `${name}.json`);
+  return join(DESCRIPTORS_DIR, `${name}${suffix}`);
+}
+function descriptorPath(name: string): string {
+  return resolveDescriptorFile(name, '.json');
+}
+
+/** Same defence-in-depth as descriptorPath(): a report request must name an
+ * exact, plain discovery-*.json filename already sitting in reportsDir. */
+function reportFilePath(name: string): string {
+  if (!REPORT_NAME_PATTERN.test(name)) {
+    throw Object.assign(new Error('Report name must be an exact "discovery-*.json" filename'), { status: 400 });
+  }
+  return join(config.reportsDir, name);
 }
 
 const app = express();
@@ -79,6 +98,86 @@ app.post('/api/descriptors', async (req, res) => {
     const parsed = SystemDescriptorSchema.parse({ name, components: [], ...body });
     await writeFile(path, JSON.stringify(parsed, null, 2) + '\n', 'utf-8');
     res.status(201).json(parsed);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Generate pipeline — Stage 1 (grouping) review, and per-descriptor
+// corrections. Stage 2 (spec) and Stage 3 (render) routes land in later
+// milestones.
+// ---------------------------------------------------------------------------
+
+app.get('/api/generate/reports', async (_req, res) => {
+  const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+  const names = files.filter((f) => REPORT_NAME_PATTERN.test(f)).sort();
+  res.json(names);
+});
+
+app.post('/api/generate/group', async (req, res) => {
+  try {
+    const { report, threshold } = req.body as { report?: string; threshold?: number };
+    if (!report) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const path = reportFilePath(report);
+    const raw = JSON.parse(await readFile(path, 'utf-8'));
+    const discoveryReport = parseDiscoveryReport(raw);
+    const proposed = proposeGrouping(discoveryReport, path, {
+      ungroupedFallbackRatio: typeof threshold === 'number' ? threshold : undefined,
+    });
+    res.json(proposed);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No report named "${(req.body as { report?: string }).report}"` });
+      return;
+    }
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Report failed validation', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/generate/group/approve', async (req, res) => {
+  try {
+    const proposed = ProposedGroupingSchema.parse(req.body);
+    const approved = ApprovedGroupingSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
+    await mkdir(config.reportsDir, { recursive: true });
+    const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
+    const outPath = join(config.reportsDir, `generate-grouping-approved-${timestamp}.json`);
+    await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
+    res.status(201).json({ path: outPath, approved });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/generate/corrections/:descriptorName', async (req, res) => {
+  try {
+    res.json(await loadCorrections(descriptorPath(req.params.descriptorName)));
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/generate/corrections/:descriptorName', async (req, res) => {
+  try {
+    const path = descriptorPath(req.params.descriptorName);
+    const parsed = CorrectionsSchema.parse(req.body);
+    await saveCorrections(path, parsed);
+    res.json(parsed);
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
