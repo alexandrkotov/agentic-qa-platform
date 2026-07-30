@@ -124,8 +124,8 @@
       <select id="report-select"></select>
       <label title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">Ungrouped threshold ⓘ</label>
       <input type="number" id="threshold-percent" value="30" step="5" min="0" max="100" style="width:4.5rem" title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">%
-      <button class="ghost" id="recompute-btn">Generate grouping</button>
-      <button class="ghost" id="show-approved-grouping-btn" style="display:none">Show last approved grouping</button>
+      <button class="primary" id="recompute-btn">Generate grouping</button>
+      <button class="primary" id="show-approved-grouping-btn" style="display:none">Show last approved grouping</button>
     </div>
     <div id="grouping-body"></div>
     <div class="row">
@@ -238,6 +238,7 @@ async function loadReportList() {
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
+  btn.textContent = 'Show last approved grouping';
   state.existingApprovedGrouping = null;
   const report = document.getElementById('report-select').value;
   if (!report) return;
@@ -257,9 +258,18 @@ document.getElementById('report-select').addEventListener('change', onReportChan
 document.getElementById('report-select').addEventListener('click', onReportChanged);
 
 document.getElementById('show-approved-grouping-btn').onclick = () => {
+  const btn = document.getElementById('show-approved-grouping-btn');
+  if (btn.textContent === 'Hide last approved grouping') {
+    state.grouping = null;
+    renderGrouping();
+    btn.textContent = 'Show last approved grouping';
+    setStatus(document.getElementById('status'), '');
+    return;
+  }
   if (!state.existingApprovedGrouping) return;
   state.grouping = state.existingApprovedGrouping.approved;
   renderGrouping();
+  btn.textContent = 'Hide last approved grouping';
   setStatus(document.getElementById('status'), 'Loaded approved grouping from ' + state.existingApprovedGrouping.path, 'ok');
 };
 
@@ -373,6 +383,9 @@ document.getElementById('recompute-btn').onclick = async () => {
       body: JSON.stringify({ report, threshold }),
     });
     renderGrouping();
+    // What's on screen is now a fresh recompute, not the approved snapshot
+    // — don't leave "Show last approved grouping" mislabeled as "Hide ...".
+    document.getElementById('show-approved-grouping-btn').textContent = 'Show last approved grouping';
     setStatus(statusEl, '');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
