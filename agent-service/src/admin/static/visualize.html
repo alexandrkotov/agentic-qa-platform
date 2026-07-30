@@ -91,6 +91,28 @@
   }
   .rule-list.guards li { border-left-color: var(--warn); background: var(--warn-bg); }
   .rule-list.invariants li { border-left-color: var(--accent); background: var(--accent-bg); }
+
+  pre.mermaid { cursor: zoom-in; }
+
+  .diagram-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 2rem;
+  }
+  .diagram-modal-overlay.open { display: flex; }
+  .diagram-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    width: 95vw; height: 90vh; display: flex; flex-direction: column;
+    padding: 1rem 1.25rem 1.25rem;
+  }
+  .diagram-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-shrink: 0; }
+  .diagram-modal-head h3 { margin: 0; font-size: 0.95rem; }
+  .diagram-modal-close {
+    background: none; border: none; color: var(--text-mute); font-size: 1.6rem; line-height: 1;
+    cursor: pointer; padding: 0.1rem 0.5rem; border-radius: 6px;
+  }
+  .diagram-modal-close:hover { background: var(--surface-2); color: var(--text); }
+  .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; border: 1px solid var(--line); border-radius: 8px; }
+  .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: default; }
 </style>
 </head>
 <body>
@@ -102,7 +124,7 @@
 <main>
   <div class="page-head">
     <h1>Visualize</h1>
-    <div class="subtitle">See how the target system works before grouping scenarios — architecture and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money)</div>
+    <div class="subtitle">See how the target system works before grouping scenarios — architecture and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money). Click any diagram to open it enlarged, with scrolling.</div>
   </div>
 
   <section>
@@ -176,6 +198,16 @@
   </section>
 </main>
 
+<div class="diagram-modal-overlay" id="diagram-modal-overlay">
+  <div class="diagram-modal">
+    <div class="diagram-modal-head">
+      <h3 id="diagram-modal-title"></h3>
+      <button class="diagram-modal-close" id="diagram-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="diagram-modal-scroll" id="diagram-modal-scroll"></div>
+  </div>
+</div>
+
 <script src="/vendor/mermaid.min.js"></script>
 <script>
 // Theme the diagram with this page's own palette instead of Mermaid's
@@ -186,10 +218,16 @@
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'base',
-  themeVariables: {
+const BASE_FONT_SIZE = '13px';
+// The enlarged-in-a-modal copy is re-rendered at this font size rather than
+// CSS-zoomed — Mermaid lays the whole diagram out bigger (wider text boxes,
+// longer edges) instead of just scaling a small render, which stays crisp
+// and gives the modal's own scroll container real horizontal/vertical
+// overflow to work with.
+const MODAL_FONT_SIZE = '22px';
+
+function buildThemeVariables(fontSize) {
+  return {
     background: cssVar('--surface'),
     primaryColor: cssVar('--accent-bg'),
     primaryTextColor: cssVar('--text'),
@@ -202,8 +240,48 @@ mermaid.initialize({
     noteTextColor: cssVar('--text'),
     noteBorderColor: cssVar('--warn'),
     fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif',
-    fontSize: '13px',
-  },
+    fontSize,
+  };
+}
+
+mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(BASE_FONT_SIZE) });
+
+// --- Diagram modal --------------------------------------------------------
+// Every rendered diagram across all five sections opens enlarged in this one
+// shared modal on click — a single delegated listener on <main> (the modal
+// itself lives outside <main>, so clicking inside it can't re-trigger this)
+// keyed off a data-source/data-title pair each render site stamps onto its
+// own <pre class="mermaid"> before handing it to mermaid.run().
+
+const modalOverlay = document.getElementById('diagram-modal-overlay');
+const modalTitle = document.getElementById('diagram-modal-title');
+const modalScroll = document.getElementById('diagram-modal-scroll');
+
+async function openDiagramModal(title, mermaidSource) {
+  modalTitle.textContent = title;
+  modalScroll.innerHTML = '<pre class="mermaid"></pre>';
+  modalScroll.querySelector('pre').textContent = mermaidSource;
+  modalOverlay.classList.add('open');
+  mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(MODAL_FONT_SIZE) });
+  await mermaid.run({ querySelector: '#diagram-modal-scroll pre.mermaid' });
+  mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(BASE_FONT_SIZE) });
+}
+
+function closeDiagramModal() {
+  modalOverlay.classList.remove('open');
+  modalScroll.innerHTML = '';
+}
+document.getElementById('diagram-modal-close').onclick = closeDiagramModal;
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) closeDiagramModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalOverlay.classList.contains('open')) closeDiagramModal();
+});
+document.querySelector('main').addEventListener('click', (e) => {
+  const pre = e.target.closest('pre.mermaid');
+  if (!pre || !pre.dataset.source) return;
+  openDiagramModal(pre.dataset.title || 'Diagram', pre.dataset.source);
 });
 
 const state = {
@@ -259,7 +337,10 @@ document.getElementById('arch-render-btn').onclick = async () => {
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
-    container.querySelector('pre').textContent = text;
+    const pre = container.querySelector('pre');
+    pre.textContent = text;
+    pre.dataset.source = text;
+    pre.dataset.title = 'Architecture';
     await mermaid.run({ querySelector: '#arch-diagram pre.mermaid' });
     btn.textContent = 'Hide';
     setStatus(statusEl, '');
@@ -313,7 +394,10 @@ document.getElementById('er-render-btn').onclick = async () => {
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
-    container.querySelector('pre').textContent = text;
+    const pre = container.querySelector('pre');
+    pre.textContent = text;
+    pre.dataset.source = text;
+    pre.dataset.title = 'Entity relationships';
     await mermaid.run({ querySelector: '#er-diagram pre.mermaid' });
     btn.textContent = 'Hide';
     setStatus(statusEl, '');
@@ -412,6 +496,8 @@ async function renderUiFlowDiagrams(rendered) {
   const pre = document.createElement('pre');
   pre.className = 'mermaid';
   pre.textContent = rendered.mermaid;
+  pre.dataset.source = rendered.mermaid;
+  pre.dataset.title = 'UI Inventory';
   card.appendChild(pre);
   container.appendChild(card);
   await mermaid.run({ querySelector: '#uf-diagrams pre.mermaid' });
@@ -552,6 +638,8 @@ async function renderSequenceDiagrams(rendered) {
     const pre = document.createElement('pre');
     pre.className = 'mermaid';
     pre.textContent = scenario.mermaid;
+    pre.dataset.source = scenario.mermaid;
+    pre.dataset.title = scenario.name;
     card.appendChild(pre);
 
     container.appendChild(card);
@@ -691,6 +779,8 @@ async function renderDiagrams(rendered) {
     const pre = document.createElement('pre');
     pre.className = 'mermaid';
     pre.textContent = entity.mermaid;
+    pre.dataset.source = entity.mermaid;
+    pre.dataset.title = entity.name;
     card.appendChild(pre);
 
     const addList = (title, items, cls) => {
