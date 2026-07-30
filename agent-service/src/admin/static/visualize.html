@@ -73,6 +73,12 @@
   .diagram-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; background: var(--bg); }
   .diagram-card h3 { margin: 0 0 0.5rem; font-size: 0.88rem; }
   pre.mermaid { background: var(--surface); border-radius: 6px; padding: 0.75rem; overflow-x: auto; text-align: center; }
+  /* erDiagram's zebra-striped attribute rows: Mermaid's attributeBackgroundColorOdd/Even theme
+     variables are silently ignored by this build's erDiagram renderer (it derives its own row
+     colors regardless of what's passed in), so pin the row fill directly via CSS instead — the
+     renderer always emits row-rect-odd/row-rect-even classes on the row's own path. */
+  #er-diagram .row-rect-odd path:first-of-type { fill: var(--surface) !important; }
+  #er-diagram .row-rect-even path:first-of-type { fill: var(--surface-2) !important; }
 
   .rule-section-label {
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
@@ -152,12 +158,6 @@ mermaid.initialize({
     noteBkgColor: cssVar('--warn-bg'),
     noteTextColor: cssVar('--text'),
     noteBorderColor: cssVar('--warn'),
-    // erDiagram's zebra-striped attribute rows default to a shade auto-derived
-    // from `background` — in dark mode that derived odd-row shade ends up too
-    // close to `textColor` to read. Pin both stripes to our own surface colors
-    // instead, which are already proven to contrast against `--text`.
-    attributeBackgroundColorOdd: cssVar('--surface'),
-    attributeBackgroundColorEven: cssVar('--surface-2'),
     fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif',
     fontSize: '13px',
   },
