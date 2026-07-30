@@ -152,6 +152,12 @@ mermaid.initialize({
     noteBkgColor: cssVar('--warn-bg'),
     noteTextColor: cssVar('--text'),
     noteBorderColor: cssVar('--warn'),
+    // erDiagram's zebra-striped attribute rows default to a shade auto-derived
+    // from `background` — in dark mode that derived odd-row shade ends up too
+    // close to `textColor` to read. Pin both stripes to our own surface colors
+    // instead, which are already proven to contrast against `--text`.
+    attributeBackgroundColorOdd: cssVar('--surface'),
+    attributeBackgroundColorEven: cssVar('--surface-2'),
     fontFamily: 'ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif',
     fontSize: '13px',
   },
