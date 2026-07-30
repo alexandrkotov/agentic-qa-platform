@@ -932,3 +932,34 @@ Verified live with the same headless-Playwright approach as the prior addendum, 
 selecting the report with grouping history, clicking the button once shows "Hide last approved
 grouping" with all 4 approved groups rendered, clicking again returns to "Show last approved grouping"
 with the block empty; selecting a report with no grouping history keeps the button hidden throughout.
+
+## Addendum: same Show/Hide pattern, one layer down, for Stage 2 (2026-07-30)
+
+Same request applied to Stage 2: a "Show last approved spec" button next to Generate spec, visible
+only when the currently-selected grouping already has an approved spec from an earlier session. New
+`GET /api/generate/spec-for-grouping` route in
+[server.ts](../agent-service/src/admin/server.ts) mirrors `/api/generate/grouping-for-report` one
+layer down the pipeline — scans `generate-spec-approved-*.json`, matches on `ApprovedSpec
+.sourceGroupingPath` instead of `ApprovedGrouping.sourceReportPath`, returns the latest match or
+`null`.
+
+Named "approved" rather than "generated," on purpose — came up while answering a related question
+about what Generate spec and Save corrections do and don't touch on disk: the web UI's Generate spec
+button (`/api/generate/spec`) never writes anything to disk by itself, only Approve spec does. So
+there's no "last generated" artifact sitting on disk to reload for free — only the last *approved* one,
+same as Stage 1's button really shows the last *approved* grouping, not the last *computed* one.
+
+Same Show/Hide toggle mechanics as Stage 1 and Visualize's Render buttons. Two places needed to reset
+or recheck the toggle so it can't show stale state for a grouping that's no longer selected: Generate
+spec's success handler (screen now shows a fresh unapproved generation, not necessarily the approved
+one) and Stage 1's Approve-grouping handler, which already calls `loadGroupingList()` to refresh Stage
+2's dropdown — setting a `<select>`'s `.value` via JS doesn't fire `change`, so without an explicit
+recheck there the button could keep showing/hiding whatever the previously-selected grouping's state
+was.
+
+Verified live against the real running container and real `reports/` data, no Claude calls: `curl`
+confirmed the endpoint matches the one grouping with an approved spec and returns `null` for one
+without; a headless Playwright session then drove the actual page — selecting the grouping with an
+approved spec shows the button, clicking it renders its 5 scenarios and flips to "Hide last approved
+spec," clicking again collapses back to "Show last approved spec," and selecting a grouping with no
+approved spec keeps the button hidden throughout.
