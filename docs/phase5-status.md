@@ -777,3 +777,19 @@ comparison (wrench alone, the current toolbox, the old gear) at both 21px and 12
 trade-off concrete instead of describing it in the abstract — recommended the wrench (as legible as
 the gear, still reads as "tools" rather than "settings"). Landed on the wrench (Feather's `tool` glyph)
 replacing the toolbox entirely. Confirmed on the real hub card.
+
+### Follow-up: the SVG-overflow fix wasn't actually the fix (2026-07-30)
+
+The `overflow: visible` fix above turned out incomplete — a hard-refreshed, freshly-regenerated
+screenshot from a real browser (Chrome/Windows) still showed the same label cropped, which never
+reproduced in this sandbox's headless Linux Chromium no matter how the check was run. Walked the full
+ancestor chain's *computed* `overflow` from the label text up to the `<svg>` (not just the two ends)
+and found the real second clipping box: Mermaid wraps each edge label's HTML content in its own
+`<foreignObject width="200" height="132">`, which carries the same UA-default `overflow: hidden`
+*independently* of the outer `<svg>` — a completely separate box the first fix never touched. Whether
+a given label actually overflows that fixed 200px depends on real glyph metrics (`ui-sans-serif,
+system-ui, "Segoe UI", ...` resolves to a different actual font, with different character widths, on
+Linux vs. Windows), which is exactly why the bug was invisible in this sandbox and real in the user's
+own browser. Added `.diagram-modal-scroll svg foreignObject { overflow: visible; }` alongside the
+existing svg-level rule. Deployed; awaiting the user's own re-check since this sandbox still can't
+reproduce the underlying font-metrics condition that triggers it.
