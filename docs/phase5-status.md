@@ -826,3 +826,16 @@ Lesson for next time a Mermaid-rendered element misbehaves only in a browser thi
 reproduce: ask for a DevTools computed-style dump (including `getAttribute('style')` for inline
 styles) up the whole ancestor chain *before* trying a second or third CSS patch on faith — it would
 have found the actual cause on the first pass instead of the fourth.
+
+## Addendum: back to actually using Generate — a real Stage 1→2 bug (2026-07-30)
+
+First real use of the rebuilt Test Generation pipeline since the redesign, on a fresh discovery report
+(29 scenarios, up from an earlier 24 — the target app grew), found a genuine bug rather than a UI
+nit: after hand-correcting an under-confidence grouping (11/29 scenarios initially ungrouped) and
+clicking "Approve grouping," the freshly-approved file saved to disk fine but never appeared in Stage
+2's "Approved grouping" dropdown. Cause: `loadGroupingList()` only ever ran once, at page load — Stage
+1's approve handler had no reason to know Stage 2's dropdown existed. Fixed by calling
+`loadGroupingList()` again right after a successful approve; its existing last-item auto-select
+(already used by every other report/grouping dropdown on this page) picks up the new one for free.
+Verified live and for free: approved a real grouping, confirmed the new filename appears in Stage 2's
+dropdown and is the one auto-selected, no page reload needed.
