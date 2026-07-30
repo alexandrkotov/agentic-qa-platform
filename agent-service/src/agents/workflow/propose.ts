@@ -31,6 +31,9 @@ For each entity that has a genuine state machine, transition rule, or guard cond
 
 A Rule is one of:
   { "kind": "state_transition", "from": "DRAFT", "to": "SUBMITTED", "trigger": "Submit" }
+  { "kind": "state_transition", "from": null, "to": "DRAFT", "trigger": "Create" } — "from": null means
+    the entity is created directly into "to", with no prior state (use this instead of inventing a
+    fake prior state or omitting the creation step)
   { "kind": "forbidden_transition", "from": "SUBMITTED", "to": "DRAFT", "reason": "one-way transition, explicitly disallowed" }
   { "kind": "guard", "action": "delete", "condition": "status == SUBMITTED", "description": "Only DRAFT orders can be deleted; SUBMITTED orders return 409 Conflict" }
   { "kind": "invariant", "description": "OrderItem.unitPrice is a snapshot at creation time, independent of the current Product price" }
@@ -48,6 +51,8 @@ Rules:
    snapshot value, a uniqueness constraint).
 6. Never invent a state, transition, or guard not stated or clearly implied by the report — if
    unsure, omit it rather than guess.
+7. If the entity's initial state on creation is known, express it as a "state_transition" with
+   "from": null rather than a fake prior state or a bare "states" entry with no way in.
 
 ## Output contract — read carefully
 Output ONLY a single valid JSON array of entity workflow objects as described above, no markdown

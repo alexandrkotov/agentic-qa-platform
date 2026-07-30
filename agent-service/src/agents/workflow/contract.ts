@@ -8,7 +8,8 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 const RuleSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('state_transition'), from: z.string(), to: z.string(), trigger: z.string() }),
+  /** `from: null` means the entity is created directly into `to` — there is no prior state (renders as the Mermaid [*] initial-state arrow). */
+  z.object({ kind: z.literal('state_transition'), from: z.string().nullable(), to: z.string(), trigger: z.string() }),
   z.object({ kind: z.literal('forbidden_transition'), from: z.string(), to: z.string(), reason: z.string() }),
   z.object({ kind: z.literal('guard'), action: z.string(), condition: z.string(), description: z.string() }),
   z.object({ kind: z.literal('invariant'), description: z.string() }),

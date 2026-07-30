@@ -44,26 +44,30 @@ export function renderStateDiagram(entity: EntityWorkflow): RenderedEntityWorkfl
   };
   entity.states.forEach(ensureId);
 
-  const lines = ['stateDiagram-v2'];
+  const stateLines: string[] = [];
   for (const state of entity.states) {
-    lines.push(`    ${ensureId(state)} : ${sanitizeLabel(state)}`);
-  }
-  if (entity.states.length > 0) {
-    lines.push(`    [*] --> ${ensureId(entity.states[0])}`);
+    stateLines.push(`    ${ensureId(state)} : ${sanitizeLabel(state)}`);
   }
 
+  const transitionLines: string[] = [];
   const guards: string[] = [];
   const invariants: string[] = [];
+  let hasExplicitInitial = false;
 
   for (const rule of entity.rules) {
     switch (rule.kind) {
       case 'state_transition':
-        lines.push(`    ${ensureId(rule.from)} --> ${ensureId(rule.to)} : ${sanitizeLabel(rule.trigger)}`);
+        if (rule.from === null) {
+          transitionLines.push(`    [*] --> ${ensureId(rule.to)} : ${sanitizeLabel(rule.trigger)}`);
+          hasExplicitInitial = true;
+        } else {
+          transitionLines.push(`    ${ensureId(rule.from)} --> ${ensureId(rule.to)} : ${sanitizeLabel(rule.trigger)}`);
+        }
         break;
       case 'forbidden_transition':
-        lines.push(`    note right of ${ensureId(rule.from)}`);
-        lines.push(`        Forbidden: -> ${sanitizeLabel(rule.to)} (${sanitizeLabel(rule.reason)})`);
-        lines.push(`    end note`);
+        transitionLines.push(`    note right of ${ensureId(rule.from)}`);
+        transitionLines.push(`        Forbidden: -> ${sanitizeLabel(rule.to)} (${sanitizeLabel(rule.reason)})`);
+        transitionLines.push(`    end note`);
         break;
       case 'guard':
         guards.push(`${rule.action}: ${rule.condition} — ${rule.description}`);
@@ -74,6 +78,13 @@ export function renderStateDiagram(entity: EntityWorkflow): RenderedEntityWorkfl
     }
   }
 
+  // Fallback only if the model never said explicitly which state is the
+  // entry point — an explicit "from: null" rule (see spec.ts's prompt) is
+  // more reliable than assuming array order is meaningful.
+  const initialLines =
+    !hasExplicitInitial && entity.states.length > 0 ? [`    [*] --> ${ensureId(entity.states[0])}`] : [];
+
+  const lines = ['stateDiagram-v2', ...stateLines, ...initialLines, ...transitionLines];
   return { name: entity.name, mermaid: lines.join('\n'), guards, invariants };
 }
 
