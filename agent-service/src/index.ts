@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { runDiscovery } from './bootstrap/discovery.ts';
 import { runGenerate } from './bootstrap/generate.ts';
+import { runGenerateGroup } from './bootstrap/generateGroup.ts';
 import { runE2EAgent } from './agents/e2e/index.ts';
 import { applyFix } from './agents/e2e/apply.ts';
 import { ClaudeProvider } from './providers/ClaudeProvider.ts';
@@ -21,6 +22,7 @@ const reportPathArg = getArg('--report', '');
 const domainArg = getArg('--domain', '');
 const scenarioArg = getArg('--scenario', '');
 const descriptorArg = getArg('--descriptor', '');
+const thresholdArg = getArg('--threshold', '');
 
 // Same derivation agent-service/src/agents/e2e/index.ts uses to find the
 // sibling tests/ directory from agent-service/reports/.
@@ -37,10 +39,10 @@ function createProvider(): AgentProvider {
 }
 
 async function main() {
-  // apply-fix needs no LLM call at all (diagnosis already happened in a
-  // prior `e2e` run) — don't construct a provider (which requires an API
-  // key) or print a misleading "Provider: ..." line for it.
-  if (phase !== 'apply-fix') console.log(`Provider: ${providerName}`);
+  // apply-fix and generate-group need no LLM call at all (diagnosis/grouping
+  // already happened deterministically) — don't construct a provider (which
+  // requires an API key) or print a misleading "Provider: ..." line for them.
+  if (phase !== 'apply-fix' && phase !== 'generate-group') console.log(`Provider: ${providerName}`);
 
   switch (phase) {
     case 'discovery':
@@ -63,9 +65,15 @@ async function main() {
       }
       await applyFix(reportPathArg, TESTS_ROOT);
       break;
+    case 'generate-group':
+      // Temporary phase for the Generate Agent redesign (milestone 2): Stage
+      // 1 grouping only, CLI-only, no LLM call. Superseded once bootstrap/
+      // generate.ts is rewritten to orchestrate group/spec/render together.
+      await runGenerateGroup(reportPathArg || undefined, thresholdArg ? Number(thresholdArg) : undefined);
+      break;
     default:
       console.error(`Unknown phase: ${phase}`);
-      console.error('Usage: tsx src/index.ts discovery|generate|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>]');
+      console.error('Usage: tsx src/index.ts discovery|generate|generate-group|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>]');
       process.exit(1);
   }
 }
