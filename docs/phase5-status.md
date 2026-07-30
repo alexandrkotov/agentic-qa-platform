@@ -508,3 +508,49 @@ zero console errors — not just that the Mermaid text looked plausible. The rea
 produced exactly the expected Order state machine: created into DRAFT, DRAFT→SUBMITTED, the
 SUBMITTED→DRAFT reversal explicitly forbidden, delete/edit guards scoped to non-DRAFT status, and the
 `unitPrice` snapshot invariant.
+
+### Follow-up: ER diagram contrast bug (2026-07-30)
+
+The ER diagram's zebra-striped attribute rows were unreadable in practice — one stripe rendered
+correctly, the other rendered near-white text-on-background in dark mode (and the inverse relationship
+in light mode). First attempted fix, setting Mermaid's documented
+`attributeBackgroundColorOdd`/`attributeBackgroundColorEven` theme variables, had no visible effect.
+Proved it empirically rather than guessing again: fed the vendored `mermaid.min.js` build extreme,
+unmistakable colors (`#ff00ff`/`#00ff00`) for those two keys in an isolated test page and got back an
+unrelated computed color — the vendored erDiagram renderer silently ignores those theme keys and
+derives its own row fill regardless of what's passed in. The renderer does reliably emit
+`row-rect-odd`/`row-rect-even` classes on each row's own `<path>`, so the real fix overrides the fill
+directly via CSS (`#er-diagram .row-rect-odd/.row-rect-even path:first-of-type`) instead of going
+through Mermaid's theme layer. Verified with real screenshots in both color schemes after the fix.
+
+## Addendum: Visualize — architecture + UI flow diagrams (2026-07-30)
+
+Two more diagrams added to the same page, both answering "how does the tested application itself
+work" — split the same way as before by whether the answer requires interpretation:
+
+- **Architecture** — fully mechanical, no LLM: `renderArchitectureDiagram()` classifies each report
+  component by shape (`.uiPages`/`.endpoints`/`.tables`/`.topic`/`.topics` — same shape-based
+  convention as the ER diagram, never a hardcoded component key) and draws a generic three-layer
+  `flowchart` (UI → API via HTTP, API → DB via SQL, API → Kafka via events). These edges are a
+  standard-architecture assumption given which layers are present, not a report-verified claim — the
+  same kind of inference the ER diagram already makes for foreign keys by naming convention. Returns
+  `null` (same empty-state UX as the ER diagram) when fewer than two components were classified.
+- **UI flow** — a report's `uiPages[]` already lists each page's actions, but not which ones navigate
+  to another route vs. stay in place; that's a real interpretation step, so it gets the same
+  propose → human edits → approve cycle as Business workflow (`ProposedUiFlowSchema`/
+  `ApprovedUiFlowSchema`, `agents/workflow/proposeUiFlow.ts`, approved files as
+  `generate-ui-flow-approved-*.json`). Renders as **one** combined `flowchart` (navigation is
+  inherently cross-page, unlike per-entity state diagrams) via `renderUiFlowDiagram()`, plus a plain
+  list of in-place actions per page below it — the same "not every relationship is a graph edge"
+  reasoning as guards/invariants. The editable unit in the UI is a single textarea over the whole
+  `pages[]` array rather than one per page, matching what actually gets rendered.
+
+Verified live: the architecture diagram (free) on the real orderflow report produced exactly the
+expected four nodes and edges (Web ui → HTTP → Rest api → SQL → Postgres, → events → Kafka consumer),
+and correctly fell back to the empty-state message on the kafka-only demo report (one component, no
+edges to draw). The UI flow model (one real Claude call, confirmed with the user first) correctly
+identified the orderflow app's only real navigation (`/` redirects to `/customers`) and correctly
+classified all thirteen other actions across `/customers`, `/products`, and `/orders` as in-place —
+matching the actual (fairly flat, single-page-per-resource) app being tested. Both confirmed via a
+headless browser rendering real `<svg>` output with zero console errors, not just plausible-looking
+Mermaid text.
