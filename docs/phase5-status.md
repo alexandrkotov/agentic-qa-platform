@@ -963,3 +963,45 @@ without; a headless Playwright session then drove the actual page — selecting 
 approved spec shows the button, clicking it renders its 5 scenarios and flips to "Hide last approved
 spec," clicking again collapses back to "Show last approved spec," and selecting a grouping with no
 approved spec keeps the button hidden throughout.
+
+## Addendum: auto-derive both "Descriptor" fields instead of typing them (2026-07-30)
+
+Both "Descriptor" text fields — Scenario corrections' and Stage 2's — were free text the user had to
+type by hand, with no check that what they typed actually matched the system they were working with. A
+mismatch is a quiet correctness bug: it makes `/api/generate/spec` and Load/Save corrections read or
+write the wrong descriptor's `*.corrections.json`, silently mixing up two different target systems'
+notes.
+
+The fix leans on something already true: [discovery.ts:119-125](../agent-service/src/bootstrap/discovery.ts:119)
+names every report `discovery-<isoTimestamp>-<descriptorLabel>.json`, timestamp first (so "find the
+latest" sorting keeps working), descriptor label last. That label can be parsed straight back out of
+the filename — no reason to make the user retype something already on disk. In
+[generate.html](../agent-service/src/admin/static/generate.html), a `descriptorFromReportName()` regex
+does that parse, and both Descriptor inputs became `readonly`:
+
+- **Scenario corrections'** Descriptor now tracks whichever report is selected in Stage 1's dropdown —
+  that dropdown already means "the system I'm currently working with," so this is a direct reuse.
+- **Stage 2's** Descriptor deliberately does *not* track Stage 1's report-select the same way. Stage
+  1's report and Stage 2's selected grouping are independently choosable — someone can flip Stage 1 to
+  a different report while an older grouping stays selected in Stage 2 — so deriving from the widget
+  would silently point corrections lookups at the wrong system whenever those two fall out of sync.
+  Instead it derives from *the selected grouping's own* `sourceReportPath`, fetched via a new
+  `GET /api/generate/groupings/:name` route in [server.ts](../agent-service/src/admin/server.ts) that
+  returns a single grouping's full content by filename.
+
+One more piece, at the user's suggestion: a handful of early reports (from before the descriptor-label
+naming convention existed — six `discovery-2026-07-29T*.json` files with no trailing label) have
+nothing for that regex to parse. Rather than build a manual-entry fallback for them, Stage 1's report
+list simply excludes any report the regex can't parse a label from — they're still valid inputs to the
+CLI's `generate-group`, just not selectable from this dropdown. This filtering is scoped to
+`generate.html`'s own `loadReportList()`, not the shared `/api/generate/reports` endpoint Visualize's
+five report dropdowns also call — those diagrams don't need a descriptor at all, so there was no reason
+to narrow what they can see.
+
+Verified live against the real running container and real `reports/` data (no Claude calls): `curl`
+confirmed `/api/generate/reports` itself is unchanged (still returns all 8 reports, so Visualize is
+unaffected) while a headless Playwright session showed Stage 1's dropdown listing only the 3 reports
+with a parseable descriptor label; selecting each one correctly filled in `orderflow` /
+`kafka-consumer-demo`; Stage 2's Descriptor correctly showed `orderflow` for a grouping sourced from an
+`-orderflow.json` report and came back empty (not an error) for the one existing grouping whose source
+report predates the naming convention.
