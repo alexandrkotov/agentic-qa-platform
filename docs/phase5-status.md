@@ -806,5 +806,23 @@ Two more rounds followed once the user actually re-checked, each caught from a r
    overlap the neighboring "Submit" label and edge.
 2. Fixed by using a bounded `width: 230px` instead and leaving wrapping alone — let Mermaid's own
    multi-line layout do what it already knew how to do, just inside a box sized to actually fit it.
-   Final live screenshot: clean 4-line label, background fully covering the text, no overlap with
-   neighboring diagram elements.
+
+Except that *still* didn't reproduce as fixed on the machine that actually shows the bug — this
+sandbox's font metrics never triggered it, so four straight rounds of "looks right in my screenshot"
+kept not matching what the user saw. Screenshots alone had stopped being enough to debug this, so the
+next step was a real DevTools console dump of the actual computed/inline styles, from the user's own
+browser, walking the same ancestor chain. That's what finally found the real root cause: Mermaid bakes
+an *inline* `style="white-space: nowrap; ...; max-width: 200px; ..."` directly onto its `.labelBkg`
+div. `width: 230px !important` genuinely did win its own property's cascade over that non-important
+inline style (confirmed in the dump), but `max-width` is a *different* property nothing was
+overriding, so the box model's `used width = min(width, max-width)` step clamped straight back down to
+the inline 200px regardless — and `white-space: nowrap` was never contested at all, forcing one long
+unwrapped line instead of Mermaid's own multi-line layout. Adding `max-width: 230px !important` and
+`white-space: normal !important` alongside the existing `width` override fixed it for real — confirmed
+by both a live screenshot (clean 4-line label, background fully covering the text) and a second console
+dump from the same real browser showing all three properties resolving as intended.
+
+Lesson for next time a Mermaid-rendered element misbehaves only in a browser this sandbox can't
+reproduce: ask for a DevTools computed-style dump (including `getAttribute('style')` for inline
+styles) up the whole ancestor chain *before* trying a second or third CSS patch on faith — it would
+have found the actual cause on the first pass instead of the fourth.
