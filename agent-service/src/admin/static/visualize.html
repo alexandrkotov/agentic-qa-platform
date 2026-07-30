@@ -92,6 +92,20 @@
   .rule-list.guards li { border-left-color: var(--warn); background: var(--warn-bg); }
   .rule-list.invariants li { border-left-color: var(--accent); background: var(--accent-bg); }
 
+  .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
+
+  .confirm-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .confirm-modal-overlay.open { display: flex; }
+  .confirm-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem; max-width: 26rem;
+  }
+  .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
+  .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+
   pre.mermaid { cursor: zoom-in; }
 
   .diagram-modal-overlay {
@@ -170,7 +184,7 @@
     <div class="row">
       <label>Report</label>
       <select id="arch-report-select"></select>
-      <button class="ghost" id="arch-render-btn">Render</button>
+      <button class="primary" id="arch-render-btn">Render</button>
       <span id="arch-status"></span>
     </div>
     <div id="arch-diagram"></div>
@@ -181,7 +195,7 @@
     <div class="row">
       <label>Report</label>
       <select id="er-report-select"></select>
-      <button class="ghost" id="er-render-btn">Render</button>
+      <button class="primary" id="er-render-btn">Render</button>
       <span id="er-status"></span>
     </div>
     <div id="er-diagram"></div>
@@ -192,12 +206,12 @@
     <div class="row">
       <label>Report</label>
       <select id="uf-report-select"></select>
-      <button class="primary" id="uf-propose-btn">Generate UI inventory</button>
+      <button class="primary" id="uf-propose-btn"><span class="cost-badge">$</span>Generate UI inventory</button>
       <span id="uf-gen-status"></span>
     </div>
     <div id="uf-body"></div>
     <div class="row">
-      <button class="primary" id="uf-approve-btn" disabled>Approve</button>
+      <button class="primary" id="uf-approve-btn" disabled style="display:none">Approve</button>
       <span id="uf-status"></span>
     </div>
     <div id="uf-diagrams"></div>
@@ -208,12 +222,12 @@
     <div class="row">
       <label>Report</label>
       <select id="seq-report-select"></select>
-      <button class="primary" id="seq-propose-btn">Generate sequence flow</button>
+      <button class="primary" id="seq-propose-btn"><span class="cost-badge">$</span>Generate sequence flow</button>
       <span id="seq-gen-status"></span>
     </div>
     <div id="seq-body"></div>
     <div class="row">
-      <button class="primary" id="seq-approve-btn" disabled>Approve</button>
+      <button class="primary" id="seq-approve-btn" disabled style="display:none">Approve</button>
       <span id="seq-status"></span>
     </div>
     <div id="seq-diagrams"></div>
@@ -224,12 +238,12 @@
     <div class="row">
       <label>Report</label>
       <select id="wf-report-select"></select>
-      <button class="primary" id="wf-propose-btn">Generate workflow model</button>
+      <button class="primary" id="wf-propose-btn"><span class="cost-badge">$</span>Generate workflow model</button>
       <span id="wf-gen-status"></span>
     </div>
     <div id="wf-body"></div>
     <div class="row">
-      <button class="primary" id="wf-approve-btn" disabled>Approve</button>
+      <button class="primary" id="wf-approve-btn" disabled style="display:none">Approve</button>
       <span id="wf-status"></span>
     </div>
     <div id="wf-diagrams"></div>
@@ -251,8 +265,53 @@
   </div>
 </div>
 
+<div class="confirm-modal-overlay" id="confirm-modal-overlay">
+  <div class="confirm-modal">
+    <p id="confirm-modal-message"></p>
+    <div class="confirm-modal-actions">
+      <button class="ghost" id="confirm-modal-cancel">Cancel</button>
+      <button class="primary" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
+  </div>
+</div>
+
 <script src="/vendor/mermaid.min.js"></script>
 <script>
+// Any button that calls Claude for real must be confirmed first — resolves
+// true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
+// the backdrop all resolve false without touching the network.
+function confirmPaidAction(message) {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-modal-message').textContent = message;
+    const overlay = document.getElementById('confirm-modal-overlay');
+    overlay.classList.add('open');
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
+    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
+}
+
+// Sets a propose button's label, with a green $ badge when this click would
+// trigger a real paid call — the "Show ..." (free, reuses an already
+// approved model) state passes costsMoney: false and gets no badge.
+function setButtonLabel(btn, label, costsMoney) {
+  btn.textContent = '';
+  if (costsMoney) {
+    const badge = document.createElement('span');
+    badge.className = 'cost-badge';
+    badge.textContent = '$';
+    btn.appendChild(badge);
+  }
+  btn.appendChild(document.createTextNode(label));
+}
+
 // Theme the diagram with this page's own palette instead of Mermaid's
 // generic default/dark themes — resolve the actual computed values of the
 // CSS custom properties already defined in :root (both light/dark are
@@ -533,7 +592,9 @@ document.getElementById('er-report-select').addEventListener('click', onErReport
 function renderUiFlowEditor() {
   const body = document.getElementById('uf-body');
   body.innerHTML = '';
-  document.getElementById('uf-approve-btn').disabled = !state.uiFlow || state.uiFlow.pages.length === 0;
+  const approveBtn = document.getElementById('uf-approve-btn');
+  approveBtn.style.display = state.uiFlow ? '' : 'none';
+  approveBtn.disabled = !state.uiFlow || state.uiFlow.pages.length === 0;
   if (!state.uiFlow) return;
 
   // One combined textarea for the whole page graph, not one per page — the
@@ -567,7 +628,7 @@ document.getElementById('uf-propose-btn').onclick = async () => {
   const statusEl = document.getElementById('uf-gen-status');
 
   if (btn.textContent === 'Show UI inventory') {
-    btn.textContent = 'Generate UI inventory';
+    setButtonLabel(btn, 'Generate UI inventory', true);
     const existing = state.existingUiFlow;
     if (!existing) return;
     state.uiFlow = existing.approved;
@@ -578,6 +639,7 @@ document.getElementById('uf-propose-btn').onclick = async () => {
   }
 
   const report = document.getElementById('uf-report-select').value;
+  if (!(await confirmPaidAction(`Generate a UI inventory for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.uiFlow = await api('/api/workflow/propose-ui-flow', {
@@ -634,8 +696,10 @@ function resetUiFlowSection() {
   state.existingUiFlow = null;
   document.getElementById('uf-body').innerHTML = '';
   document.getElementById('uf-diagrams').innerHTML = '';
-  document.getElementById('uf-approve-btn').disabled = true;
-  document.getElementById('uf-propose-btn').textContent = 'Generate UI inventory';
+  const approveBtn = document.getElementById('uf-approve-btn');
+  approveBtn.disabled = true;
+  approveBtn.style.display = 'none';
+  setButtonLabel(document.getElementById('uf-propose-btn'), 'Generate UI inventory', true);
   setStatus(document.getElementById('uf-gen-status'), '');
   setStatus(document.getElementById('uf-status'), '');
 }
@@ -652,7 +716,7 @@ async function onUiFlowReportChanged() {
     const existing = await api('/api/workflow/ui-flow-for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
     state.existingUiFlow = existing;
-    document.getElementById('uf-propose-btn').textContent = 'Show UI inventory';
+    setButtonLabel(document.getElementById('uf-propose-btn'), 'Show UI inventory', false);
     setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
@@ -667,7 +731,9 @@ document.getElementById('uf-report-select').addEventListener('click', onUiFlowRe
 function renderSequenceEditor() {
   const body = document.getElementById('seq-body');
   body.innerHTML = '';
-  document.getElementById('seq-approve-btn').disabled = !state.sequenceFlow || state.sequenceFlow.scenarios.length === 0;
+  const approveBtn = document.getElementById('seq-approve-btn');
+  approveBtn.style.display = state.sequenceFlow ? '' : 'none';
+  approveBtn.disabled = !state.sequenceFlow || state.sequenceFlow.scenarios.length === 0;
   if (!state.sequenceFlow) return;
 
   // One textarea per scenario — like Business workflow, not UI Inventory —
@@ -706,7 +772,7 @@ document.getElementById('seq-propose-btn').onclick = async () => {
   const statusEl = document.getElementById('seq-gen-status');
 
   if (btn.textContent === 'Show sequence flow') {
-    btn.textContent = 'Generate sequence flow';
+    setButtonLabel(btn, 'Generate sequence flow', true);
     const existing = state.existingSequenceFlow;
     if (!existing) return;
     state.sequenceFlow = existing.approved;
@@ -717,6 +783,7 @@ document.getElementById('seq-propose-btn').onclick = async () => {
   }
 
   const report = document.getElementById('seq-report-select').value;
+  if (!(await confirmPaidAction(`Generate a sequence flow model for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.sequenceFlow = await api('/api/workflow/propose-sequence', {
@@ -778,8 +845,10 @@ function resetSequenceSection() {
   state.existingSequenceFlow = null;
   document.getElementById('seq-body').innerHTML = '';
   document.getElementById('seq-diagrams').innerHTML = '';
-  document.getElementById('seq-approve-btn').disabled = true;
-  document.getElementById('seq-propose-btn').textContent = 'Generate sequence flow';
+  const approveBtn = document.getElementById('seq-approve-btn');
+  approveBtn.disabled = true;
+  approveBtn.style.display = 'none';
+  setButtonLabel(document.getElementById('seq-propose-btn'), 'Generate sequence flow', true);
   setStatus(document.getElementById('seq-gen-status'), '');
   setStatus(document.getElementById('seq-status'), '');
 }
@@ -793,7 +862,7 @@ async function onSequenceReportChanged() {
     const existing = await api('/api/workflow/sequence-for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
     state.existingSequenceFlow = existing;
-    document.getElementById('seq-propose-btn').textContent = 'Show sequence flow';
+    setButtonLabel(document.getElementById('seq-propose-btn'), 'Show sequence flow', false);
     setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
@@ -807,7 +876,9 @@ document.getElementById('seq-report-select').addEventListener('click', onSequenc
 function renderWorkflowEditor() {
   const body = document.getElementById('wf-body');
   body.innerHTML = '';
-  document.getElementById('wf-approve-btn').disabled = !state.workflow || state.workflow.entities.length === 0;
+  const approveBtn = document.getElementById('wf-approve-btn');
+  approveBtn.style.display = state.workflow ? '' : 'none';
+  approveBtn.disabled = !state.workflow || state.workflow.entities.length === 0;
   if (!state.workflow) return;
 
   for (const entity of state.workflow.entities) {
@@ -847,7 +918,7 @@ document.getElementById('wf-propose-btn').onclick = async () => {
   // generating a new one, then flip the button back to its normal "Generate"
   // behavior in case the human wants a fresh one anyway.
   if (btn.textContent === 'Show workflow model') {
-    btn.textContent = 'Generate workflow model';
+    setButtonLabel(btn, 'Generate workflow model', true);
     const existing = state.existingWorkflow;
     if (!existing) return;
     state.workflow = existing.approved;
@@ -858,6 +929,7 @@ document.getElementById('wf-propose-btn').onclick = async () => {
   }
 
   const report = document.getElementById('wf-report-select').value;
+  if (!(await confirmPaidAction(`Generate a workflow model for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.workflow = await api('/api/workflow/propose', {
@@ -937,8 +1009,10 @@ function resetWorkflowSection() {
   state.existingWorkflow = null;
   document.getElementById('wf-body').innerHTML = '';
   document.getElementById('wf-diagrams').innerHTML = '';
-  document.getElementById('wf-approve-btn').disabled = true;
-  document.getElementById('wf-propose-btn').textContent = 'Generate workflow model';
+  const approveBtn = document.getElementById('wf-approve-btn');
+  approveBtn.disabled = true;
+  approveBtn.style.display = 'none';
+  setButtonLabel(document.getElementById('wf-propose-btn'), 'Generate workflow model', true);
   setStatus(document.getElementById('wf-gen-status'), '');
   setStatus(document.getElementById('wf-status'), '');
 }
@@ -957,7 +1031,7 @@ async function onWorkflowReportChanged() {
     const existing = await api('/api/workflow/for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
     state.existingWorkflow = existing;
-    document.getElementById('wf-propose-btn').textContent = 'Show workflow model';
+    setButtonLabel(document.getElementById('wf-propose-btn'), 'Show workflow model', false);
     setStatus(statusEl, 'An approved model already exists for this report.');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');

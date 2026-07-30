@@ -72,6 +72,19 @@
   }
   button.ghost:hover { background: var(--surface-2); }
   button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.78rem; padding: 0.2rem 0.4rem; }
+  .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
+
+  .confirm-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .confirm-modal-overlay.open { display: flex; }
+  .confirm-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem; max-width: 26rem;
+  }
+  .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
+  .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
   main { flex: 1; padding: 1.75rem clamp(1rem, 4vw, 3rem); max-width: 780px; }
   main h2 { margin: 0 0 0.15rem; font-size: 1.15rem; }
@@ -126,7 +139,7 @@
       <div class="subtitle">Generate a fresh JSON report — calls Claude, costs money, can take a few minutes</div>
     </div>
     <select id="discovery-descriptor-select"></select>
-    <button class="primary" id="run-discovery-btn">Run discovery</button>
+    <button class="primary" id="run-discovery-btn"><span class="cost-badge">$</span>Run discovery</button>
     <div id="discovery-status"></div>
   </aside>
   <main>
@@ -153,7 +166,38 @@
   </main>
   </div>
 
+<div class="confirm-modal-overlay" id="confirm-modal-overlay">
+  <div class="confirm-modal">
+    <p id="confirm-modal-message"></p>
+    <div class="confirm-modal-actions">
+      <button class="ghost" id="confirm-modal-cancel">Cancel</button>
+      <button class="primary" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// Any button that calls Claude for real must be confirmed first — resolves
+// true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
+// the backdrop all resolve false without touching the network.
+function confirmPaidAction(message) {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-modal-message').textContent = message;
+    const overlay = document.getElementById('confirm-modal-overlay');
+    overlay.classList.add('open');
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
+    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
+}
+
 const state = { names: [], current: null, components: [] };
 
 const FIELD_DEFS = {
@@ -404,6 +448,7 @@ document.getElementById('run-discovery-btn').onclick = async () => {
   const statusEl = document.getElementById('discovery-status');
   const btn = document.getElementById('run-discovery-btn');
   if (!name) return;
+  if (!(await confirmPaidAction(`Run discovery on "${name}"? This calls Claude and costs real money, and can take a few minutes.`))) return;
   btn.disabled = true;
   statusEl.className = '';
   statusEl.textContent = `Running discovery on "${name}" — calling Claude, this can take a few minutes…`;

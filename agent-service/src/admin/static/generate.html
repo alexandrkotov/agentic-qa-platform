@@ -69,6 +69,19 @@
   }
   button.ghost:hover { background: var(--surface-2); }
   button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.76rem; padding: 0.1rem 0.3rem; }
+  .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
+
+  .confirm-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .confirm-modal-overlay.open { display: flex; }
+  .confirm-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem; max-width: 26rem;
+  }
+  .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
+  .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
   .banner { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.83rem; margin-bottom: 1rem; }
 
@@ -115,7 +128,7 @@
     </div>
     <div id="grouping-body"></div>
     <div class="row">
-      <button class="primary" id="approve-btn" disabled>Approve grouping</button>
+      <button class="primary" id="approve-btn" disabled style="display:none">Approve grouping</button>
       <span id="status"></span>
     </div>
   </section>
@@ -133,12 +146,12 @@
       <input type="text" id="spec-groups-filter" placeholder="e.g. security,customers" style="width:12rem">
     </div>
     <div class="row">
-      <button class="primary" id="spec-generate-btn">Generate spec</button>
+      <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate spec</button>
       <span id="spec-gen-status"></span>
     </div>
     <div id="spec-body"></div>
     <div class="row">
-      <button class="primary" id="spec-approve-btn" disabled>Approve spec</button>
+      <button class="primary" id="spec-approve-btn" disabled style="display:none">Approve spec</button>
       <span id="spec-status"></span>
     </div>
   </section>
@@ -159,7 +172,38 @@
   </section>
 </main>
 
+<div class="confirm-modal-overlay" id="confirm-modal-overlay">
+  <div class="confirm-modal">
+    <p id="confirm-modal-message"></p>
+    <div class="confirm-modal-actions">
+      <button class="ghost" id="confirm-modal-cancel">Cancel</button>
+      <button class="primary" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// Any button that calls Claude for real must be confirmed first — resolves
+// true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
+// the backdrop all resolve false without touching the network.
+function confirmPaidAction(message) {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-modal-message').textContent = message;
+    const overlay = document.getElementById('confirm-modal-overlay');
+    overlay.classList.add('open');
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
+    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
+}
+
 const state = { grouping: null };
 
 async function api(path, opts) {
@@ -228,7 +272,12 @@ function renderScenarioRow(name, currentKey) {
 function renderGrouping() {
   const body = document.getElementById('grouping-body');
   body.innerHTML = '';
-  document.getElementById('approve-btn').disabled = !state.grouping;
+  // Hidden, not just disabled, while the block is still collapsed (no
+  // grouping loaded yet) — a disabled button sitting there implies there's
+  // something to approve once enabled, which isn't true until Generate runs.
+  const approveBtn = document.getElementById('approve-btn');
+  approveBtn.style.display = state.grouping ? '' : 'none';
+  approveBtn.disabled = !state.grouping;
   if (!state.grouping) return;
   const g = state.grouping;
 
@@ -322,7 +371,9 @@ async function loadGroupingList() {
 function renderSpec() {
   const body = document.getElementById('spec-body');
   body.innerHTML = '';
-  document.getElementById('spec-approve-btn').disabled = !specState || specState.scenarios.length === 0;
+  const approveBtn = document.getElementById('spec-approve-btn');
+  approveBtn.style.display = specState ? '' : 'none';
+  approveBtn.disabled = !specState || specState.scenarios.length === 0;
   if (!specState) return;
 
   for (const scenario of specState.scenarios) {
@@ -367,6 +418,7 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   const groupsRaw = document.getElementById('spec-groups-filter').value.trim();
   const groups = groupsRaw ? groupsRaw.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
   const statusEl = document.getElementById('spec-gen-status');
+  if (!(await confirmPaidAction(`Generate a structured spec from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     const result = await api('/api/generate/spec', {
