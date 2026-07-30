@@ -177,9 +177,12 @@ All three agents are **independent, manually-triggered tools** — "run it, get 
 human takes it from there" — not steps in an automated pipeline. None is invoked by the test
 suite itself or by CI. See [`agent-service/README.md`](agent-service/README.md) for the full
 technical reference (provider abstraction, MCP tool configs, how to add a new tool/phase,
-Claude-vs-OpenAI comparison) and [docs/phase4-status.md](docs/phase4-status.md) for the full
+Claude-vs-OpenAI comparison), [docs/phase4-status.md](docs/phase4-status.md) for the full
 E2E Agent design history, including every guardrail adversarially tested and the live
-verification runs across each failure type.
+verification runs across each failure type, and [docs/phase5-status.md](docs/phase5-status.md)
+for the Generate Agent redesign above — why the old hardcoded-domain version had to go (with real
+evidence, not a hypothetical), the propose→approve→apply design, and every gap the final live
+end-to-end run surfaced and fixed.
 
 Every AI call, from any of the three agents, is logged with its token usage and (where priced)
 its cost to a persistent local report, viewable live at `http://localhost:8080/usage/` (served
