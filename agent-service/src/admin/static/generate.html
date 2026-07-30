@@ -148,6 +148,7 @@
     </div>
     <div class="row">
       <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate spec</button>
+      <button class="primary" id="show-approved-spec-btn" style="display:none">Show last approved spec</button>
       <span id="spec-gen-status"></span>
     </div>
     <div id="spec-body"></div>
@@ -403,8 +404,12 @@ document.getElementById('approve-btn').onclick = async () => {
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
     // Stage 2's dropdown was only ever populated once at page load — without
     // this, a freshly-approved grouping exists on disk but stays invisible
-    // there until a full page reload.
+    // there until a full page reload. Setting .value via JS doesn't fire
+    // "change" either, so also re-check for an approved spec explicitly —
+    // otherwise "Show last approved spec" could stay stuck showing/hiding
+    // stale state left over from whatever grouping was selected before.
     await loadGroupingList();
+    await onGroupingChanged();
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
@@ -413,6 +418,7 @@ document.getElementById('approve-btn').onclick = async () => {
 // --- Stage 2: spec ----------------------------------------------------------
 
 let specState = null; // { generatedAt, sourceGroupingPath, scenarios: [...] }
+let existingApprovedSpec = null;
 
 async function loadGroupingList() {
   const names = await api('/api/generate/groupings');
@@ -420,6 +426,46 @@ async function loadGroupingList() {
   select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.length > 0) select.value = names[names.length - 1];
 }
+
+// Same "Show/Hide last approved ..." idea as Stage 1's grouping button — lets
+// reselecting a grouping that already has an approved spec reveal it for
+// free, instead of forcing a fresh (paid) Generate spec call just to see it.
+async function onGroupingChanged() {
+  const btn = document.getElementById('show-approved-spec-btn');
+  btn.style.display = 'none';
+  btn.textContent = 'Show last approved spec';
+  existingApprovedSpec = null;
+  const grouping = document.getElementById('spec-grouping-select').value;
+  if (!grouping) return;
+  try {
+    const existing = await api('/api/generate/spec-for-grouping?grouping=' + encodeURIComponent(grouping));
+    if (!existing) return;
+    existingApprovedSpec = existing;
+    btn.style.display = '';
+  } catch (e) {
+    setStatus(document.getElementById('spec-gen-status'), 'Failed to check for an existing approved spec: ' + e.message, 'err');
+  }
+}
+// Both "change" and "click" — see report-select's onReportChanged comment
+// for why a native <select> needs both to catch a same-option reselect.
+document.getElementById('spec-grouping-select').addEventListener('change', onGroupingChanged);
+document.getElementById('spec-grouping-select').addEventListener('click', onGroupingChanged);
+
+document.getElementById('show-approved-spec-btn').onclick = () => {
+  const btn = document.getElementById('show-approved-spec-btn');
+  if (btn.textContent === 'Hide last approved spec') {
+    specState = null;
+    renderSpec();
+    btn.textContent = 'Show last approved spec';
+    setStatus(document.getElementById('spec-gen-status'), '');
+    return;
+  }
+  if (!existingApprovedSpec) return;
+  specState = existingApprovedSpec.approved;
+  renderSpec();
+  btn.textContent = 'Hide last approved spec';
+  setStatus(document.getElementById('spec-gen-status'), 'Loaded approved spec from ' + existingApprovedSpec.path, 'ok');
+};
 
 function renderSpec() {
   const body = document.getElementById('spec-body');
@@ -481,6 +527,9 @@ document.getElementById('spec-generate-btn').onclick = async () => {
     });
     specState = result.spec;
     renderSpec();
+    // What's on screen is now a fresh (unapproved) generation, not the
+    // approved snapshot the toggle button may have been showing.
+    document.getElementById('show-approved-spec-btn').textContent = 'Show last approved spec';
     setStatus(statusEl, result.failures.length ? `Done, but failed: ${result.failures.join(', ')}` : 'Done.', result.failures.length ? 'err' : 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
@@ -570,7 +619,7 @@ document.getElementById('save-corr-btn').onclick = async () => {
 };
 
 loadReportList().then(onReportChanged);
-loadGroupingList();
+loadGroupingList().then(onGroupingChanged);
 </script>
 </body>
 </html>

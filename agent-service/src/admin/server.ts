@@ -685,6 +685,33 @@ app.get('/api/generate/groupings', async (_req, res) => {
   res.json(names);
 });
 
+const SPEC_APPROVED_NAME_PATTERN = /^generate-spec-approved-[A-Za-z0-9:_.-]+\.json$/;
+
+/** Latest approved spec whose sourceGroupingPath matches this grouping, if any — same reuse-existing-approval idea as /api/generate/grouping-for-report, one layer down the pipeline. */
+app.get('/api/generate/spec-for-grouping', async (req, res) => {
+  try {
+    const groupingName = req.query.grouping;
+    if (typeof groupingName !== 'string' || !groupingName) {
+      res.status(400).json({ error: '"grouping" query param is required' });
+      return;
+    }
+    const targetPath = groupingFilePath(groupingName);
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => SPEC_APPROVED_NAME_PATTERN.test(f)).sort();
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const candidatePath = join(config.reportsDir, candidates[i]);
+      const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
+      if (raw.sourceGroupingPath !== targetPath) continue;
+      const approved = ApprovedSpecSchema.parse(raw);
+      res.json({ path: candidatePath, approved });
+      return;
+    }
+    res.json(null);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/generate/spec', async (req, res) => {
   try {
     const { grouping, descriptor, maxScenarios, groups } = req.body as {
