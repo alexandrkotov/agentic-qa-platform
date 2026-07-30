@@ -770,3 +770,10 @@ Also thickened the hub's cost-log dollar icon with a second vertical stroke (mat
 style) per feedback that the single-line version read less clearly at a glance — verified in an
 isolated test page at both 21px and 120px before touching the real file, the lesson from the toolbox
 icon saga just above.
+
+The toolbox saga's actual ending: asked whether the open-toolbox concept was worth continuing to
+fight, given three iterations still hadn't produced something crisp at 21px. Rendered a side-by-side
+comparison (wrench alone, the current toolbox, the old gear) at both 21px and 120px to make the
+trade-off concrete instead of describing it in the abstract — recommended the wrench (as legible as
+the gear, still reads as "tools" rather than "settings"). Landed on the wrench (Feather's `tool` glyph)
+replacing the toolbox entirely. Confirmed on the real hub card.
