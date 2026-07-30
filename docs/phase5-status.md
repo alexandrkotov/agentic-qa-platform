@@ -883,3 +883,30 @@ containing a 15-scenario "orders" group, confirming (a) filtering by plain "orde
 fully batches all 15 scenarios into `orders-1/2/3`, (b) unrequested groups are excluded entirely, (c)
 "ungrouped" is only included when explicitly named, (d) an empty match still hits the existing 400
 error path. `pnpm --dir agent-service typecheck` also passed clean.
+
+## Addendum: Stage 1 wording + "Show last approved grouping" (2026-07-30)
+
+Two more Stage 1 requests before resuming real spec generation, both driven by actually using the
+page. First, the threshold field's label — "Give up and show one flat list if more than this % of
+scenarios don't fit a group" — was one long run-on sentence competing for space with the rest of the
+row. Shortened to "Ungrouped threshold" with the full explanation moved into a hover tooltip, the same
+treatment already used for "Scenarios per Claude call" and "Limit to groups" right next to it in Stage
+2, so the row reads consistently now.
+
+Second: Stage 1 only ever offered a fresh (mechanical, free) recompute — reselecting a report that
+already had an approved grouping from an earlier session gave no way to see that grouping again short
+of digging through `reports/*.json` by hand. Added a "Show last approved grouping" button next to
+Generate grouping, backed by a new `GET /api/generate/grouping-for-report` route in
+[server.ts](../agent-service/src/admin/server.ts) that mirrors the existing
+`/api/workflow/for-report` pattern from Visualize: scans `generate-grouping-approved-*.json` files,
+picks the most recent one whose `sourceReportPath` matches the selected report, and returns it (or
+`null`). The button stays hidden until that check finds something, on both page load and report
+reselect (reusing the same "change" + "click" dual-listener trick as Visualize's report dropdowns,
+needed because re-picking the already-selected option fires neither event alone).
+
+Verified live against the real running `workbench` container and its actual `reports/` data (no
+Claude calls involved — this route only reads already-approved JSON off disk): confirmed via `curl`
+that the endpoint returns the latest approved grouping for a report with grouping history and `null`
+for one without, then drove the actual page with a headless Playwright session — selecting the report
+with history shows the button and clicking it renders all 4 of its approved groups; selecting a report
+with no grouping history keeps the button hidden.
