@@ -140,8 +140,8 @@
       <select id="spec-grouping-select"></select>
       <label>Descriptor</label>
       <input type="text" id="spec-descriptor" value="orderflow" style="width:8rem">
-      <label>Max scenarios/group</label>
-      <input type="number" id="spec-max-scenarios" value="6" style="width:4rem">
+      <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
+      <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
       <label>Groups (optional, comma-separated)</label>
       <input type="text" id="spec-groups-filter" placeholder="e.g. security,customers" style="width:12rem">
     </div>
