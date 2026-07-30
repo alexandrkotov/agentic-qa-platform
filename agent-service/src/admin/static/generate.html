@@ -356,6 +356,10 @@ document.getElementById('approve-btn').onclick = async () => {
       body: JSON.stringify(state.grouping),
     });
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+    // Stage 2's dropdown was only ever populated once at page load — without
+    // this, a freshly-approved grouping exists on disk but stays invisible
+    // there until a full page reload.
+    await loadGroupingList();
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
