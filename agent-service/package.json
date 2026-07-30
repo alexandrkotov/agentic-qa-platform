@@ -13,7 +13,7 @@
     "e2e": "tsx src/index.ts e2e",
     "e2e:openai": "tsx src/index.ts e2e --provider openai",
     "apply-fix": "tsx src/index.ts apply-fix",
-    "admin": "tsx src/admin/server.ts",
+    "workbench": "tsx src/admin/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

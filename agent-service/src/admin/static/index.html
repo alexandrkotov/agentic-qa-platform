@@ -185,6 +185,10 @@ function confirmPaidAction(message) {
     document.getElementById('confirm-modal-message').textContent = message;
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
+    // Cancel, not "Yes, proceed", is the default — focusing it means Enter
+    // does the safe thing on a modal that exists specifically to warn about
+    // spending real money.
+    document.getElementById('confirm-modal-cancel').focus();
     const cleanup = (result) => {
       overlay.classList.remove('open');
       document.removeEventListener('keydown', onKey);

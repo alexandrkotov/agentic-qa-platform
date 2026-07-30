@@ -86,11 +86,11 @@ services:
     depends_on:
       - kafka
 
-  # Admin UI: the System Descriptor editor (agent-service/descriptors/*.json),
-  # Discovery (runs the same agent `pnpm discovery` does), and the Generate
-  # pipeline's review pages (grouping/spec approval, per-descriptor scenario
-  # corrections) — one small Express app, its own image (Dockerfile.admin)
-  # rather than the full agent-service one. Needs both descriptors/
+  # Workbench: the System Descriptor editor (agent-service/descriptors/*.json),
+  # Discovery (runs the same agent `pnpm discovery` does), Analysis, and the
+  # Generate pipeline's review pages (grouping/spec approval, per-descriptor
+  # scenario corrections) — one small Express app, its own image
+  # (Dockerfile.workbench) rather than the full agent-service one. Needs both descriptors/
   # (read/write live) and reports/ (discovery writes reports here; Stage 1/2
   # read discovery reports and write/read their own generate-*.json
   # artifacts).
@@ -116,13 +116,13 @@ services:
   #
   # env_file: this service had no ANTHROPIC_API_KEY at all before Discovery
   # and Stage 2 spec generation were added to it — neither had ever actually
-  # been exercised through this container (only through `pnpm admin` on the
-  # host, which picks up agent-service/.env itself via dotenv). Same file
+  # been exercised through this container (only through `pnpm workbench` on
+  # the host, which picks up agent-service/.env itself via dotenv). Same file
   # here, so container and host stay in sync automatically.
-  admin:
+  workbench:
     build:
       context: ./agent-service
-      dockerfile: Dockerfile.admin
+      dockerfile: Dockerfile.workbench
     ports: ["4400:4400"]
     env_file: ./agent-service/.env
     volumes:

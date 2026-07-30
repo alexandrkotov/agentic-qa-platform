@@ -159,7 +159,7 @@ app.post('/api/descriptors', async (req, res) => {
 // something to call on every page load.
 //
 // This server runs inside a container on the app stack's own Docker
-// network (see docker-compose.yml's admin service — plain bridge + `ports:`,
+// network (see docker-compose.yml's workbench service — plain bridge + `ports:`,
 // not network_mode: host, which doesn't reliably forward to a real host
 // browser under Docker Desktop/WSL2). Every descriptor's component URLs are
 // written as plain "localhost:PORT", correct for `pnpm discovery` running on
@@ -718,6 +718,6 @@ app.post('/api/generate/spec/approve', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[admin] Descriptor editor: http://localhost:${PORT}`);
-  console.log(`[admin] Serving descriptors from ${DESCRIPTORS_DIR}`);
+  console.log(`[workbench] Descriptor editor: http://localhost:${PORT}`);
+  console.log(`[workbench] Serving descriptors from ${DESCRIPTORS_DIR}`);
 });

@@ -115,7 +115,7 @@ side channel (a Kafka outage never blocks the request), not demo data seeded by 
 | **Generate** | Turns that discovery report into a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) through a three-stage, human-approved pipeline: deterministic grouping, one structured-spec Claude call per group, then a deterministic template renderer. No stage runs on top of the previous one's output until a human approves it. | [`agent-service/src/agents/generate/`](agent-service/src/agents/generate/) |
 | **E2E Agent** | Runs a real Playwright scenario, diagnoses only actual failures (via Claude, once), and applies an exact guarded patch only after explicit human approval. Two separate stages — details below. | [`agent-service/src/agents/e2e/`](agent-service/src/agents/e2e/) |
 
-**Generate Agent, in detail** — three stages, each approved by a human (admin UI at `:4400`, or
+**Generate Agent, in detail** — three stages, each approved by a human (workbench UI at `:4400`, or
 the CLI + hand-edited JSON) before the next one runs:
 
 - **Stage 1 — group** (`pnpm generate:group`): a deterministic heuristic, no LLM call. Clusters
@@ -137,7 +137,7 @@ the CLI + hand-edited JSON) before the next one runs:
   assertions (status code, response field, DB row, Kafka message, etc.). The model is never
   trusted with which group or scenario-type something belongs to (that's already known data, filled
   in mechanically) — only with the content of the check itself.
-- A human approves the spec (hand-editing any scenario's JSON directly in the admin UI). Past this
+- A human approves the spec (hand-editing any scenario's JSON directly in the workbench UI). Past this
   point the scenario list can't change without going back through review.
 - **Stage 3 — render** (`pnpm generate:render`): no LLM at all. A small template layer turns the
   approved structured spec into `.feature` + `.steps.ts`, with every HTTP/DB/Kafka/UI mechanic
@@ -237,14 +237,14 @@ Deliberately not part of `app`/`frontend` (the system *under test* has no busine
 framework's own configuration) and deliberately plain static HTML pages, not a React/Vite app —
 neither feature is big enough to justify that tooling.
 
-Runs as the `admin` service in `docker-compose.yml` — starts with everything else, no separate
-step. Built from a dedicated [`agent-service/Dockerfile.admin`](agent-service/Dockerfile.admin)
+Runs as the `workbench` service in `docker-compose.yml` — starts with everything else, no separate
+step. Built from a dedicated [`agent-service/Dockerfile.workbench`](agent-service/Dockerfile.workbench)
 rather than the full agent-service image, though it now installs agent-service's full
 `package.json` (once the Generate pipeline pages needed to run real Claude calls themselves, the
 same `ClaudeProvider`/MCP/usage-logging machinery the main CLI uses, "just express + zod" stopped
 being true). Both `agent-service/descriptors/` and `agent-service/reports/` are bind-mounted
 read-write, so edits and generated files made through the browser land on the host filesystem like
-any other change. (`pnpm admin` from `agent-service/` still works too, for iterating on the
+any other change. (`pnpm workbench` from `agent-service/` still works too, for iterating on the
 editor's own code without rebuilding the image.)
 
 ### The test suite
@@ -380,7 +380,7 @@ Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres
 humans only, nothing in this repo depends on it), `report` (nginx, `:8080` — serves the Cucumber
 test report at `/` once you generate one in step 4, and the AI usage/cost log at `/usage/`, which
 shows a friendly placeholder until any agent call happens in step 5 or 6; the same container also
-serves the hub page above on the default port, `:80`), and `admin` (the System Descriptor editor +
+serves the hub page above on the default port, `:80`), and `workbench` (the System Descriptor editor +
 Generate pipeline review pages, `:4400` — see below).
 
 Kafka is intentionally not persisted across rebuilds (no volume) — it's a derived event stream,
@@ -427,16 +427,16 @@ node_modules/.pnpm/@playwright+mcp@*/node_modules/@playwright/mcp/node_modules/.
 pnpm discovery          # Phase 1 — explores descriptors/orderflow.json by default, writes agent-service/reports/discovery-<timestamp>.json
 pnpm discovery -- --descriptor descriptors/kafka-demo.json   # or point it at the bare-Kafka descriptor instead
 
-# Phase 2 — three human-approved stages (see "Generate Agent, in detail" above). The admin UI
+# Phase 2 — three human-approved stages (see "Generate Agent, in detail" above). The workbench UI
 # below drives all three end to end; the CLI equivalents, run in sequence:
 pnpm generate:group                                                          # Stage 1 — writes a proposed grouping
 pnpm generate:spec -- --grouping reports/generate-grouping-approved-<ts>.json # Stage 2 — after approving it
 pnpm generate:render -- --spec reports/generate-spec-approved-<ts>.json      # Stage 3 — after approving that
 
 # The web editor for descriptor JSON, and the Generate pipeline's own review pages, already run
-# via `docker compose up` (http://localhost:4400/generate.html) -- pnpm admin below is only for
+# via `docker compose up` (http://localhost:4400/generate.html) -- pnpm workbench below is only for
 # iterating on the editor's own code without rebuilding its Docker image:
-pnpm admin              # http://localhost:4400
+pnpm workbench          # http://localhost:4400
 ```
 
 See [`agent-service/README.md`](agent-service/README.md) for provider switching
