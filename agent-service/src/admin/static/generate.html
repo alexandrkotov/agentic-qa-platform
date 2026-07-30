@@ -104,6 +104,7 @@
   .corr-row { display: flex; gap: 0.6rem; margin-bottom: 0.6rem; align-items: flex-start; }
   .corr-row input { flex: 0 0 260px; }
   .corr-row textarea { flex: 1; }
+  .corr-row.relevant { background: var(--accent-bg); border-radius: 6px; border-left: 3px solid var(--accent); padding: 0.4rem 0.5rem; margin: 0 0 0.6rem -0.5rem; }
 </style>
 </head>
 <body>
@@ -160,7 +161,7 @@
   </section>
 
   <section>
-    <h2>Scenario corrections</h2>
+    <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match Stage 2's currently shown spec)</span></h2>
     <div class="row">
       <label title="Derived from the report selected in Stage 1 — not editable.">Descriptor ⓘ</label>
       <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable.">
@@ -491,6 +492,7 @@ document.getElementById('show-approved-spec-btn').onclick = () => {
   if (btn.textContent === 'Hide last approved spec') {
     specState = null;
     renderSpec();
+    renderCorrections();
     btn.textContent = 'Show last approved spec';
     setStatus(document.getElementById('spec-gen-status'), '');
     return;
@@ -498,6 +500,7 @@ document.getElementById('show-approved-spec-btn').onclick = () => {
   if (!existingApprovedSpec) return;
   specState = existingApprovedSpec.approved;
   renderSpec();
+  renderCorrections();
   btn.textContent = 'Hide last approved spec';
   setStatus(document.getElementById('spec-gen-status'), 'Loaded approved spec from ' + existingApprovedSpec.path, 'ok');
 };
@@ -562,6 +565,7 @@ document.getElementById('spec-generate-btn').onclick = async () => {
     });
     specState = result.spec;
     renderSpec();
+    renderCorrections();
     // What's on screen is now a fresh (unapproved) generation, not the
     // approved snapshot the toggle button may have been showing.
     document.getElementById('show-approved-spec-btn').textContent = 'Show last approved spec';
@@ -589,12 +593,24 @@ document.getElementById('spec-approve-btn').onclick = async () => {
 
 let corrections = {};
 
+// Corrections are stored per-descriptor (all groups mixed together — see
+// corrections.ts), so Load pulls in far more than whatever group Stage 2
+// currently shows. Highlighting narrows that down visually: a row matches
+// when its scenario name is one Stage 2's currently-shown spec (freshly
+// generated or loaded via "Show last approved spec") actually contains —
+// i.e. the ones that would actually be sent to Claude if Generate spec ran
+// again right now. specState is Stage 2's own state.
+function relevantCorrectionNames() {
+  return specState ? new Set(specState.scenarios.map((s) => s.scenarioName)) : new Set();
+}
+
 function renderCorrections() {
   const body = document.getElementById('corr-body');
   body.innerHTML = '';
+  const relevant = relevantCorrectionNames();
   for (const scenarioName of Object.keys(corrections)) {
     const row = document.createElement('div');
-    row.className = 'corr-row';
+    row.className = 'corr-row' + (relevant.has(scenarioName) ? ' relevant' : '');
     const nameInput = document.createElement('input');
     nameInput.type = 'text'; nameInput.value = scenarioName;
     nameInput.placeholder = 'Exact scenario name';
