@@ -658,3 +658,13 @@ that leaves the container mid-gesture keeps panning instead of stopping dead at 
 with real synthesized mouse events (`page.mouse.down()`/`move()`/`up()`, not just direct DOM property
 pokes): cursor and a `panning` class toggle correctly across the gesture, and a 150×100px drag actually
 moved `scrollLeft`/`scrollTop` by exactly that delta.
+
+User feedback caught a follow-up bug: the grab cursor only showed over the empty canvas around a
+diagram, staying a plain arrow over the diagram's own body. Cause was another leftover from an earlier
+fix — the modal's `<pre>` (which visually covers the whole diagram) had `cursor: default`, set to
+override the small-page-diagrams' `cursor: zoom-in` hint before panning existed; that `default` value
+won over the scroll container's `grab`/`grabbing` by CSS source order. Changed to `cursor: inherit`, so
+the `<pre>` now correctly picks up whichever grab/grabbing state its ancestor is in. Verified live by
+checking the *computed* cursor with the mouse positioned over an actual drawn shape inside the
+`<svg>` (a participant box's text node, via `document.elementFromPoint`), not just the SVG's own empty
+padding area — `grab` at rest, `grabbing` mid-drag.
