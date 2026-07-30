@@ -2,6 +2,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { Client } from 'pg';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
+import type { McpServerConfig } from '../providers/AgentProvider.ts';
 import { parseSystemDescriptor } from '../descriptor/schema.ts';
 import type { SystemDescriptor, PostgresComponent } from '../descriptor/schema.ts';
 import { assembleDiscovery } from '../descriptor/registry.ts';
@@ -95,11 +96,15 @@ export async function runDiscoveryForDescriptor(
   provider: AgentProvider,
   descriptor: SystemDescriptor,
   descriptorLabel: string,
+  /** Optional last-chance edit of the assembled MCP server list — e.g. admin/server.ts appends a browser --init-script to the web-ui entry so the frontend's own client-side API calls also get rewritten to this network's service names, not just the URL the agent navigates to. Unused (and behavior-identical to before) on the plain CLI path. */
+  mcpServersOverride?: (servers: McpServerConfig[]) => McpServerConfig[],
 ): Promise<string> {
   console.log('\n=== Phase 1: System Discovery ===\n');
   console.log(`Descriptor: ${descriptorLabel}`);
 
-  const { mcpServers, tools, componentPromptSections } = assembleDiscovery(descriptor);
+  const assembled = assembleDiscovery(descriptor);
+  const { tools, componentPromptSections } = assembled;
+  const mcpServers = mcpServersOverride ? mcpServersOverride(assembled.mcpServers) : assembled.mcpServers;
 
   const raw = await provider.run({
     systemPrompt: buildSystemPrompt(componentPromptSections, descriptor.extraInstructions),

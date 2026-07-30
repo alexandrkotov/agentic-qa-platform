@@ -1,6 +1,7 @@
 import express from 'express';
-import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
 import type { SystemDescriptor, SystemComponent } from '../descriptor/schema.ts';
@@ -187,7 +188,53 @@ function rewriteForContainerNetwork(descriptor: SystemDescriptor): SystemDescrip
   return { ...descriptor, components };
 }
 
+/** Effective base origin a rest-api component's own tools/frontend would call — baseUrl if set, else the swagger URL's own origin (mirrors restApiBuilder's own doc comment). */
+function restApiOrigin(descriptor: SystemDescriptor): string | null {
+  const restApi = descriptor.components.find((c): c is Extract<SystemComponent, { type: 'rest-api' }> => c.type === 'rest-api');
+  if (!restApi) return null;
+  return new URL(restApi.baseUrl ?? restApi.swaggerUrl).origin;
+}
+
+/**
+ * A browser page loaded via web-ui's rewritten URL (e.g. "frontend:5173")
+ * still runs the *frontend app's own* client-side JS, which calls the
+ * backend at whatever origin is baked into its own bundle — this project's
+ * frontend hardcodes "http://localhost:3000" (frontend/src/api/client.ts),
+ * correct for a real user's browser but wrong from inside this container.
+ * Found live: the discovery agent burned real API iterations trying (and
+ * mostly failing) to work around this itself via ad-hoc Playwright network
+ * interception before a run had to be aborted. Fixed deterministically
+ * instead — Chromium evaluates this script in every page before the app's
+ * own scripts run (playwright-mcp's --init-script), monkey-patching
+ * fetch/XHR to transparently redirect `fromOrigin` requests to `toOrigin`.
+ */
+function buildFrontendApiRewriteScript(fromOrigin: string, toOrigin: string): string {
+  return `(() => {
+  const FROM = ${JSON.stringify(fromOrigin)};
+  const TO = ${JSON.stringify(toOrigin)};
+  function rewrite(url) {
+    return typeof url === 'string' && url.indexOf(FROM) === 0 ? TO + url.slice(FROM.length) : url;
+  }
+  const originalFetch = window.fetch;
+  window.fetch = function (input, init) {
+    if (typeof input === 'string') {
+      input = rewrite(input);
+    } else if (input && typeof input === 'object' && 'url' in input) {
+      const url = rewrite(input.url);
+      if (url !== input.url) input = new Request(url, input);
+    }
+    return originalFetch.call(this, input, init);
+  };
+  const OriginalXHROpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    return OriginalXHROpen.call(this, method, rewrite(String(url)), ...rest);
+  };
+})();
+`;
+}
+
 app.post('/api/discovery/run', async (req, res) => {
+  let initScriptPath: string | null = null;
   try {
     const { descriptor: name } = req.body as { descriptor?: string };
     if (!name) {
@@ -197,11 +244,33 @@ app.post('/api/discovery/run', async (req, res) => {
     const path = descriptorPath(name);
     const descriptor = parseSystemDescriptor(JSON.parse(await readFile(path, 'utf-8')));
     const rewritten = rewriteForContainerNetwork(descriptor);
+
+    const hasWebUi = descriptor.components.some((c) => c.type === 'web-ui');
+    const fromOrigin = restApiOrigin(descriptor);
+    const toOrigin = restApiOrigin(rewritten);
+    if (hasWebUi && fromOrigin && toOrigin && fromOrigin !== toOrigin) {
+      initScriptPath = join(tmpdir(), `discovery-frontend-api-rewrite-${Date.now()}.js`);
+      await writeFile(initScriptPath, buildFrontendApiRewriteScript(fromOrigin, toOrigin), 'utf-8');
+    }
+    const savedInitScriptPath = initScriptPath;
+
     const provider = new ClaudeProvider();
-    const reportPath = await runDiscoveryForDescriptor(provider, rewritten, name);
+    const reportPath = await runDiscoveryForDescriptor(
+      provider,
+      rewritten,
+      name,
+      savedInitScriptPath
+        ? (servers) =>
+            servers.map((s) =>
+              s.command.includes('playwright-mcp') ? { ...s, args: [...s.args, '--init-script', savedInitScriptPath] } : s,
+            )
+        : undefined,
+    );
     res.json({ path: reportPath });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  } finally {
+    if (initScriptPath) await unlink(initScriptPath).catch(() => {});
   }
 });
 

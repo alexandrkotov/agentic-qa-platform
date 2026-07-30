@@ -7,7 +7,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: 'http://localhost:5173',
+    // "http://frontend:5173" (not just "http://localhost:5173"): the
+    // Dockerized discovery agent (agent-service/src/admin/server.ts) loads
+    // this frontend via the compose network's service name, since
+    // "localhost" from inside its own container isn't this app stack.
+    // Found live: the browser's own fetch calls succeeded at the network
+    // level but were blocked client-side as cross-origin once the Vite
+    // Host-header check and the frontend's hardcoded API origin were both
+    // already fixed. Local-only dev stack, not exposed beyond this machine.
+    origin: ['http://localhost:5173', 'http://frontend:5173'],
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
