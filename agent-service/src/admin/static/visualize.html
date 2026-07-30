@@ -162,20 +162,25 @@
      reliably in every environment), which is why it slipped through the
      first pass. */
   .diagram-modal-scroll svg foreignObject { overflow: visible; }
-  /* Text now fully renders, but its green background box (Mermaid's own
-     .labelBkg div / p, not the foreignObject) still stays pinned to the
-     foreignObject's original 200px — overflow: visible lets content paint
-     outside a box, it doesn't grow the box's own background-color fill.
-     `width: max-content` was the first attempt, but it forces single-line
-     sizing by definition regardless of white-space — these elements already
-     have white-space: break-spaces (verified live), so it was overriding
-     Mermaid's own wrapping instead of cooperating with it: one very long
-     unwrapped line, wide enough to overlap neighboring diagram elements. A
-     bounded width close to the original, with wrapping left alone, gives
-     the same clean multi-line label Mermaid already knew how to draw. */
+  /* The real culprit, found via a DevTools console dump of the actual
+     computed/inline styles on a real machine (this sandbox's font metrics
+     never reproduced the bug, so screenshots alone weren't enough to debug
+     it): Mermaid bakes an INLINE style directly onto its .labelBkg div —
+     `style="... white-space: nowrap; max-width: 200px; ..."`. An external
+     !important rule for `width` alone (the previous attempt) does win its
+     own property's cascade over that non-important inline style, but
+     `max-width` is a *different* property nothing here was overriding, so
+     the box model's `used width = min(width, max-width)` step clamped the
+     result straight back down to the inline 200px regardless — and
+     `white-space: nowrap` was never contested at all, so the label rendered
+     as one long unwrapped line instead of Mermaid's own multi-line layout.
+     Overriding both, alongside width, is what actually lets the label wrap
+     inside a box sized to fit it. */
   .diagram-modal-scroll svg foreignObject div,
   .diagram-modal-scroll svg foreignObject p {
     width: 230px !important;
+    max-width: 230px !important;
+    white-space: normal !important;
   }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
