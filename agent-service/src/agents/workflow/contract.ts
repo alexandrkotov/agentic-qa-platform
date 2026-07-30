@@ -70,3 +70,42 @@ export const ApprovedUiFlowSchema = ProposedUiFlowSchema.extend({
   approvedAt: z.string(),
 });
 export type ApprovedUiFlow = z.infer<typeof ApprovedUiFlowSchema>;
+
+// ---------------------------------------------------------------------------
+// Sequence flow — the "before coding" whiteboard diagram: an ordered,
+// cross-component trace of what happens for one specific scenario, unlike
+// Architecture's static topology or UI Inventory's unordered action list.
+// Which UI action calls which endpoint, which writes which tables, which
+// publishes which Kafka topic isn't spelled out anywhere in the report — it
+// has to be inferred, same reasoning as the other two propose/approve steps.
+// ---------------------------------------------------------------------------
+
+const SequenceStepSchema = z.object({
+  /** A report component key (e.g. "web_ui", "rest_api", "postgres") exactly as it appears in the source report, or the literal "User" for the human actor — never an invented participant name. */
+  from: z.string(),
+  to: z.string(),
+  /** What happens on this step, concretely — e.g. "POST /orders", "INSERT Order, OrderItem", "publish orders.status-changed". */
+  label: z.string(),
+});
+export type SequenceStep = z.infer<typeof SequenceStepSchema>;
+
+export const ScenarioFlowSchema = z.object({
+  /** Ideally matches a testScenarios[].name from the source report. */
+  name: z.string(),
+  description: z.string(),
+  steps: z.array(SequenceStepSchema),
+});
+export type ScenarioFlow = z.infer<typeof ScenarioFlowSchema>;
+
+export const ProposedSequenceFlowSchema = z.object({
+  generatedAt: z.string(),
+  sourceReportPath: z.string(),
+  /** A handful of representative cross-component scenarios, not every testScenario — see proposeSequenceFlow.ts's prompt. */
+  scenarios: z.array(ScenarioFlowSchema),
+});
+export type ProposedSequenceFlow = z.infer<typeof ProposedSequenceFlowSchema>;
+
+export const ApprovedSequenceFlowSchema = ProposedSequenceFlowSchema.extend({
+  approvedAt: z.string(),
+});
+export type ApprovedSequenceFlow = z.infer<typeof ApprovedSequenceFlowSchema>;

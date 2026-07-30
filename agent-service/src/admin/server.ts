@@ -21,17 +21,21 @@ import {
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
 import { proposeWorkflow } from '../agents/workflow/propose.ts';
 import { proposeUiFlow } from '../agents/workflow/proposeUiFlow.ts';
+import { proposeSequenceFlow } from '../agents/workflow/proposeSequenceFlow.ts';
 import {
   renderErDiagram,
   renderStateDiagram,
   renderArchitectureDiagram,
   renderUiFlowDiagram,
+  renderSequenceDiagram,
 } from '../agents/workflow/render.ts';
 import {
   ProposedWorkflowSchema,
   ApprovedWorkflowSchema,
   ProposedUiFlowSchema,
   ApprovedUiFlowSchema,
+  ProposedSequenceFlowSchema,
+  ApprovedSequenceFlowSchema,
 } from '../agents/workflow/contract.ts';
 import { ClaudeProvider } from '../providers/ClaudeProvider.ts';
 import { config } from '../config.ts';
@@ -474,6 +478,72 @@ app.post('/api/workflow/approve-ui-flow', async (req, res) => {
     const outPath = join(config.reportsDir, `generate-ui-flow-approved-${timestamp}.json`);
     await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
     res.status(201).json({ path: outPath, approved, rendered: renderUiFlowDiagram(approved) });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+const SEQUENCE_APPROVED_NAME_PATTERN = /^generate-sequence-approved-[A-Za-z0-9:_.-]+\.json$/;
+
+/** Same reuse-existing-approved-model idea as /api/workflow/for-report, for sequence flow models instead. */
+app.get('/api/workflow/sequence-for-report', async (req, res) => {
+  try {
+    const reportName = req.query.report;
+    if (typeof reportName !== 'string' || !reportName) {
+      res.status(400).json({ error: '"report" query param is required' });
+      return;
+    }
+    const targetPath = reportFilePath(reportName);
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => SEQUENCE_APPROVED_NAME_PATTERN.test(f)).sort();
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const candidatePath = join(config.reportsDir, candidates[i]);
+      const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
+      if (raw.sourceReportPath !== targetPath) continue;
+      const approved = ApprovedSequenceFlowSchema.parse(raw);
+      res.json({ path: candidatePath, approved, rendered: approved.scenarios.map(renderSequenceDiagram) });
+      return;
+    }
+    res.json(null);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/propose-sequence', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const path = reportFilePath(reportName);
+    const report = parseDiscoveryReport(JSON.parse(await readFile(path, 'utf-8')));
+    const provider = new ClaudeProvider();
+    const proposed = await proposeSequenceFlow(provider, report, path);
+    res.json(proposed);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Model response failed validation', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/approve-sequence', async (req, res) => {
+  try {
+    const proposed = ProposedSequenceFlowSchema.parse(req.body);
+    const approved = ApprovedSequenceFlowSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
+    await mkdir(config.reportsDir, { recursive: true });
+    const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
+    const outPath = join(config.reportsDir, `generate-sequence-approved-${timestamp}.json`);
+    await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
+    res.status(201).json({ path: outPath, approved, rendered: approved.scenarios.map(renderSequenceDiagram) });
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });

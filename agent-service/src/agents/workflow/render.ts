@@ -1,5 +1,5 @@
 import type { DiscoveryReport } from '../generate/reportSchema.ts';
-import type { EntityWorkflow, UiPageFlow } from './contract.ts';
+import type { EntityWorkflow, UiPageFlow, ScenarioFlow } from './contract.ts';
 
 // ---------------------------------------------------------------------------
 // Pure functions, no LLM: structured data -> Mermaid diagram text. Mirrors
@@ -256,4 +256,44 @@ export function renderUiFlowDiagram(flow: { pages: UiPageFlow[] }): RenderedUiFl
   });
   const lines = ['flowchart LR', ...nodeLines, ...edgeLines];
   return { mermaid: lines.join('\n') };
+}
+
+export interface RenderedSequenceFlow {
+  name: string;
+  mermaid: string;
+}
+
+/**
+ * Entirely mechanical, no LLM: one Mermaid `sequenceDiagram` per scenario —
+ * unlike UI Inventory's single combined graph, a sequence is inherently about
+ * one specific scenario, so combining several into one diagram would just be
+ * a tangle. Participants are declared in first-appearance order across the
+ * scenario's own steps, aliased through the same `prettifyKey` used for
+ * Architecture's node labels (report component keys, never hardcoded) — the
+ * reserved "User" actor is left as-is, it already reads fine.
+ */
+export function renderSequenceDiagram(scenario: ScenarioFlow): RenderedSequenceFlow {
+  const idByParticipant = new Map<string, string>();
+  const ensureId = (participant: string): string => {
+    let id = idByParticipant.get(participant);
+    if (!id) {
+      id = participant === 'User' ? 'User' : `c${idByParticipant.size}_${sanitizeId(participant)}`;
+      idByParticipant.set(participant, id);
+    }
+    return id;
+  };
+  for (const step of scenario.steps) {
+    ensureId(step.from);
+    ensureId(step.to);
+  }
+
+  const participantLines = [...idByParticipant.entries()].map(([participant, id]) =>
+    participant === 'User' ? '    participant User' : `    participant ${id} as ${sanitizeLabel(prettifyKey(participant))}`,
+  );
+  const stepLines = scenario.steps.map(
+    (step) => `    ${ensureId(step.from)}->>${ensureId(step.to)}: ${sanitizeLabel(step.label)}`,
+  );
+
+  const lines = ['sequenceDiagram', ...participantLines, ...stepLines];
+  return { name: scenario.name, mermaid: lines.join('\n') };
 }
