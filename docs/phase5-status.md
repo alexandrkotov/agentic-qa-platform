@@ -353,3 +353,57 @@ day:
   design was solving (don't silently present fake confidence) was correct, but the specific
   *mechanism* it used (deleting the underlying data) turned out to make the human's actual review
   task impossible rather than honest.
+
+## Addendum: DB cleanup, hub rename, Discovery from the web UI (2026-07-30)
+
+Three follow-up tasks, unrelated to each other, done in one session after a night's pause.
+
+**1. Time-based DB cleanup.** `tests/support/cleanup.mjs`'s naming-pattern matching only covers the
+hand-written suite's own conventions — the Generate Agent pipeline's `{{unique}}` runtime fills a
+model-chosen literal prefix each time, matching none of them. Confirmed live: 56 `Customer` rows, 1
+real seed; 58 `Product`, 3 real seed; 29 `Order`, 0 real (including 3 stray test orders placed
+against the *real* seed customer, which no naming pattern could ever have caught since the customer
+itself isn't test data). Added `--since <ISO8601>` (default `2026-07-23T00:00:00Z` — just after the
+last real seed row, well before the first pipeline-run garbage) as a second, complementary sweep:
+anything created at/after the cutoff goes regardless of name. Ran it for real; left exactly the 4
+seed rows.
+
+**2. Hub page.** `hub/index.html`'s `:4400` card renamed "Descriptor editor" → "Admin", pencil icon →
+gear, description switched to a comma list (room to extend later without a rewrite).
+
+**3. Discovery from the web UI.** New "Run Discovery" block on the (renamed) Discovery page, backed
+by `POST /api/discovery/run` → `runDiscovery()` (now returns the written path; report filenames
+gained a `-<descriptor>` suffix, e.g. `discovery-<ts>-orderflow.json`, timestamp still leading so
+"find the latest" sorting is unaffected). Getting this to actually *run* inside the Dockerized admin
+container — not just have the route exist — needed real infrastructure changes, each forced by a
+constraint found while building, not decided upfront:
+
+- Kafka's MCP server is itself a sibling Docker container the discovery agent launches on demand
+  (`kafka.ts`/`kafkaConsumer.ts`, `docker run --network=host ...`) — the admin container needs the
+  host's Docker socket mounted (`/var/run/docker.sock`) to start it.
+- Every descriptor's component URLs are plain `localhost:PORT`, written assuming host networking
+  (the same reason the Kafka MCP server's own spawned container already uses `--network=host`).
+  Switched the `admin` service to `network_mode: host` rather than rewriting every descriptor.
+- `web-ui` discovery needs a real browser; Alpine doesn't support Playwright's Chromium build (musl
+  libc — a compatibility wall, not a size choice). `Dockerfile.admin` moved to
+  `node:22-bookworm-slim` + `playwright install --with-deps chromium`; the `docker` CLI itself is
+  copied in from `docker:27-cli` (client only, no daemon — talks to the mounted socket).
+- Found and fixed a **latent, pre-existing bug** while verifying this: the `admin` service had *no*
+  environment variables at all — `ANTHROPIC_API_KEY` included. Stage 2 spec generation (built
+  earlier the same overall session) had the exact same problem and had simply never been caught,
+  because every previous live check of it ran through `pnpm admin` on the host (which loads
+  `agent-service/.env` itself via `dotenv/config`), never through the actual Docker container. Fixed
+  both at once with `env_file: ./agent-service/.env` — the same file the CLI already needs, so
+  container and host can't drift apart on config.
+- **A verification-tooling limitation, not a deployment problem**: this agent's own shell sandbox
+  runs in a different network namespace than the real Docker host, so `network_mode: host`
+  containers (unlike ordinary `ports:`-published ones) aren't reachable from it directly — confirmed
+  via `docker exec ... node -e "fetch(...)"` returning 200 from *inside* the container while `curl`
+  from the sandbox got connection-refused. Live verification of `/api/discovery/run` was done the
+  same way: triggered from inside the container, which exercises the identical code path a real
+  browser's request would (Express doesn't care which network namespace the client is in). Real run
+  against `kafka-consumer-demo.json` (chosen specifically to exercise the new socket + host-network
+  path cheaply): the sibling Kafka MCP container connected, consumed 5 real messages, produced a
+  full report, disconnected cleanly, and the file landed on the host filesystem at
+  `agent-service/reports/discovery-2026-07-30T14-36-53-210Z-kafka-consumer-demo.json` exactly as
+  named.
