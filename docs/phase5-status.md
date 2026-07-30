@@ -668,3 +668,36 @@ the `<pre>` now correctly picks up whichever grab/grabbing state its ancestor is
 checking the *computed* cursor with the mouse positioned over an actual drawn shape inside the
 `<svg>` (a participant box's text node, via `document.elementFromPoint`), not just the SVG's own empty
 padding area — `grab` at rest, `grabbing` mid-drag.
+
+## Addendum: confirm-before-paid-action rule + 3 UI fixes across all admin pages (2026-07-30)
+
+Before returning to Generate-agent work proper, a standing rule and three small fixes across all three
+admin pages (`index.html`, `generate.html`, `visualize.html` — each self-contained with its own
+duplicated CSS/JS, the established convention on this project; no shared bundle to hang a single
+component off of).
+
+**Rule**: every button wired to a real Claude API call now shows a confirmation modal ("this calls
+Claude and costs real money") before doing anything, plus a green `$` badge on its label. Checked
+against `admin/server.ts` for which routes actually construct a `ClaudeProvider` (not just say "costs
+money" in a subtitle) — five buttons qualify: `run-discovery-btn` (index.html), `spec-generate-btn`
+(generate.html), and `wf-propose-btn`/`uf-propose-btn`/`seq-propose-btn` (visualize.html). The three
+Visualize buttons are dual-mode (`Generate ...` = a real paid call; `Show ...` = free, reuses an
+already-approved model) — the modal and badge apply only to the `Generate ...` state, wired via a new
+`setButtonLabel(btn, label, costsMoney)` helper replacing the plain `btn.textContent = ...` assignments
+that would otherwise wipe out the badge span on every toggle. Deliberately *not* wired: `recompute-btn`
+("Generate grouping") — mechanical heuristic, no `ClaudeProvider` involved despite the similar name —
+and every `Approve` button, which only validates and writes an already-paid-for result to disk.
+
+**Fix 1**: `arch-render-btn`/`er-render-btn` (Visualize) restyled from `ghost` to `primary` — free vs.
+paid is now signaled by the `$` badge alone, not by button color, so every button can look the same.
+
+**Fix 2**: all five `Approve` buttons (grouping, spec, workflow, UI inventory, sequence flow) now
+`display: none` while their block is empty/collapsed, not just `disabled`-but-visible — a disabled
+button sitting there implied something to approve once enabled, which wasn't true until a proposal
+actually loaded.
+
+Verified live and entirely for free: every check exercises the Cancel branch of the new modal (a
+`page.on('request')` guard confirmed zero requests to any of the five paid routes fired during the
+whole run), plus DOM/CSS assertions — modal message text, `$` badge presence/absence in each button
+mode, Render/Hide's computed background color matching `.primary` exactly, and all five Approve
+buttons' `display` before/after their block gets data.
