@@ -25,8 +25,19 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-    display: flex; min-height: 100vh;
+    display: flex; flex-direction: column; min-height: 100vh;
   }
+  .app-nav {
+    display: flex; gap: 0.25rem; padding: 0.6rem 1rem; flex-shrink: 0;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .app-nav a {
+    font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
+    color: var(--text-mute); text-decoration: none;
+  }
+  .app-nav a:hover { background: var(--surface-2); color: var(--text); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
+  .app-body { display: flex; flex: 1; min-height: 0; }
   aside {
     width: 260px; flex-shrink: 0; background: var(--surface);
     border-right: 1px solid var(--line); padding: 1.25rem 1rem;
@@ -88,6 +99,11 @@
 </style>
 </head>
 <body>
+  <header class="app-nav">
+    <a href="/index.html" class="active">System Descriptors</a>
+    <a href="/generate.html">Test Generation</a>
+  </header>
+  <div class="app-body">
   <aside>
     <div>
       <h1>System Descriptors</h1>
@@ -95,7 +111,6 @@
     </div>
     <ul id="descriptor-list"></ul>
     <button class="ghost" id="new-btn">+ New descriptor</button>
-    <a href="/generate.html" style="font-size:0.82rem;color:var(--text-mute);margin-top:auto">Generate pipeline →</a>
   </aside>
   <main>
     <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
@@ -119,6 +134,7 @@
       <div id="issues"></div>
     </div>
   </main>
+  </div>
 
 <script>
 const state = { names: [], current: null, components: [] };

@@ -222,24 +222,30 @@ any of them with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; n
 direct, write-capable Postgres connection the LLM never sees, since the agent's own `postgres`
 tool is deliberately read-only and can't remove the test fixtures its write-scenario creates.
 
-A small web editor for these descriptor files —
-[`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400` — lists, creates,
-and edits them from a browser: pick a component type, fill in its fields, save. Writes are
-validated through the same zod schema the CLI uses, so a bad save comes back with the exact
-field-level error instead of silently writing an invalid file. Deliberately not part of
-`app`/`frontend` (the system *under test* has no business managing the QA framework's own
-configuration) and deliberately a single static HTML page, not a React/Vite app — the feature
-isn't big enough to justify that tooling.
+A small web app — [`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400`
+— covers two things, one page each:
 
-Runs as its own `descriptor-admin` service in `docker-compose.yml` — starts with everything else,
-no separate step. It's built from a dedicated
-[`agent-service/Dockerfile.admin`](agent-service/Dockerfile.admin) rather than the full
-agent-service image: the editor's only real dependencies are `express` + `zod`, so this installs
-just those instead of also pulling in the Claude/OpenAI SDKs and Playwright MCP that agent-service
-needs for everything else. `agent-service/descriptors/` is bind-mounted read-write, so edits made
-through the browser land on the host filesystem like any other change. (`pnpm admin` from
-`agent-service/` still works too, for iterating on the editor's own code without rebuilding the
-image.)
+- **System Descriptors** (`/index.html`, the default page): lists, creates, and edits these
+  descriptor files from a browser — pick a component type, fill in its fields, save. Writes are
+  validated through the same zod schema the CLI uses, so a bad save comes back with the exact
+  field-level error instead of silently writing an invalid file.
+- **Test Generation** (`/generate.html`): the Generate Agent's own review pages — propose/edit/
+  approve a grouping, then generate/edit/approve a structured spec (a real Claude call, costs
+  money), plus a small editor for a target system's `*.corrections.json`.
+
+Deliberately not part of `app`/`frontend` (the system *under test* has no business managing the QA
+framework's own configuration) and deliberately plain static HTML pages, not a React/Vite app —
+neither feature is big enough to justify that tooling.
+
+Runs as the `admin` service in `docker-compose.yml` — starts with everything else, no separate
+step. Built from a dedicated [`agent-service/Dockerfile.admin`](agent-service/Dockerfile.admin)
+rather than the full agent-service image, though it now installs agent-service's full
+`package.json` (once the Generate pipeline pages needed to run real Claude calls themselves, the
+same `ClaudeProvider`/MCP/usage-logging machinery the main CLI uses, "just express + zod" stopped
+being true). Both `agent-service/descriptors/` and `agent-service/reports/` are bind-mounted
+read-write, so edits and generated files made through the browser land on the host filesystem like
+any other change. (`pnpm admin` from `agent-service/` still works too, for iterating on the
+editor's own code without rebuilding the image.)
 
 ### The test suite
 
@@ -374,8 +380,8 @@ Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres
 humans only, nothing in this repo depends on it), `report` (nginx, `:8080` — serves the Cucumber
 test report at `/` once you generate one in step 4, and the AI usage/cost log at `/usage/`, which
 shows a friendly placeholder until any agent call happens in step 5 or 6; the same container also
-serves the hub page above on the default port, `:80`), and `descriptor-admin` (the System
-Descriptor web editor, `:4400` — see below).
+serves the hub page above on the default port, `:80`), and `admin` (the System Descriptor editor +
+Generate pipeline review pages, `:4400` — see below).
 
 Kafka is intentionally not persisted across rebuilds (no volume) — it's a derived event stream,
 not data worth keeping, and `app`'s health-gated dependency on it means a full `--build` always

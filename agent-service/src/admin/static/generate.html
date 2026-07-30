@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Generate Pipeline — Grouping Review</title>
+<title>Test Generation</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
 <style>
   :root {
@@ -28,11 +28,20 @@
     margin: 0; background: var(--bg); color: var(--text);
     font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
   }
+  .app-nav {
+    display: flex; gap: 0.25rem; padding: 0.6rem 1rem;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .app-nav a {
+    font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
+    color: var(--text-mute); text-decoration: none;
+  }
+  .app-nav a:hover { background: var(--surface-2); color: var(--text); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
   main { max-width: 920px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
-  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1.5rem; }
-  header h1 { font-size: 1.05rem; margin: 0; }
-  header a { color: var(--text-mute); font-size: 0.82rem; text-decoration: none; }
-  header a:hover { text-decoration: underline; }
+  .page-head { margin-bottom: 1.5rem; }
+  .page-head h1 { font-size: 0.95rem; margin: 0; }
+  .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
 
   section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
   section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
@@ -84,14 +93,18 @@
 </style>
 </head>
 <body>
+<header class="app-nav">
+  <a href="/index.html">System Descriptors</a>
+  <a href="/generate.html" class="active">Test Generation</a>
+</header>
 <main>
-  <header>
-    <h1>Generate Pipeline — Stage 1: Grouping</h1>
-    <a href="/">← System Descriptors</a>
-  </header>
+  <div class="page-head">
+    <h1>Test Generation</h1>
+    <div class="subtitle">Turns an approved discovery report into a reviewed BDD test suite, one approved stage at a time</div>
+  </div>
 
   <section>
-    <h2>Propose grouping</h2>
+    <h2>Stage 1: Grouping</h2>
     <div class="row">
       <label>Report</label>
       <select id="report-select"></select>
