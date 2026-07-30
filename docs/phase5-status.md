@@ -701,3 +701,29 @@ Verified live and entirely for free: every check exercises the Cancel branch of 
 whole run), plus DOM/CSS assertions — modal message text, `$` badge presence/absence in each button
 mode, Render/Hide's computed background color matching `.primary` exactly, and all five Approve
 buttons' `display` before/after their block gets data.
+
+## Addendum: toolbox icon, safe-default confirm modal, admin container renamed to workbench (2026-07-30)
+
+Three more small fixes on the heels of the rule/renaming pass above. Render/Hide buttons in Analysis
+got unified to just "Show" (matching the also-shortened "Show" label on the workflow/UI
+inventory/sequence flow toggle buttons, which used to read "Show workflow model" etc.) — one consistent
+verb for "show me the free thing" everywhere on the page.
+
+Hub's Workbench card still had the old gear icon, a leftover from when it was called "Admin" — replaced
+with a hand-drawn toolbox pictogram (box + handle + split line + latch, same stroke-based style as
+every other hub icon) rather than trying to recall an exact third-party icon set's path data from
+memory. Verified live via a real Chromium screenshot, not just eyeballing the SVG source.
+
+The confirm-before-paid-action modal's default (Enter-triggered) button was "Yes, proceed" — backwards
+for a modal whose whole purpose is warning about real spending. Now focuses Cancel when it opens, in
+all three admin pages; verified live by checking `document.activeElement.id` right after the modal
+opens, not just that `.focus()` appears in the source.
+
+Renamed the docker-compose service itself from `admin` to `workbench`, plus everything that names it:
+`Dockerfile.admin` → `Dockerfile.workbench`, the `admin` npm script → `workbench`, `server.ts`'s log
+prefixes, and every README mention of the service/Dockerfile/pnpm script. Deliberately left
+`agent-service/src/admin/` (the source directory) alone — renaming it would touch many more files for
+no user-visible difference, unlike the container name a human actually sees in `docker ps`. Verified
+live: rebuilt and swapped the container (`docker compose up -d --build workbench --remove-orphans`,
+which cleanly stopped and removed the stale `agentic-qa-platform-admin-1` container since it's no
+longer in the compose file), confirmed `agentic-qa-platform-workbench-1` is what's actually running.
