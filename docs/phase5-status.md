@@ -793,3 +793,18 @@ Linux vs. Windows), which is exactly why the bug was invisible in this sandbox a
 own browser. Added `.diagram-modal-scroll svg foreignObject { overflow: visible; }` alongside the
 existing svg-level rule. Deployed; awaiting the user's own re-check since this sandbox still can't
 reproduce the underlying font-metrics condition that triggers it.
+
+Two more rounds followed once the user actually re-checked, each caught from a real screenshot:
+
+1. Text fully rendered, but the label's green **background** stayed cut off mid-sentence — because
+   `overflow: visible` lets *content* paint outside a box, it doesn't grow the box's own
+   `background-color` fill. Mermaid's `.labelBkg` div/p were still pinned to the foreignObject's
+   original 200px. First attempt: `width: max-content` — grew the background to match, but
+   `max-content` sizes an element as if `white-space: nowrap` were set *regardless of the element's
+   actual white-space value*, so it fought Mermaid's own wrapping (these already had
+   `white-space: break-spaces`, verified live) into one very long unwrapped line, wide enough to
+   overlap the neighboring "Submit" label and edge.
+2. Fixed by using a bounded `width: 230px` instead and leaving wrapping alone — let Mermaid's own
+   multi-line layout do what it already knew how to do, just inside a box sized to actually fit it.
+   Final live screenshot: clean 4-line label, background fully covering the text, no overlap with
+   neighboring diagram elements.
