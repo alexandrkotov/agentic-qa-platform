@@ -166,6 +166,14 @@ document.getElementById('er-render-btn').onclick = async () => {
   }
 };
 
+// Switching reports invalidates whatever's on screen — collapse back to the
+// pre-render state rather than leave a diagram up that no longer matches the
+// selected report; the human has to press Render again.
+document.getElementById('er-report-select').onchange = () => {
+  document.getElementById('er-diagram').innerHTML = '';
+  setStatus(document.getElementById('er-status'), '');
+};
+
 // --- Business workflow -------------------------------------------------------
 
 function renderWorkflowEditor() {
@@ -278,8 +286,39 @@ document.getElementById('wf-approve-btn').onclick = async () => {
   }
 };
 
+function resetWorkflowSection() {
+  state.workflow = null;
+  document.getElementById('wf-body').innerHTML = '';
+  document.getElementById('wf-diagrams').innerHTML = '';
+  document.getElementById('wf-approve-btn').disabled = true;
+  setStatus(document.getElementById('wf-gen-status'), '');
+  setStatus(document.getElementById('wf-status'), '');
+}
+
+// Same "switching reports invalidates the screen" rule as Entity relationships
+// — but here a report may already have an approved model from an earlier
+// session, so check for one and load it for free instead of leaving the
+// section empty and forcing a fresh (paid) generate call.
+async function onWorkflowReportChanged() {
+  resetWorkflowSection();
+  const report = document.getElementById('wf-report-select').value;
+  if (!report) return;
+  const statusEl = document.getElementById('wf-gen-status');
+  try {
+    const existing = await api('/api/workflow/for-report?report=' + encodeURIComponent(report));
+    if (!existing) return;
+    state.workflow = existing.approved;
+    renderWorkflowEditor();
+    await renderDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
+  }
+}
+document.getElementById('wf-report-select').onchange = onWorkflowReportChanged;
+
 loadReportOptions('er-report-select');
-loadReportOptions('wf-report-select');
+loadReportOptions('wf-report-select').then(onWorkflowReportChanged);
 </script>
 </body>
 </html>

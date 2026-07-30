@@ -311,6 +311,33 @@ app.post('/api/discovery/run', async (req, res) => {
 // so it goes through the same propose -> human edits -> approve cycle.
 // ---------------------------------------------------------------------------
 
+const WORKFLOW_APPROVED_NAME_PATTERN = /^generate-workflow-approved-[A-Za-z0-9:_.-]+\.json$/;
+
+/** Latest approved workflow model whose sourceReportPath matches this report, if any — lets the UI show a already-approved model instead of requiring a fresh (paid) generate call every time the same report is reselected. */
+app.get('/api/workflow/for-report', async (req, res) => {
+  try {
+    const reportName = req.query.report;
+    if (typeof reportName !== 'string' || !reportName) {
+      res.status(400).json({ error: '"report" query param is required' });
+      return;
+    }
+    const targetPath = reportFilePath(reportName);
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => WORKFLOW_APPROVED_NAME_PATTERN.test(f)).sort();
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const candidatePath = join(config.reportsDir, candidates[i]);
+      const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
+      if (raw.sourceReportPath !== targetPath) continue;
+      const approved = ApprovedWorkflowSchema.parse(raw);
+      res.json({ path: candidatePath, approved, rendered: approved.entities.map(renderStateDiagram) });
+      return;
+    }
+    res.json(null);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/workflow/render-er', async (req, res) => {
   try {
     const { report: reportName } = req.body as { report?: string };
