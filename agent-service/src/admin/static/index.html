@@ -45,6 +45,14 @@
   }
   aside h1 { font-size: 0.95rem; margin: 0; }
   aside .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
+  aside .section-break { border-top: 1px solid var(--line); padding-top: 1rem; margin-top: 0.2rem; }
+  aside select {
+    width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.45rem 0.6rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
+  }
+  #discovery-status { font-size: 0.78rem; line-height: 1.4; word-break: break-word; }
+  #discovery-status.ok { color: #2f8f5b; }
+  #discovery-status.err { color: var(--danger); }
   #descriptor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
   #descriptor-list li button {
     width: 100%; text-align: left; padding: 0.5rem 0.65rem; border-radius: 6px;
@@ -100,7 +108,7 @@
 </head>
 <body>
   <header class="app-nav">
-    <a href="/index.html" class="active">System Descriptors</a>
+    <a href="/index.html" class="active">Discovery</a>
     <a href="/generate.html">Test Generation</a>
   </header>
   <div class="app-body">
@@ -111,6 +119,14 @@
     </div>
     <ul id="descriptor-list"></ul>
     <button class="ghost" id="new-btn">+ New descriptor</button>
+
+    <div class="section-break">
+      <h1>Run Discovery</h1>
+      <div class="subtitle">Generate a fresh JSON report — calls Claude, costs money, can take a few minutes</div>
+    </div>
+    <select id="discovery-descriptor-select"></select>
+    <button class="primary" id="run-discovery-btn">Run discovery</button>
+    <div id="discovery-status"></div>
   </aside>
   <main>
     <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
@@ -181,6 +197,11 @@ async function loadList() {
     li.appendChild(btn);
     ul.appendChild(li);
   }
+
+  const discoverySelect = document.getElementById('discovery-descriptor-select');
+  const previous = discoverySelect.value;
+  discoverySelect.innerHTML = state.names.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (state.names.includes(previous)) discoverySelect.value = previous;
 }
 
 async function selectDescriptor(name) {
@@ -376,6 +397,30 @@ function showIssues(issues) {
   el.classList.add('show');
 }
 function hideIssues() { document.getElementById('issues').classList.remove('show'); }
+
+document.getElementById('run-discovery-btn').onclick = async () => {
+  const name = document.getElementById('discovery-descriptor-select').value;
+  const statusEl = document.getElementById('discovery-status');
+  const btn = document.getElementById('run-discovery-btn');
+  if (!name) return;
+  btn.disabled = true;
+  statusEl.className = '';
+  statusEl.textContent = `Running discovery on "${name}" — calling Claude, this can take a few minutes…`;
+  try {
+    const result = await api('/api/discovery/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ descriptor: name }),
+    });
+    statusEl.className = 'ok';
+    statusEl.textContent = 'Report saved: ' + result.path;
+  } catch (e) {
+    statusEl.className = 'err';
+    statusEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 loadList();
 </script>

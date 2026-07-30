@@ -3,6 +3,7 @@ import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema } from '../descriptor/schema.ts';
+import { runDiscovery } from '../bootstrap/discovery.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
@@ -126,6 +127,29 @@ app.post('/api/descriptors', async (req, res) => {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
       return;
     }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Discovery — runs the same agent `pnpm discovery` does, from a descriptor
+// already sitting in descriptors/. A real, costed, long-running Claude call
+// (up to 60 tool-use iterations) — like /api/generate/spec below, not
+// something to call on every page load.
+// ---------------------------------------------------------------------------
+
+app.post('/api/discovery/run', async (req, res) => {
+  try {
+    const { descriptor } = req.body as { descriptor?: string };
+    if (!descriptor) {
+      res.status(400).json({ error: '"descriptor" is required' });
+      return;
+    }
+    const path = descriptorPath(descriptor);
+    const provider = new ClaudeProvider();
+    const reportPath = await runDiscovery(provider, path);
+    res.json({ path: reportPath });
+  } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });

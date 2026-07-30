@@ -1,5 +1,5 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { Client } from 'pg';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { parseSystemDescriptor } from '../descriptor/schema.ts';
@@ -85,7 +85,7 @@ async function runCleanupSql(descriptor: SystemDescriptor): Promise<void> {
 export async function runDiscovery(
   provider: AgentProvider,
   descriptorPath: string = DEFAULT_DESCRIPTOR_PATH,
-): Promise<void> {
+): Promise<string> {
   console.log('\n=== Phase 1: System Discovery ===\n');
   console.log(`Descriptor: ${descriptorPath}`);
 
@@ -102,10 +102,15 @@ export async function runDiscovery(
     operation: 'discovery',
   });
 
-  // Save report
+  // Save report — filename carries the descriptor name (e.g.
+  // "discovery-2026-07-30T...-orderflow.json") so a report is traceable to
+  // the system it describes without opening it; the timestamp stays the
+  // leading, sortable part so "find the latest report" (generateGroup.ts,
+  // admin/server.ts) keeps working unchanged.
   await mkdir(config.reportsDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportPath = join(config.reportsDir, `discovery-${timestamp}.json`);
+  const descriptorName = basename(descriptorPath, '.json');
+  const reportPath = join(config.reportsDir, `discovery-${timestamp}-${descriptorName}.json`);
 
   // Try to extract JSON from the response (agent might wrap it in prose)
   let reportContent = raw;
@@ -124,4 +129,6 @@ export async function runDiscovery(
   console.log(reportContent.slice(0, 800) + (reportContent.length > 800 ? '\n...(truncated)' : ''));
 
   await runCleanupSql(descriptor);
+
+  return reportPath;
 }
