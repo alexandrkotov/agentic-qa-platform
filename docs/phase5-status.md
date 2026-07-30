@@ -736,3 +736,19 @@ at a glance regardless of which one Enter actually triggered. Swapped classes (C
 "Yes, proceed" → `ghost`) so the visual default agrees with the keyboard default. Verified live: both
 `document.activeElement.id` (still `confirm-modal-cancel`) and the two buttons' actual computed
 `background-color` (Cancel now `rgb(124, 155, 239)`, "Yes, proceed" now transparent) in the same check.
+
+### Follow-up: two more hub icons (2026-07-30)
+
+AI usage/cost log's generic bar-chart icon became a dollar sign (Feather's actual `dollar-sign` glyph
+— vertical line + S-curve) — unambiguous "this is a cost report" at a glance.
+
+Workbench's icon needed to go further than the earlier toolbox attempt: an *open* box with tools
+visibly sticking out, not a closed case. First attempt (trapezoid body, one tool-ish shape at each top
+corner) looked fine described in words but rendered as a shopping basket — only caught by actually
+rendering it at 120px in an isolated test page instead of trusting the path data by eye at the real
+21px card size (`.card-icon svg` is that small; no amount of small-detail path data reads at that
+scale). Fixed by rendering test pages at both true size (21px) and magnified (120px) before touching
+the real file: switched the body to a plain rectangle with a seam line (a trapezoid reads as a basket;
+a rectangle doesn't) and moved the two tools to cross centrally over the opening instead of attaching
+to the rim corners like basket handles. Confirmed by screenshotting the actual hub card afterward, not
+just the isolated test page.
