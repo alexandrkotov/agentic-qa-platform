@@ -147,7 +147,18 @@ async function loadReportOptions(selectId) {
 
 // --- Entity relationships ---------------------------------------------------
 
+function collapseEr() {
+  document.getElementById('er-diagram').innerHTML = '';
+  document.getElementById('er-render-btn').textContent = 'Render';
+}
+
 document.getElementById('er-render-btn').onclick = async () => {
+  const btn = document.getElementById('er-render-btn');
+  if (btn.textContent === 'Hide') {
+    collapseEr();
+    return;
+  }
+
   const report = document.getElementById('er-report-select').value;
   const statusEl = document.getElementById('er-status');
   const container = document.getElementById('er-diagram');
@@ -160,6 +171,7 @@ document.getElementById('er-render-btn').onclick = async () => {
     container.innerHTML = '<pre class="mermaid"></pre>';
     container.querySelector('pre').textContent = text;
     await mermaid.run({ querySelector: '#er-diagram pre.mermaid' });
+    btn.textContent = 'Hide';
     setStatus(statusEl, '');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
@@ -170,7 +182,7 @@ document.getElementById('er-render-btn').onclick = async () => {
 // pre-render state rather than leave a diagram up that no longer matches the
 // selected report; the human has to press Render again.
 document.getElementById('er-report-select').onchange = () => {
-  document.getElementById('er-diagram').innerHTML = '';
+  collapseEr();
   setStatus(document.getElementById('er-status'), '');
 };
 
