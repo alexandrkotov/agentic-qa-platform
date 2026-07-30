@@ -1,12 +1,34 @@
 import 'dotenv/config';
 import { Client } from 'pg';
 
-// Deletes only rows created by this test suite, identified by the naming
-// patterns each domain's steps files use for synthetic data (see
-// docs/phase2-status.md "Test data cleanup" for the full list and why a
-// blind TRUNCATE isn't safe — seed/demo data like "Alec"/"Jane Doe" lives in
-// the same tables). Extend these lists whenever a new domain/scenario
-// introduces a new naming scheme.
+// Deletes rows created by test runs, two complementary ways — neither alone
+// covers everything, and a blind TRUNCATE isn't safe (seed/demo data like
+// "Jane Doe"/"Wireless Mouse" lives in the same tables, see docs/phase2-
+// status.md "Test data cleanup"):
+//
+// 1. Naming patterns each hand-written domain's steps files use for
+//    synthetic data (below). Extend these whenever a new domain/scenario
+//    introduces a new naming scheme.
+// 2. `--since <ISO8601>` (default: just after the last real seed row —
+//    see DEFAULT_SINCE below). The Generate Agent pipeline's runtime
+//    (tests/support/generateRuntime.ts) fills unique-value placeholders with
+//    a model-chosen literal prefix + a random suffix — there is no fixed
+//    naming scheme to pattern-match against, so anything created at or after
+//    the cutoff is swept up regardless of what it's named. This is also what
+//    actually catches stray rows attached to a *real* seed customer/product
+//    (e.g. test orders placed against "Jane Doe") that pattern-matching can
+//    never reach, since the customer/product itself isn't test data.
+//
+// Verified against the real DB (2026-07-30): the last genuine seed row is
+// Product "Mouse Pad", createdAt 2026-07-22T17:39:03Z; the next row of any
+// kind is 2026-07-27. DEFAULT_SINCE sits in that gap.
+const DEFAULT_SINCE = '2026-07-23T00:00:00Z';
+
+function parseSinceArg() {
+  const idx = process.argv.indexOf('--since');
+  return idx !== -1 && process.argv[idx + 1] ? process.argv[idx + 1] : DEFAULT_SINCE;
+}
+
 const CUSTOMER_EMAIL_PATTERNS = [
   'order-test-%', // orders-common.steps.ts
   'cust_%', // customers.steps.ts (also used for its "Order Owner"/"Dup Test" scenarios)
@@ -60,33 +82,39 @@ END $$;
 `;
 
 async function main() {
+  const since = parseSinceArg();
+  console.log(`Cutoff: rows created at or after ${since} are swept up regardless of naming (plus the fixed patterns below).`);
+
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
 
   try {
     const custRes = await client.query(
-      'SELECT id FROM "Customer" WHERE email LIKE ANY($1::text[])',
-      [CUSTOMER_EMAIL_PATTERNS]
+      'SELECT id FROM "Customer" WHERE email LIKE ANY($1::text[]) OR "createdAt" >= $2',
+      [CUSTOMER_EMAIL_PATTERNS, since]
     );
     const prodRes = await client.query(
-      'SELECT id FROM "Product" WHERE name LIKE ANY($1::text[]) OR name = ANY($2::text[])',
-      [PRODUCT_NAME_PATTERNS, PRODUCT_NAME_EXACT]
+      'SELECT id FROM "Product" WHERE name LIKE ANY($1::text[]) OR name = ANY($2::text[]) OR "createdAt" >= $3',
+      [PRODUCT_NAME_PATTERNS, PRODUCT_NAME_EXACT, since]
     );
 
     const customerIds = custRes.rows.map((r) => r.id);
     const productIds = prodRes.rows.map((r) => r.id);
 
-    // Orders aren't matched by their own naming scheme — they're pulled in
-    // transitively via the test customer/product that created them.
-    // OrderItem/OrderStatusHistory have onDelete: Cascade on Order in the
-    // Prisma schema, so deleting the Order is enough; Order->Customer and
-    // OrderItem->Product have no cascade (Prisma default Restrict), so
-    // Orders must be deleted before Customers/Products.
+    // Orders are pulled in three ways: transitively via a matched test
+    // customer/product, OR by the order's own createdAt — the last one is
+    // what catches, e.g., a test order placed against a *real* seed customer
+    // (the customer itself isn't test data, so it never matches the other
+    // two conditions). OrderItem/OrderStatusHistory have onDelete: Cascade on
+    // Order in the Prisma schema, so deleting the Order is enough;
+    // Order->Customer and OrderItem->Product have no cascade (Prisma default
+    // Restrict), so Orders must be deleted before Customers/Products.
     const orderRes = await client.query(
       `SELECT id FROM "Order"
        WHERE "customerId" = ANY($1::int[])
-          OR id IN (SELECT "orderId" FROM "OrderItem" WHERE "productId" = ANY($2::int[]))`,
-      [customerIds, productIds]
+          OR id IN (SELECT "orderId" FROM "OrderItem" WHERE "productId" = ANY($2::int[]))
+          OR "createdAt" >= $3`,
+      [customerIds, productIds, since]
     );
     const orderIds = orderRes.rows.map((r) => r.id);
 
