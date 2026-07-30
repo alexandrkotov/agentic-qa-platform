@@ -5,14 +5,13 @@ import { renderSpec, writeRenderedFiles } from '../agents/generate/render.ts';
 import { config } from '../config.ts';
 
 // ---------------------------------------------------------------------------
-// Temporary CLI-only entry point for Stage 3 (milestone 6 of the Generate
-// Agent redesign) — same role generateGroup.ts/generateSpec.ts play for
-// Stages 1/2. No LLM call: render.ts is purely mechanical. Superseded once
-// bootstrap/generate.ts is rewritten to orchestrate all three stages.
+// CLI entry point for Stage 3 (render) of the Generate pipeline — same role
+// generateGroup.ts/generateSpec.ts play for Stages 1/2. No LLM call:
+// render.ts is purely mechanical.
 //
 // Assumes repo layout: <repo>/agent-service/reports/ <- config.reportsDir,
-// <repo>/tests/ <- output target (same assumption bootstrap/generate.ts's
-// TESTS_ROOT already makes).
+// <repo>/tests/ <- output target (same assumption discovery.ts's report
+// writing and e2e/index.ts's TESTS_ROOT derivation already make).
 // ---------------------------------------------------------------------------
 
 const REPO_ROOT = resolve(config.reportsDir, '..', '..');

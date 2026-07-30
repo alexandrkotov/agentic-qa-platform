@@ -8,6 +8,7 @@ import {
   dbRowPhrase,
   uiTextPhrase,
   uiVisiblePhrase,
+  kafkaMessagePhrase,
 } from './phrases.ts';
 
 // ---------------------------------------------------------------------------
@@ -35,7 +36,10 @@ function actionStep(keyword: string, key: string, action: Action): string {
   const [phrase, payload] =
     action.kind === 'api'
       ? [apiActionPhrase(key), { method: action.method, path: action.path, requestBody: action.requestBody ?? null }]
-      : [uiActionPhrase(key), { role: action.role, label: action.label, route: action.route ?? null, value: action.value ?? null }];
+      : [
+          uiActionPhrase(key),
+          { role: action.role, label: action.label, route: action.route ?? null, value: action.value ?? null, scope: action.scope ?? null },
+        ];
   return `${STEP_INDENT}${keyword} ${phrase}\n${docstringBlock(payload)}`;
 }
 
@@ -51,9 +55,17 @@ function assertionStep(keyword: string, key: string, assertion: Assertion): stri
       case 'db_row':
         return [dbRowPhrase(key), { table: assertion.table, where: assertion.where, expectedFields: assertion.expectedFields }];
       case 'ui_text':
-        return [uiTextPhrase(key), { role: assertion.role, label: assertion.label, expectedText: assertion.expectedText }];
+        return [
+          uiTextPhrase(key),
+          { role: assertion.role, label: assertion.label, expectedText: assertion.expectedText, scope: assertion.scope ?? null },
+        ];
       case 'ui_visible':
-        return [uiVisiblePhrase(key), { role: assertion.role, label: assertion.label, visible: assertion.visible }];
+        return [
+          uiVisiblePhrase(key),
+          { role: assertion.role, label: assertion.label, visible: assertion.visible, scope: assertion.scope ?? null },
+        ];
+      case 'kafka_message':
+        return [kafkaMessagePhrase(key), { topic: assertion.topic, expectedFields: assertion.expectedFields }];
     }
   })();
   return `${STEP_INDENT}${keyword} ${phrase}\n${docstringBlock(payload)}`;

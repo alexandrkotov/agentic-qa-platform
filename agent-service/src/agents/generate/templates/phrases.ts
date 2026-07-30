@@ -15,3 +15,4 @@ export const errorMessagePhrase = (key: string) => `the "${key}" response matche
 export const dbRowPhrase = (key: string) => `the database has this row for "${key}":`;
 export const uiTextPhrase = (key: string) => `the "${key}" UI shows this text:`;
 export const uiVisiblePhrase = (key: string) => `the "${key}" UI element has this visibility:`;
+export const kafkaMessagePhrase = (key: string) => `a Kafka message for "${key}" matches this:`;

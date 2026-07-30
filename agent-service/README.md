@@ -241,19 +241,24 @@ Then pass it to `provider.run({ tools: [myTool] })`.
 4. Add a script in `package.json`
 
 ```typescript
-// src/bootstrap/generate.ts
-export async function runGenerate(provider: AgentProvider): Promise<void> {
+// src/bootstrap/myPhase.ts
+export async function runMyPhase(provider: AgentProvider): Promise<void> {
   const discoveryReport = JSON.parse(
     await readFile('reports/discovery-latest.json', 'utf-8'),
   );
   const result = await provider.run({
-    systemPrompt: GENERATE_SYSTEM_PROMPT,
+    systemPrompt: MY_PHASE_SYSTEM_PROMPT,
     userMessage: JSON.stringify(discoveryReport),
     tools: [writeFileTool],
   });
   // ...
 }
 ```
+
+See `src/agents/generate/` and `src/bootstrap/generateGroup.ts` / `generateSpec.ts` / `generateRender.ts`
+for a real, non-toy example of this pattern — three separate phases (`generate-group`, `generate-spec`,
+`generate-render`), each with its own bootstrap file and `case` in `src/index.ts`, gated by human
+approval between them.
 
 ---
 

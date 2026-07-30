@@ -7,12 +7,12 @@ import type { ApprovedGrouping, RenderGroup } from './contract.ts';
 // `<key>-1`, `<key>-2`, ... in original order, evenly sized rather than
 // floor-sized-chunks-plus-a-remainder.
 //
-// Default reflects today's implicit ceiling: ClaudeProvider.ts hardcodes
-// `max_tokens: 8096`, and the one domain that has needed splitting so far
-// (orders, ~19 scenarios) was manually cut into 3 files of <=9 scenarios each
-// in bootstrap/generate.ts's DOMAINS array. 6 is a safe, slightly tighter
-// default given that precedent; callers can pass a different value
-// interactively (see admin UI).
+// Default reflects the ceiling ClaudeProvider.ts hardcodes (`max_tokens:
+// 8096`): the old hand-maintained domain list this pipeline replaced had
+// manually cut its one large domain (orders, ~19 scenarios) into 3 files of
+// <=9 scenarios each to stay under it. 6 is a safe, slightly tighter default
+// given that precedent; callers can pass a different value interactively
+// (see admin UI).
 //
 // This is a scenario-COUNT proxy for a token budget, not an actual token
 // count — a verbose scenario (many given/then entries) costs more output

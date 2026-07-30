@@ -1,6 +1,5 @@
 import { resolve } from 'node:path';
 import { runDiscovery } from './bootstrap/discovery.ts';
-import { runGenerate } from './bootstrap/generate.ts';
 import { runGenerateGroup } from './bootstrap/generateGroup.ts';
 import { runGenerateSpec } from './bootstrap/generateSpec.ts';
 import { runGenerateRender } from './bootstrap/generateRender.ts';
@@ -21,7 +20,6 @@ function getArg(flag: string, defaultValue: string): string {
 const phase = args.find((a) => !a.startsWith('-')) ?? 'discovery';
 const providerName = getArg('--provider', 'claude');
 const reportPathArg = getArg('--report', '');
-const domainArg = getArg('--domain', '');
 const scenarioArg = getArg('--scenario', '');
 const descriptorArg = getArg('--descriptor', '');
 const thresholdArg = getArg('--threshold', '');
@@ -56,13 +54,6 @@ async function main() {
     case 'discovery':
       await runDiscovery(createProvider(), descriptorArg || undefined);
       break;
-    case 'generate':
-      await runGenerate(
-        createProvider(),
-        reportPathArg || undefined,
-        domainArg ? domainArg.split(',') : undefined,
-      );
-      break;
     case 'e2e':
       await runE2EAgent(createProvider(), providerName, scenarioArg ? scenarioArg.split(',') : undefined);
       break;
@@ -74,15 +65,18 @@ async function main() {
       await applyFix(reportPathArg, TESTS_ROOT);
       break;
     case 'generate-group':
-      // Temporary phase for the Generate Agent redesign (milestone 2): Stage
-      // 1 grouping only, CLI-only, no LLM call. Superseded once bootstrap/
-      // generate.ts is rewritten to orchestrate group/spec/render together.
+      // Stage 1 of the Generate pipeline: deterministic grouping proposal,
+      // no LLM call. Review/approve via the admin UI (or hand-edit the
+      // written generate-grouping-proposed-*.json) before running
+      // generate-spec against the approved-grouping file it produces.
       await runGenerateGroup(reportPathArg || undefined, thresholdArg ? Number(thresholdArg) : undefined);
       break;
     case 'generate-spec':
-      // Temporary phase for the Generate Agent redesign (milestone 5): Stage
-      // 2 structured spec only, one LLM call per render group. Superseded
-      // once bootstrap/generate.ts is rewritten to orchestrate all stages.
+      // Stage 2: one structured Given/When/Then LLM call per render group,
+      // reading an approved grouping (see generate-group) and this
+      // descriptor's corrections. Review/approve the result (admin UI, or
+      // hand-edit the written generate-spec-proposed-*.json) before
+      // generate-render.
       await runGenerateSpec(
         createProvider(),
         groupingArg || undefined,
@@ -92,15 +86,14 @@ async function main() {
       );
       break;
     case 'generate-render':
-      // Temporary phase for the Generate Agent redesign (milestone 6): Stage
-      // 3 render only, no LLM call — purely mechanical. Superseded once
-      // bootstrap/generate.ts is rewritten to orchestrate all stages.
+      // Stage 3: mechanical, no LLM — turns an approved spec (see
+      // generate-spec) into tests/features/*.feature + tests/steps/*.steps.ts.
       await runGenerateRender(specArg || undefined);
       break;
     default:
       console.error(`Unknown phase: ${phase}`);
       console.error(
-        'Usage: tsx src/index.ts discovery|generate|generate-group|generate-spec|generate-render|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>] [--grouping <path>] [--max-scenarios <n>] [--group <keys>] [--spec <path>]',
+        'Usage: tsx src/index.ts discovery|generate-group|generate-spec|generate-render|e2e|apply-fix [--provider claude|openai] [--report <path>] [--descriptor <path>] [--threshold <n>] [--grouping <path>] [--max-scenarios <n>] [--group <keys>] [--spec <path>]',
       );
       process.exit(1);
   }

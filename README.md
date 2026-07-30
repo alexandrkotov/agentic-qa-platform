@@ -112,8 +112,36 @@ side channel (a Kafka outage never blocks the request), not demo data seeded by 
 | Agent | Role | Path |
 |---|---|---|
 | **System Discovery Agent** | Explores a *live* target system — described declaratively by a **System Descriptor** (JSON, see below), not hardcoded — using a real agentic tool-use loop, including a real write scenario to observe actual behavior. Produces a structured discovery report (schema/endpoints/UI pages/topics, business rules, candidate test scenarios). | [`agent-service/src/bootstrap/discovery.ts`](agent-service/src/bootstrap/discovery.ts) |
-| **Generate** | Takes that discovery report and generates a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) — one call per business domain (customers, products, orders-status, orders-items, orders-validation, security). One-shot per domain, no tool use, no execution feedback loop. | [`agent-service/src/bootstrap/generate.ts`](agent-service/src/bootstrap/generate.ts) |
+| **Generate** | Turns that discovery report into a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) through a three-stage, human-approved pipeline: deterministic grouping, one structured-spec Claude call per group, then a deterministic template renderer. No stage runs on top of the previous one's output until a human approves it. | [`agent-service/src/agents/generate/`](agent-service/src/agents/generate/) |
 | **E2E Agent** | Runs a real Playwright scenario, diagnoses only actual failures (via Claude, once), and applies an exact guarded patch only after explicit human approval. Two separate stages — details below. | [`agent-service/src/agents/e2e/`](agent-service/src/agents/e2e/) |
+
+**Generate Agent, in detail** — three stages, each approved by a human (admin UI at `:4400`, or
+the CLI + hand-edited JSON) before the next one runs:
+
+- **Stage 1 — group** (`pnpm generate:group`): a deterministic heuristic, no LLM call. Clusters
+  discovery-report scenarios by cross-functional type (e.g. every `security` scenario in one
+  group, regardless of which entity it touches) or by keyword overlap with table/endpoint names
+  extracted from the report's own component *shape* — never a hardcoded component key, since the
+  real key a report uses can vary. Scenarios matching zero or more-than-one entity go to
+  `ungrouped` rather than being guessed into a group; if too many end up there, the whole result
+  honestly collapses to one flat group instead of pretending there's structure.
+- A human approves the grouping (and can hand-edit it) before anything downstream runs. Corrected
+  facts about individual scenarios (e.g. "the report says X succeeds, but that's outdated — it's
+  actually a 409") live in a file next to the target system's own descriptor (e.g.
+  `descriptors/orderflow.corrections.json`), keyed by scenario name so they survive regrouping.
+- A mechanical, no-LLM budget split then breaks any oversized group into `<key>-1`, `<key>-2`, ...
+  to stay under `ClaudeProvider.ts`'s output token ceiling — packaging, not a decision, so it
+  doesn't need its own approval step.
+- **Stage 2 — spec** (`pnpm generate:spec`): one Claude call per group, turning scenario names
+  into a structured Given/When/Then — concrete API method/path/body or UI role/label, concrete
+  assertions (status code, response field, DB row, Kafka message, etc.). The model is never
+  trusted with which group or scenario-type something belongs to (that's already known data, filled
+  in mechanically) — only with the content of the check itself.
+- A human approves the spec (hand-editing any scenario's JSON directly in the admin UI). Past this
+  point the scenario list can't change without going back through review.
+- **Stage 3 — render** (`pnpm generate:render`): no LLM at all. A small template layer turns the
+  approved structured spec into `.feature` + `.steps.ts`, with every HTTP/DB/Kafka/UI mechanic
+  living once in `tests/support/generateRuntime.ts` — never duplicated per generated file.
 
 **E2E Agent, in detail** — two explicit stages a human triggers separately:
 
@@ -389,16 +417,21 @@ node_modules/.pnpm/@playwright+mcp@*/node_modules/@playwright/mcp/node_modules/.
 
 pnpm discovery          # Phase 1 — explores descriptors/orderflow.json by default, writes agent-service/reports/discovery-<timestamp>.json
 pnpm discovery -- --descriptor descriptors/kafka-demo.json   # or point it at the bare-Kafka descriptor instead
-pnpm testgen            # Phase 2 — reads the latest discovery report, writes tests/features + tests/steps
 
-# The web editor for the descriptor JSON files above already runs via `docker compose up`
-# (http://localhost:4400) -- pnpm admin below is only for iterating on the editor's own
-# code without rebuilding its Docker image:
+# Phase 2 — three human-approved stages (see "Generate Agent, in detail" above). The admin UI
+# below drives all three end to end; the CLI equivalents, run in sequence:
+pnpm generate:group                                                          # Stage 1 — writes a proposed grouping
+pnpm generate:spec -- --grouping reports/generate-grouping-approved-<ts>.json # Stage 2 — after approving it
+pnpm generate:render -- --spec reports/generate-spec-approved-<ts>.json      # Stage 3 — after approving that
+
+# The web editor for descriptor JSON, and the Generate pipeline's own review pages, already run
+# via `docker compose up` (http://localhost:4400/generate.html) -- pnpm admin below is only for
+# iterating on the editor's own code without rebuilding its Docker image:
 pnpm admin              # http://localhost:4400
 ```
 
 See [`agent-service/README.md`](agent-service/README.md) for provider switching
-(`--provider openai`), `--domain` filtering for `testgen`, and the full architecture reference.
+(`--provider openai`), `--group` filtering for `generate:spec` retries, and the full architecture reference.
 
 ### 6. (Optional) Try the E2E Agent
 
@@ -421,7 +454,7 @@ pnpm apply-fix -- --report reports/e2e-submit-draft-order-<timestamp>.json
 # nothing happens until you type y/yes. Nothing is ever committed automatically either way.
 ```
 
-Every call above (and every `discovery`/`testgen` call from step 5) is logged with token usage
+Every call above (and every `discovery`/`generate:spec` call from step 5) is logged with token usage
 and cost to `http://localhost:8080/usage/` — open it in a browser and leave it open, it
 auto-refreshes every 5 seconds.
 

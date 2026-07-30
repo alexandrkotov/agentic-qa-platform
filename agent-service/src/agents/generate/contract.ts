@@ -59,6 +59,8 @@ const UiActionSchema = z.object({
   label: z.string(),
   route: z.string().optional(),
   value: z.string().optional(),
+  /** Distinguishing visible text of the specific row/card to act within, when the page shows more than one (e.g. an order id) — omit on pages with only one instance of the target. */
+  scope: z.string().optional(),
 });
 
 const ActionSchema = z.discriminatedUnion('kind', [ApiActionSchema, UiActionSchema]);
@@ -74,8 +76,25 @@ const AssertionSchema = z.discriminatedUnion('kind', [
     where: z.record(z.string(), z.unknown()),
     expectedFields: z.record(z.string(), z.unknown()),
   }),
-  z.object({ kind: z.literal('ui_text'), role: z.string(), label: z.string(), expectedText: z.string() }),
-  z.object({ kind: z.literal('ui_visible'), role: z.string(), label: z.string(), visible: z.boolean() }),
+  z.object({
+    kind: z.literal('ui_text'),
+    role: z.string(),
+    label: z.string(),
+    expectedText: z.string(),
+    scope: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('ui_visible'),
+    role: z.string(),
+    label: z.string(),
+    visible: z.boolean(),
+    scope: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('kafka_message'),
+    topic: z.string(),
+    expectedFields: z.record(z.string(), z.unknown()),
+  }),
 ]);
 export type Assertion = z.infer<typeof AssertionSchema>;
 

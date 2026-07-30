@@ -6,10 +6,9 @@
   "scripts": {
     "discovery": "tsx src/index.ts discovery",
     "discovery:openai": "tsx src/index.ts discovery --provider openai",
-    "testgen": "tsx src/index.ts generate",
-    "testgen:openai": "tsx src/index.ts generate --provider openai",
     "generate:group": "tsx src/index.ts generate-group",
     "generate:spec": "tsx src/index.ts generate-spec",
+    "generate:spec:openai": "tsx src/index.ts generate-spec --provider openai",
     "generate:render": "tsx src/index.ts generate-render",
     "e2e": "tsx src/index.ts e2e",
     "e2e:openai": "tsx src/index.ts e2e --provider openai",

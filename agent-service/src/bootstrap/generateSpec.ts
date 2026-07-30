@@ -9,11 +9,11 @@ import { loadCorrections } from '../agents/generate/corrections.ts';
 import { config } from '../config.ts';
 
 // ---------------------------------------------------------------------------
-// Temporary CLI-only entry point for Stage 2 (milestone 5 of the Generate
-// Agent redesign) — same role generateGroup.ts plays for Stage 1: lets the
-// spec heuristic/LLM call be validated against real reports before the
-// admin-UI review page exists. Superseded once bootstrap/generate.ts is
-// rewritten to orchestrate all three stages (milestone 7).
+// CLI entry point for Stage 2 (structured spec) of the Generate pipeline —
+// same role generateGroup.ts plays for Stage 1. Reads an approved grouping,
+// makes one LLM call per render group, and writes a
+// generate-spec-proposed-*.json for review (admin UI, or hand-edit + write
+// an generate-spec-approved-*.json yourself) before running generate-render.
 // ---------------------------------------------------------------------------
 
 async function findLatestApprovedGrouping(): Promise<string> {

@@ -28,8 +28,13 @@ export function renderSpec(spec: ApprovedSpec): RenderedFile[] {
 
   const files: RenderedFile[] = [];
   for (const [key, scenarios] of byGroup) {
+    const kafkaTopics = [
+      ...new Set(
+        scenarios.flatMap((s) => s.then).filter((a) => a.kind === 'kafka_message').map((a) => a.topic),
+      ),
+    ];
     files.push({ path: `tests/features/${key}.feature`, content: renderFeature(key, scenarios) });
-    files.push({ path: `tests/steps/${key}.steps.ts`, content: renderStepsFile(key) });
+    files.push({ path: `tests/steps/${key}.steps.ts`, content: renderStepsFile(key, kafkaTopics) });
   }
   return files;
 }

@@ -5,11 +5,10 @@ import { proposeGrouping, DEFAULT_UNGROUPED_FALLBACK_RATIO } from '../agents/gen
 import { config } from '../config.ts';
 
 // ---------------------------------------------------------------------------
-// Temporary CLI-only entry point for Stage 1 (milestone 2 of the Generate
-// Agent redesign) — prints/saves a ProposedGrouping so the heuristic can be
-// validated against real reports before the admin-UI review page (milestone
-// 3) exists. Superseded once bootstrap/generate.ts is rewritten to
-// orchestrate all three stages (milestone 7).
+// CLI entry point for Stage 1 (grouping) of the Generate pipeline. Prints and
+// saves a ProposedGrouping (generate-grouping-proposed-*.json) — approve it
+// via the admin UI (or hand-edit the file and write an
+// generate-grouping-approved-*.json yourself) before running generate-spec.
 // ---------------------------------------------------------------------------
 
 async function findLatestReport(): Promise<string> {

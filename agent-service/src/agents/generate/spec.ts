@@ -53,15 +53,25 @@ ${renderGroup.scenarioNames.map((n) => `- "${n}"`).join('\n')}
 
 An Action is either:
   { "kind": "api", "method": "GET|POST|PATCH|DELETE", "path": "/orders/{id}", "requestBody": {...} or null }
-  { "kind": "ui", "role": "<accessibility role, e.g. textbox/button/combobox>", "label": "<accessible name>", "route": "/orders" (optional), "value": "<value to fill/select>" (optional) }
+  { "kind": "ui", "role": "<accessibility role, e.g. textbox/button/combobox>", "label": "<accessible name>", "route": "/orders" (optional), "value": "<value to fill/select>" (optional), "scope": "<distinguishing visible text of the row/card>" (optional, see below) }
 
 An Assertion is one of:
   { "kind": "status_code", "statusCode": 201 }
   { "kind": "body_field", "field": "status", "expected": "SUBMITTED" }
   { "kind": "error_message", "matches": "Cannot transition order {id} from SUBMITTED to DRAFT" }
   { "kind": "db_row", "table": "OrderStatusHistory", "where": {"orderId": "<id>"}, "expectedFields": {"status": "DRAFT"} }
-  { "kind": "ui_text", "role": "cell", "label": "Status", "expectedText": "SUBMITTED" }
-  { "kind": "ui_visible", "role": "button", "label": "Submit", "visible": false }
+  { "kind": "ui_text", "role": "cell", "label": "Status", "expectedText": "SUBMITTED", "scope": "..." (optional) }
+  { "kind": "ui_visible", "role": "button", "label": "Submit", "visible": false, "scope": "..." (optional) }
+  { "kind": "kafka_message", "topic": "orders.status-changed", "expectedFields": {"orderId": "{orders.id}", "status": "SUBMITTED"} }
+
+"scope" (on any "ui" action or "ui_text"/"ui_visible" assertion): pages that list more than one instance
+of the same thing (e.g. an "orders" page showing one card per order, each with its own "Show history"
+button) have more than one element with the same role+label — omitting "scope" there gets a strict-mode
+locator error at runtime, not a single unambiguous element. Set "scope" to visible text that uniquely
+identifies the ONE row/card to act within — typically the id of the entity this scenario itself just
+created (e.g. "{orders.id}", which resolves to the real id at runtime) or another value from "given" you
+know is unique on the page. Omit "scope" only when the report shows the target page/section has just
+one instance of the role+label (e.g. a single "Create Order" button, a single form).
 
 Rules:
 1. "given" lists setup actions in order (e.g. create a customer, then a product, then an order) — an
@@ -74,7 +84,12 @@ Rules:
    THIS scenario". Example: given steps create a customer then a product; the "when" step creates an
    order: "requestBody": { "customerId": "{customers.id}", "items": [{"productId": "{products.id}",
    "quantity": 1}] }. Path parameters (e.g. "/orders/{id}") keep the literal "{id}" form already shown
-   in the report's endpoint path — that is resolved separately, against the path's own resource.
+   in the report's endpoint path — that is resolved separately, against the path's own resource. If
+   "given" creates MORE THAN ONE of the same resource (e.g. two different products) and a later step
+   must refer to a specific one, not just the latest, use "{<resource>[N].id}" with a 0-based index in
+   creation order — e.g. the first product created is "{products[0].id}", the second is
+   "{products[1].id}". Do not invent any other indexing/reference syntax — only "{<resource>.id}" (=
+   the latest) and "{<resource>[N].id}" (= the Nth created) are supported.
 1b. Any field value a real system is likely to enforce as unique (an email address, a username, a SKU,
    a slug, etc.) must NOT be a fixed literal you invent (e.g. "jane@example.com") — the same generated
    test runs more than once, and a fixed value collides with data a previous run already created. Embed
@@ -89,6 +104,15 @@ Rules:
 2. "when" is the single action under test.
 3. "then" must have at least one assertion, using concrete values from the report or a Known correction
    above — never invent a status code, field name, or table name not present in either.
+3a. The 7 Action/Assertion "kind" values shown above are the ONLY ones that exist — never write a "kind"
+   that isn't one of them (e.g. there is no "kafka_message" unless the report/component actually shows a
+   Kafka topic to check against). Likewise, a "ui" action/assertion always needs a concrete, real "role"
+   and "label" you can point to in the report's uiPages — if you cannot name both, do not use "ui" at
+   all. If NONE of the 7 kinds can express what a scenario needs to verify, do not force one anyway
+   (an invalid or empty-ish shape breaks this ENTIRE call, discarding every other scenario in this
+   batch too) — instead assert whatever you CAN confidently express with an existing kind (even if it's
+   only a partial check, e.g. the status code but not the side effect), and use "unconfirmed" to name
+   the aspect you couldn't cover and why.
 4. API-only scenarios (validation errors, 404s, 409s) use "api" actions exclusively — do not invent a UI
    path for something the report only exposes via the API.
 5. UI scenarios use the accessibility roles/labels noted in the report's uiPages (textbox, spinbutton,
