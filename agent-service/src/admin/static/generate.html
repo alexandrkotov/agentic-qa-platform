@@ -166,8 +166,8 @@
   <section>
     <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match Stage 2's currently shown spec)</span></h2>
     <div class="row">
-      <label title="Derived from the report selected in Stage 1 — not editable.">Descriptor ⓘ</label>
-      <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable.">
+      <label title="Derived from the grouping selected in Stage 2 above — not editable. Kept in lockstep with Stage 2's own Descriptor field so this always matches whichever system's corrections Stage 2 would actually use.">Descriptor ⓘ</label>
+      <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the grouping selected in Stage 2 above — not editable. Kept in lockstep with Stage 2's own Descriptor field so this always matches whichever system's corrections Stage 2 would actually use.">
       <button class="ghost" id="load-corr-btn">Load</button>
       <button class="ghost" id="add-corr-btn">+ Add correction</button>
     </div>
@@ -244,11 +244,12 @@ function descriptorFromReportName(reportName) {
 
 async function loadReportList() {
   const names = await api('/api/generate/reports');
-  // Only list reports whose filename carries a descriptor label — Stage 1
-  // relies on it to auto-fill "Scenario corrections" and Stage 2's
-  // "Descriptor" field. A handful of early reports predate that naming
-  // convention and have nothing to parse; they're still usable from the CLI,
-  // just not selectable here.
+  // Only list reports whose filename carries a descriptor label. Originally
+  // needed because this dropdown used to drive Descriptor auto-fill directly
+  // — it no longer does (see onGroupingChanged), but the filter stays for
+  // now since these are also the only reports the naming convention treats
+  // as "current"; a handful of early reports predate that convention.
+  // They're still usable from the CLI, just not selectable here.
   const withDescriptor = names.filter((n) => descriptorFromReportName(n) !== null);
   const select = document.getElementById('report-select');
   select.innerHTML = withDescriptor.map((n) => `<option value="${n}">${n}</option>`).join('');
@@ -257,16 +258,18 @@ async function loadReportList() {
 
 // Lets a report reselect reveal "Show last approved grouping" for free,
 // instead of forcing a fresh (re-)grouping just to see what was already
-// approved for this report in an earlier session. Also keeps "Scenario
-// corrections"'s Descriptor field in lockstep with whichever report is
-// selected here, instead of letting it be typed (and drift out of sync).
+// approved for this report in an earlier session. Does NOT touch either
+// Descriptor field — both derive from Stage 2's selected grouping (see
+// onGroupingChanged) rather than from this report-select, since Stage 1's
+// report and Stage 2's grouping are independently choosable and can point
+// at different systems; deriving Descriptor from whichever one just
+// changed would leave it out of sync with the other.
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved grouping';
   state.existingApprovedGrouping = null;
   const report = document.getElementById('report-select').value;
-  document.getElementById('descriptor-name').value = descriptorFromReportName(report) ?? '';
   if (!report) return;
   try {
     const existing = await api('/api/generate/grouping-for-report?report=' + encodeURIComponent(report));
@@ -490,14 +493,24 @@ async function onGroupingChanged() {
   btn.textContent = 'Show last approved spec';
   existingApprovedSpec = null;
   const grouping = document.getElementById('spec-grouping-select').value;
-  const descriptorInput = document.getElementById('spec-descriptor');
-  descriptorInput.value = '';
+  const specDescriptorInput = document.getElementById('spec-descriptor');
+  const corrDescriptorInput = document.getElementById('descriptor-name');
+  specDescriptorInput.value = '';
+  corrDescriptorInput.value = '';
   renderGroupsFilterCheckboxes(null);
   if (!grouping) return;
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
     const reportName = groupingDetails.sourceReportPath.split('/').pop();
-    descriptorInput.value = descriptorFromReportName(reportName) ?? '';
+    const descriptor = descriptorFromReportName(reportName) ?? '';
+    // Both Descriptor fields share this one derivation — Scenario
+    // corrections used to follow Stage 1's report-select instead, which
+    // could show a different descriptor than Stage 2 whenever the two
+    // dropdowns pointed at different systems (a real bug a user hit: Stage
+    // 2 on a kafka-demo grouping, Corrections still showing "orderflow"
+    // from Stage 1's own unrelated report selection).
+    specDescriptorInput.value = descriptor;
+    corrDescriptorInput.value = descriptor;
     renderGroupsFilterCheckboxes(groupingDetails);
   } catch (e) {
     setStatus(document.getElementById('spec-gen-status'), "Failed to read this grouping's source report: " + e.message, 'err');
