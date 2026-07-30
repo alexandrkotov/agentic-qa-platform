@@ -727,3 +727,12 @@ no user-visible difference, unlike the container name a human actually sees in `
 live: rebuilt and swapped the container (`docker compose up -d --build workbench --remove-orphans`,
 which cleanly stopped and removed the stale `agentic-qa-platform-admin-1` container since it's no
 longer in the compose file), confirmed `agentic-qa-platform-workbench-1` is what's actually running.
+
+### Follow-up: the confirm modal's default was still visually wrong (2026-07-30)
+
+Focusing Cancel by keyboard turned out to be half the fix — a live screenshot from the user showed
+"Yes, proceed" still rendered as the blue/prominent `.primary` button, so it still read as the default
+at a glance regardless of which one Enter actually triggered. Swapped classes (Cancel → `primary`,
+"Yes, proceed" → `ghost`) so the visual default agrees with the keyboard default. Verified live: both
+`document.activeElement.id` (still `confirm-modal-cancel`) and the two buttons' actual computed
+`background-color` (Cancel now `rgb(124, 155, 239)`, "Yes, proceed" now transparent) in the same check.
