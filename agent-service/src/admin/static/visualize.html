@@ -120,7 +120,6 @@
      never saw anything to scroll. Override back to overflow: visible here —
      #diagram-modal-scroll is the one and only scroll owner for the modal. */
   .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: default; overflow: visible; }
-  .diagram-zoom-wrap { display: inline-block; }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
      put in the corner regardless of scroll position instead of scrolling
@@ -334,7 +333,7 @@ document.getElementById('diagram-zoom-out').onclick = () => {
 
 async function openDiagramModal(title, mermaidSource) {
   modalTitle.textContent = title;
-  modalScroll.innerHTML = '<div class="diagram-zoom-wrap"><pre class="mermaid"></pre></div>';
+  modalScroll.innerHTML = '<pre class="mermaid"></pre>';
   modalScroll.querySelector('pre').textContent = mermaidSource;
   modalOverlay.classList.add('open');
   zoomLevel = 1;
