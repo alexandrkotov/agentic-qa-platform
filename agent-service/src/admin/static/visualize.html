@@ -120,7 +120,14 @@
      overflow internally no matter how big the <svg> got, so this container
      never saw anything to scroll. Override back to overflow: visible here —
      #diagram-modal-scroll is the one and only scroll owner for the modal. */
-  .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: default; overflow: visible; }
+  /* cursor: inherit, not default — the shared pre.mermaid rule sets
+     cursor: zoom-in (a hint for the small page diagrams), which otherwise
+     wins here by source order once this rule stops setting cursor at all.
+     inherit forces this specific <pre> — which visually covers the whole
+     diagram body — to pick up #diagram-modal-scroll's grab/grabbing instead,
+     so the pan cursor shows over the diagram itself, not just the empty
+     canvas around it. */
+  .diagram-modal-scroll pre.mermaid { display: inline-block; min-width: 100%; box-sizing: border-box; cursor: inherit; overflow: visible; }
 
   /* Floats over the scroll container as a sibling, not a descendant — stays
      put in the corner regardless of scroll position instead of scrolling
