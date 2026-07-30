@@ -540,10 +540,18 @@ work" — split the same way as before by whether the answer requires interpreta
   propose → human edits → approve cycle as Business workflow (`ProposedUiFlowSchema`/
   `ApprovedUiFlowSchema`, `agents/workflow/proposeUiFlow.ts`, approved files as
   `generate-ui-flow-approved-*.json`). Renders as **one** combined `flowchart` (navigation is
-  inherently cross-page, unlike per-entity state diagrams) via `renderUiFlowDiagram()`, plus a plain
-  list of in-place actions per page below it — the same "not every relationship is a graph edge"
-  reasoning as guards/invariants. The editable unit in the UI is a single textarea over the whole
-  `pages[]` array rather than one per page, matching what actually gets rendered.
+  inherently cross-page, unlike per-entity state diagrams) via `renderUiFlowDiagram()`. The editable
+  unit in the UI is a single textarea over the whole `pages[]` array rather than one per page,
+  matching what actually gets rendered.
+
+In-place actions (don't navigate) went through two designs before landing: first a separate text list
+below the diagram, then — after live feedback that a flat app like orderflow produces a graph of
+mostly-disconnected boxes with all the real content hidden in the list below — self-loop edges on
+each page's own node. The self-loop version turned out to have a real Mermaid limitation, confirmed
+live rather than assumed: the flowchart layout only keeps the *last* self-loop when a node has more
+than one, silently dropping the rest (`/orders`, with seven in-place actions, only ever showed one on
+screen). Landed on listing every in-place action directly inside its page's own node label instead —
+no such limit, and every action is visible on the graph itself rather than in a separate list.
 
 Verified live: the architecture diagram (free) on the real orderflow report produced exactly the
 expected four nodes and edges (Web ui → HTTP → Rest api → SQL → Postgres, → events → Kafka consumer),
