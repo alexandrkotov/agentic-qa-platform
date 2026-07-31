@@ -1490,3 +1490,20 @@ a fourth screenshot of the same root cause.
 Verified live against the real running container at the reported screenshot's approximate width
 (749px): "Report" and "Ungrouped threshold" each wrap as complete, unsplit label+field pairs rather
 than splitting a label from its own input.
+
+## Addendum: two status messages weren't styled like the rest (2026-07-31)
+
+Screenshot: Stage 1's "Loaded approved grouping from ..." rendered green, Stage 2's "Loaded approved
+spec from ..." right below it rendered as plain uncolored text — both come from the exact same
+`setStatus(el, text, 'ok')` helper in
+[generate.html](../agent-service/src/admin/static/generate.html), applying the identical `ok` class
+either way. The actual gap was in the CSS: `#status.ok`/`#corr-status.ok` (green) and their `.err`
+(red) counterparts were only ever defined for those two specific span IDs — `#spec-gen-status` and
+`#spec-status` (added in later milestones for Stage 2's Generate-spec/Show-last-approved-spec and
+Approve-spec outcomes) never got matching rules at all, so `setStatus` was doing its job but had
+nothing to style with. Extended the existing rules to cover all four status spans instead of leaving
+two undefined. Checked `index.html` and `visualize.html` for the same gap — both already cover every
+status span they have, so this was scoped to `generate.html` alone.
+
+Verified live against the real running container: computed color for `#status` and `#spec-gen-status`
+both after a real "ok" status matched exactly (`rgb(47, 143, 91)`, the same green in both).
