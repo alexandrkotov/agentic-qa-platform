@@ -258,12 +258,14 @@ async function loadReportList() {
 
 // Lets a report reselect reveal "Show last approved grouping" for free,
 // instead of forcing a fresh (re-)grouping just to see what was already
-// approved for this report in an earlier session. Does NOT touch either
-// Descriptor field — both derive from Stage 2's selected grouping (see
-// onGroupingChanged) rather than from this report-select, since Stage 1's
-// report and Stage 2's grouping are independently choosable and can point
-// at different systems; deriving Descriptor from whichever one just
-// changed would leave it out of sync with the other.
+// approved for this report in an earlier session. Also cascades that same
+// lookup down to Stage 2: if a matching approved grouping exists, select it
+// in Stage 2's own dropdown too, so both Descriptor fields (still derived
+// from Stage 2's selected grouping — see onGroupingChanged, the one place
+// that's actually correct to derive them from) update immediately instead
+// of silently staying on whatever grouping was selected before. If no
+// grouping exists yet for the newly picked report, Stage 2 is left alone —
+// nothing to switch it to.
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
@@ -276,6 +278,12 @@ async function onReportChanged() {
     if (!existing) return;
     state.existingApprovedGrouping = existing;
     btn.style.display = '';
+    const groupingName = existing.path.split('/').pop();
+    const groupingSelect = document.getElementById('spec-grouping-select');
+    if (Array.from(groupingSelect.options).some((o) => o.value === groupingName)) {
+      groupingSelect.value = groupingName;
+      await onGroupingChanged();
+    }
   } catch (e) {
     setStatus(document.getElementById('status'), 'Failed to check for an existing approved grouping: ' + e.message, 'err');
   }
