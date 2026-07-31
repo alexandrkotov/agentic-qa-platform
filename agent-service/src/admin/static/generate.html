@@ -148,6 +148,8 @@
       <input type="text" id="spec-descriptor" readonly style="width:8rem" title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">
       <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
       <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
+    </div>
+    <div class="row" style="flex-direction:column; align-items:flex-start; gap:0.4rem;">
       <label title="Same Stage 1 group names shown above — checking a group includes it whole, batched however many Claude calls it internally needs. Leave all unchecked to generate every group.">Limit to groups (optional) ⓘ</label>
       <span id="spec-groups-filter" class="checkbox-list"></span>
     </div>
@@ -532,6 +534,10 @@ async function onGroupingChanged() {
   const specDescriptorInput = document.getElementById('spec-descriptor');
   specDescriptorInput.value = '';
   renderGroupsFilterCheckboxes(null);
+  // Nothing to generate a spec from when the (descriptor-scoped) dropdown
+  // has no grouping at all — e.g. a report with no approved grouping yet.
+  // Disable rather than let it fail server-side on a missing "grouping".
+  document.getElementById('spec-generate-btn').disabled = !grouping;
   if (!grouping) return;
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
