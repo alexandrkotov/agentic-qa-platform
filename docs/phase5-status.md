@@ -1350,3 +1350,20 @@ snapshot from before any edits.
 Verified live against the real running container and the exact grouping from the screenshots: loading
 it via "Show last approved grouping" now shows no banner at all (0 of 29 ungrouped, correctly below any
 threshold), with all 29 scenarios still correctly distributed across the 4 groups (2+7+5+15).
+
+## Addendum: label Scenario corrections' two columns (2026-07-31)
+
+The name/text-area pair in each correction row had no header at all — nothing signaled that the left
+column is an exact lookup key (a scenario's name, verbatim, matched by `spec.ts`'s
+`buildCorrectionsBlock`) versus free-form, plain-language override text on the right. Added a
+`.corr-header` row above `#corr-body` in
+[generate.html](../agent-service/src/admin/static/generate.html) — "Scenario name" / "Correction",
+each with a tooltip (same ⓘ pattern used everywhere else on this page) spelling out the fuller meaning:
+the left column must match a real scenario name exactly to have any effect, and the right column is
+applied *over* the discovery report's own text for that scenario, not merged with it. Column widths
+match the existing `.corr-row input`/`textarea` flex-basis exactly, so the labels line up with the
+fields below regardless of how many rows are currently loaded.
+
+Verified live against the real running container: header text reads "Scenario name ⓘ" / "Correction
+ⓘ"; a bounding-box comparison confirmed the first header column's x-position and width match the first
+loaded row's name input exactly.
