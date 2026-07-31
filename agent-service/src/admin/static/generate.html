@@ -151,12 +151,14 @@
     <div class="row">
       <label>Approved grouping</label>
       <select id="spec-grouping-select"></select>
-      <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
-      <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
     </div>
     <div class="row">
       <label title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">Descriptor ⓘ</label>
       <input type="text" id="spec-descriptor" readonly style="width:8rem" title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">
+    </div>
+    <div class="row">
+      <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
+      <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
     </div>
     <div class="row" style="flex-direction:column; align-items:flex-start; gap:0.4rem;">
       <label title="Same Stage 1 group names shown above — checking a group includes it whole, batched however many Claude calls it internally needs. Leave all unchecked to generate every group.">Limit to groups (optional) ⓘ</label>
