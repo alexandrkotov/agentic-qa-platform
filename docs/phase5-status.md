@@ -1507,3 +1507,58 @@ status span they have, so this was scoped to `generate.html` alone.
 
 Verified live against the real running container: computed color for `#status` and `#spec-gen-status`
 both after a real "ok" status matched exactly (`rgb(47, 143, 91)`, the same green in both).
+
+## Addendum: Stage 3 — render, run tests, view report, from the web UI (2026-07-31)
+
+Closes the loop the user described using this page live: group → spec → render → run → report →
+back to corrections → repeat, previously requiring a drop to the CLI for the last two steps
+(`generate-render`, `pnpm test`). Three additions, in order of how much they turned out to need:
+
+**"Generate render"** — mechanical, free, calls the same `renderSpec()`/`writeRenderedFiles()` the
+CLI's `generate-render` phase already uses. Deliberately *not* routed through
+`bootstrap/generateRender.ts`'s `runGenerateRender()`: that CLI wrapper derives its output root as
+`resolve(config.reportsDir, '..', '..')` — correct for the host's nested `<repo>/agent-service/reports`
+layout, but two levels too high for this container, where `reportsDir` sits directly at
+`/usr/src/app/reports` with no extra `agent-service/` nesting. New `APP_ROOT`/`TESTS_ROOT` constants in
+[server.ts](../agent-service/src/admin/server.ts) derive it correctly for the flatter container layout
+instead (confirmed the exact arithmetic difference — one `'..'` versus two — with a throwaway script
+against the real running container before writing the route). Gated on `existingApprovedSpec`, same
+data Stage 2's "Show last approved spec" already tracks.
+
+**"Show Cucumber test report"** — a plain `<a>` styled identically to every button on the page. Needed
+generalizing `button.primary`'s CSS from a button-scoped selector to a bare `.primary` class (verified
+first that nothing else on the page already relied on `class="primary"` being button-only) so the link
+gets the same look without a duplicate style block.
+
+**"Run tests"** — the one with real infrastructure to sort out first. `tests/` is a fully separate
+package (its own `node_modules`, `@playwright/test`, `pg`, `kafkajs`) that the `workbench` container had
+zero access to — confirmed via `docker exec ... ls /usr/src/app/tests` failing outright. Added
+`./tests:/usr/src/app/tests` to `workbench`'s volumes in `docker-compose.yml` (also required for
+"Generate render" to write anywhere durable). The suite's own env (`FRONTEND_URL`, `DATABASE_URL`,
+`KAFKA_BROKERS`) is written for host execution (`localhost:5173/5432/9094`) — wrong from inside a
+bridge-network container, same class of problem the discovery route already solved for descriptor
+component URLs — so the new `/api/tests/run` route overrides all three to this compose network's own
+service names (`frontend:5173`, `db:5432`, `kafka:9092`) taken directly from `app`'s and `kafka`'s own
+`docker-compose.yml` definitions. Runs `bddgen && playwright test` via `child_process.spawn`, then
+*always* runs the report-generation script afterward regardless of the test step's exit code — a
+failing run is exactly what the report exists to surface, not a reason to skip generating it. Reuses
+the existing paid-action confirm modal for a non-money reason this time (real side effects: creates
+real orders/customers/products, can take a few minutes) — the modal's own doc-comment was reworded
+since "specifically to warn about spending real money" was no longer accurate.
+
+Verified live against the real running container and real infrastructure, in full:
+- `curl`'d `/api/generate/render` for an approved spec whose groups (`security-1`/`security-2`) didn't
+  match any already-committed `.feature`/`.steps.ts` filename (checked `git status`/`git ls-files`
+  first — the real committed `tests/` files had zero uncommitted changes, so nothing was at risk
+  either way) — confirmed 4 real files landed on the actual host `tests/` directory, not just the
+  container's ephemeral filesystem; deleted them afterward, clean `git status`.
+- `curl`'d `/api/tests/run` for a genuine, full `bddgen && playwright test` run against the real
+  `app`/`db`/`kafka`/`frontend` containers — completed successfully (network overrides worked, no
+  missing-browser errors), returned `testsPassed: false` / `exitCode: 1` (real scenario failures, not
+  infrastructure failures) and `reportGenerated: true`; confirmed the HTML report actually landed on
+  the host `tests/reports/cucumber-html/index.html` and is served correctly at `:8080`.
+- Drove the actual page with headless Playwright: the report link's `href`/`target` are correct;
+  "Generate render" is visible for the descriptor with an approved spec and hidden for one with none;
+  clicking "Run tests" opens the confirm modal, and clicking Cancel does *not* fire the request
+  (verified via route interception) — the expensive, real side-effecting path was only exercised once,
+  directly via `curl` above, not repeated through the UI.
