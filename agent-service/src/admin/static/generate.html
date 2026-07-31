@@ -111,12 +111,13 @@
   .scenario-row .name { flex: 1; }
   .scenario-row select { font-size: 0.78rem; }
 
-  #status { font-size: 0.83rem; margin-left: 0.5rem; }
-  #status.ok { color: #2f8f5b; }
-  #status.err { color: var(--danger); }
-  #corr-status { font-size: 0.83rem; margin-left: 0.5rem; }
-  #corr-status.ok { color: #2f8f5b; }
-  #corr-status.err { color: var(--danger); }
+  /* One shared rule for every status span setStatus() ever touches — these
+     used to be defined per-ID for just #status/#corr-status, so the two
+     added later (#spec-gen-status, #spec-status) had no styling at all and
+     rendered as plain, uncolored text instead of matching the other two. */
+  #status, #spec-gen-status, #spec-status, #corr-status { font-size: 0.83rem; margin-left: 0.5rem; }
+  #status.ok, #spec-gen-status.ok, #spec-status.ok, #corr-status.ok { color: #2f8f5b; }
+  #status.err, #spec-gen-status.err, #spec-status.err, #corr-status.err { color: var(--danger); }
 
   .corr-row { display: flex; gap: 0.6rem; margin-bottom: 0.6rem; align-items: flex-start; }
   .corr-row input { flex: 0 0 260px; }
