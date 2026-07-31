@@ -128,6 +128,11 @@ services:
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors
       - ./agent-service/reports:/usr/src/app/reports
+      # Stage 3 (render) writes .feature/.steps.ts here, and "Run tests"
+      # executes the suite from here — without this mount, either action
+      # would only touch the container's own ephemeral filesystem, never
+      # the real tests/ directory this project's suite actually lives in.
+      - ./tests:/usr/src/app/tests
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:

@@ -1,5 +1,6 @@
 import express from 'express';
 import { readFile, writeFile, readdir, mkdir, unlink } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { lookup } from 'node:dns/promises';
@@ -11,6 +12,7 @@ import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
 import { generateSpec } from '../agents/generate/spec.ts';
+import { renderSpec, writeRenderedFiles } from '../agents/generate/render.ts';
 import {
   ProposedGroupingSchema,
   ApprovedGroupingSchema,
@@ -751,6 +753,12 @@ app.get('/api/generate/groupings/:name', async (req, res) => {
 });
 
 const SPEC_APPROVED_NAME_PATTERN = /^generate-spec-approved-[A-Za-z0-9:_.-]+\.json$/;
+function specFilePath(name: string): string {
+  if (!SPEC_APPROVED_NAME_PATTERN.test(name)) {
+    throw Object.assign(new Error('Spec name must be an exact "generate-spec-approved-*.json" filename'), { status: 400 });
+  }
+  return join(config.reportsDir, name);
+}
 
 /** Latest approved spec whose sourceGroupingPath matches this grouping, if any — same reuse-existing-approval idea as /api/generate/grouping-for-report, one layer down the pipeline. */
 app.get('/api/generate/spec-for-grouping', async (req, res) => {
@@ -845,6 +853,81 @@ app.post('/api/generate/spec/approve', async (req, res) => {
       return;
     }
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Generate pipeline — Stage 3 (render) and "Run tests". Both mechanical, no
+// LLM. Deliberately NOT calling bootstrap/generateRender.ts's
+// runGenerateRender(): that CLI wrapper derives its output root as
+// resolve(config.reportsDir, '..', '..'), correct for the *host* layout
+// (<repo>/agent-service/reports -> two levels up is <repo>). This container
+// has no such nesting — reportsDir sits directly at /usr/src/app/reports —
+// so going up two levels lands outside the container entirely (/usr/src).
+// APP_ROOT below is the equivalent derivation for *this* flatter layout.
+// ---------------------------------------------------------------------------
+
+const APP_ROOT = resolve(config.reportsDir, '..');
+const TESTS_ROOT = join(APP_ROOT, 'tests');
+
+app.post('/api/generate/render', async (req, res) => {
+  try {
+    const { spec: specName } = req.body as { spec?: string };
+    if (!specName) {
+      res.status(400).json({ error: '"spec" is required' });
+      return;
+    }
+    const spec = ApprovedSpecSchema.parse(JSON.parse(await readFile(specFilePath(specName), 'utf-8')));
+    const files = renderSpec(spec);
+    const written = await writeRenderedFiles(files, APP_ROOT);
+    res.json({ written });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Spec failed validation', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+/** Runs a command to completion, resolving with its exit code and combined stdout+stderr regardless of that code — a failing test run is a normal, expected *result* to report back to the caller, not a server error. Only rejects if the process itself can't be spawned at all. */
+function runCommand(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<{ code: number; output: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(cmd, args, { cwd, env });
+    let output = '';
+    child.stdout.on('data', (chunk) => { output += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+    child.on('error', reject);
+    child.on('close', (code) => resolvePromise({ code: code ?? 1, output }));
+  });
+}
+
+app.post('/api/tests/run', async (req, res) => {
+  try {
+    const testEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      // tests/.env is written for a host run (localhost:5173/5432/9094) —
+      // this process runs inside the workbench container instead, so it
+      // needs this compose network's own service names, same reasoning as
+      // the discovery route's descriptor URL rewriting elsewhere in this
+      // file. Values match app/db/kafka's own docker-compose.yml definitions
+      // exactly (db's user/pass/db name, kafka's internal PLAINTEXT listener).
+      FRONTEND_URL: 'http://frontend:5173',
+      DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
+      KAFKA_BROKERS: 'kafka:9092',
+    };
+    const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv);
+    // Always regenerate the HTML report afterward, whether or not the run
+    // above passed — the report's whole purpose is showing what failed.
+    const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv);
+    res.json({
+      testsPassed: testRun.code === 0,
+      testsExitCode: testRun.code,
+      reportGenerated: reportRun.code === 0,
+      output: (testRun.output + '\n' + reportRun.output).slice(-8000),
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

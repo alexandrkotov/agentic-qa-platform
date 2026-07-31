@@ -74,11 +74,15 @@
     padding: 0.4rem 0.55rem; font-size: 0.83rem; color: var(--text); font-family: inherit;
     width: 100%; resize: vertical; min-height: 3rem;
   }
-  button.primary {
+  /* Not button-scoped — "Show Cucumber test report" is a plain <a> styled to
+     look identical to every button here, since it's just a link, not an
+     action with a request/response cycle to gate or show status for. */
+  .primary {
+    display: inline-block; text-decoration: none;
     background: var(--accent); color: #fff; border: none; border-radius: 6px;
     padding: 0.5rem 0.95rem; font-size: 0.83rem; font-weight: 600; cursor: pointer;
   }
-  button.primary:hover { filter: brightness(1.08); }
+  .primary:hover { filter: brightness(1.08); color: #fff; }
   button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
   button.ghost {
     background: none; border: 1px solid var(--line); color: var(--text);
@@ -115,9 +119,9 @@
      used to be defined per-ID for just #status/#corr-status, so the two
      added later (#spec-gen-status, #spec-status) had no styling at all and
      rendered as plain, uncolored text instead of matching the other two. */
-  #status, #spec-gen-status, #spec-status, #corr-status { font-size: 0.83rem; margin-left: 0.5rem; }
-  #status.ok, #spec-gen-status.ok, #spec-status.ok, #corr-status.ok { color: #2f8f5b; }
-  #status.err, #spec-gen-status.err, #spec-status.err, #corr-status.err { color: var(--danger); }
+  #status, #spec-gen-status, #spec-status, #corr-status, #render-status, #run-tests-status { font-size: 0.83rem; margin-left: 0.5rem; }
+  #status.ok, #spec-gen-status.ok, #spec-status.ok, #corr-status.ok, #render-status.ok, #run-tests-status.ok { color: #2f8f5b; }
+  #status.err, #spec-gen-status.err, #spec-status.err, #corr-status.err, #render-status.err, #run-tests-status.err { color: var(--danger); }
 
   .corr-row { display: flex; gap: 0.6rem; margin-bottom: 0.6rem; align-items: flex-start; }
   .corr-row input { flex: 0 0 260px; }
@@ -216,6 +220,21 @@
       <span id="corr-status"></span>
     </div>
   </section>
+
+  <section>
+    <h2>Stage 3: Render tests</h2>
+    <div class="row">
+      <button class="primary" id="render-btn" style="display:none">Generate render</button>
+      <span id="render-status"></span>
+    </div>
+    <div class="row">
+      <button class="primary" id="run-tests-btn">Run tests</button>
+      <span id="run-tests-status"></span>
+    </div>
+    <div class="row">
+      <a class="primary" href="http://localhost:8080/" target="_blank" rel="noopener">Show Cucumber test report</a>
+    </div>
+  </section>
 </main>
 
 <div class="confirm-modal-overlay" id="confirm-modal-overlay">
@@ -238,8 +257,9 @@ function confirmPaidAction(message) {
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
     // Cancel, not "Yes, proceed", is the default — focusing it means Enter
-    // does the safe thing on a modal that exists specifically to warn about
-    // spending real money.
+    // does the safe thing on a modal that exists to warn before a
+    // consequential action (originally just "costs real money"; also reused
+    // for "Run tests", which costs nothing but mutates real data instead).
     document.getElementById('confirm-modal-cancel').focus();
     const cleanup = (result) => {
       overlay.classList.remove('open');
@@ -593,6 +613,7 @@ async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved spec';
+  document.getElementById('render-btn').style.display = 'none';
   existingApprovedSpec = null;
   const grouping = document.getElementById('spec-grouping-select').value;
   const specDescriptorInput = document.getElementById('spec-descriptor');
@@ -622,6 +643,9 @@ async function onGroupingChanged() {
     if (!existing) return;
     existingApprovedSpec = existing;
     btn.style.display = '';
+    // Stage 3 only makes sense once there's an approved spec to render —
+    // same gating as "Show last approved spec" right above, same source.
+    document.getElementById('render-btn').style.display = '';
   } catch (e) {
     setStatus(document.getElementById('spec-gen-status'), 'Failed to check for an existing approved spec: ' + e.message, 'err');
   } finally {
@@ -747,6 +771,50 @@ document.getElementById('spec-approve-btn').onclick = async () => {
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+// --- Stage 3: render + run --------------------------------------------------
+
+document.getElementById('render-btn').onclick = async () => {
+  if (!existingApprovedSpec) return;
+  const btn = document.getElementById('render-btn');
+  const statusEl = document.getElementById('render-status');
+  const specName = existingApprovedSpec.path.split('/').pop();
+  btn.disabled = true;
+  setStatus(statusEl, 'Rendering .feature/.steps.ts files…');
+  try {
+    const result = await api('/api/generate/render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec: specName }),
+    });
+    setStatus(statusEl, `Wrote ${result.written.length} file(s).`, 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('run-tests-btn').onclick = async () => {
+  const btn = document.getElementById('run-tests-btn');
+  const statusEl = document.getElementById('run-tests-status');
+  // Reusing confirmPaidAction here even though this costs nothing — same
+  // "pause before a consequential action" modal, just for a different
+  // reason: this runs the real suite against the real app, mutating real
+  // DB/Kafka state, and can take a few minutes.
+  if (!(await confirmPaidAction('Run the full test suite against the live app? This mutates real data (creates orders/customers/products) and may take a few minutes.'))) return;
+  btn.disabled = true;
+  setStatus(statusEl, 'Running tests — this may take a few minutes…');
+  try {
+    const result = await api('/api/tests/run', { method: 'POST' });
+    const summary = result.testsPassed ? 'All tests passed.' : `Tests finished with failures (exit code ${result.testsExitCode}).`;
+    setStatus(statusEl, summary + (result.reportGenerated ? ' Report updated.' : ' Report generation failed — see server logs.'), result.testsPassed ? 'ok' : 'err');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
   }
 };
 
