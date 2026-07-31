@@ -1367,3 +1367,38 @@ fields below regardless of how many rows are currently loaded.
 Verified live against the real running container: header text reads "Scenario name ⓘ" / "Correction
 ⓘ"; a bounding-box comparison confirmed the first header column's x-position and width match the first
 loaded row's name input exactly.
+
+## Addendum: style Load/+Add correction, guard against an unloaded-file overwrite (2026-07-31)
+
+Two more requests. First, cosmetic: `load-corr-btn`/`add-corr-btn` were still `class="ghost"`, out of
+step with every other action button on the page — switched both to `primary`.
+
+Second, a real footgun the user asked to be guarded against, matching exactly the risk flagged a few
+addenda back: clicking "+ Add correction" without Loading first starts from an empty in-memory
+`corrections` object, and Save always overwrites the whole file — so one new entry plus Save would
+silently discard every correction already saved on disk for every other group. "+ Add correction" now
+disables itself whenever the current descriptor has a real, non-empty corrections file that hasn't
+been loaded into memory yet (checked via the same `GET /api/generate/corrections/:name` the Load
+button itself calls), with a tooltip explaining why. Clears once Load or a successful Save catches
+memory up with disk. Folded into the existing `setStage2GatedButtonsDisabled` so it composes correctly
+with the "no grouping selected" and "request in flight" disable reasons already there, instead of one
+silently overriding the other.
+
+Building this surfaced a second, more fundamental bug along the way: switching the selected report/
+descriptor never actually cleared the in-memory `corrections` object at all — so after Load(A), then
+switching to B (never loaded) and back to A, the guard trusted a stale "A is loaded" flag left over
+from before the detour, without ever re-verifying that `corrections` still genuinely held A's data. In
+this specific case nothing was corrupted only because B was never loaded either; the same sequence with
+B *actually* loaded in between would have fooled the guard into treating a since-overwritten
+`corrections` object as still safe. Fixed by having `checkCorrectionsLoadRisk` clear `corrections` and
+reset the "loaded" tracking to null on every transition where the incoming descriptor doesn't match
+what's tracked as loaded, re-rendering to an empty list — a descriptor visited, abandoned, then
+revisited is now correctly treated as unloaded again rather than trusting a claim from before the
+detour.
+
+Verified live against the real running container and real data, no Claude calls: `orderflow` (has a
+real corrections file) starts with "+ Add correction" disabled and titled; clicking Load enables it and
+shows its 3 rows; switching to `kafka-demo` (no file at all) clears the rows to 0 and leaves the button
+enabled (nothing to protect); switching back to `orderflow` *without* re-clicking Load again shows 0
+rows (correctly cleared, not silently carrying stale data across the detour) and "+ Add correction"
+disabled again — the exact sequence that caught the tracking bug above, now behaving correctly.
