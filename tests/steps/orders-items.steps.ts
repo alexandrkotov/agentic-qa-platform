@@ -6,7 +6,7 @@ import { orderCardLocator } from '../support/orderCardLocator';
 
 const { Given, When, Then, Before } = createBdd();
 
-const BASE = 'http://localhost:3000';
+const BASE = process.env.BACKEND_URL ?? 'http://localhost:3000';
 let ctx: any = {};
 
 Before({ tags: '@orders_items' }, async () => {

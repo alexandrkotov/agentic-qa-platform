@@ -7,7 +7,7 @@ import { orderCardLocator } from '../support/orderCardLocator';
 
 const { Given, When, Then, Before } = createBdd();
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.BACKEND_URL ?? 'http://localhost:3000';
 const ORDER_STATUS_CHANGED_TOPIC = 'orders.status-changed';
 
 let ctx: any = {};

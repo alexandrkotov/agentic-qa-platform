@@ -4,7 +4,7 @@ import { orderCtx } from '../support/orderCtx';
 
 const { Given } = createBdd();
 
-const BASE = 'http://localhost:3000';
+const BASE = process.env.BACKEND_URL ?? 'http://localhost:3000';
 
 // No Before() here on purpose — each of orders-items/orders-status/orders-
 // validation's own Before() calls resetOrderCtx() itself (see those files).
