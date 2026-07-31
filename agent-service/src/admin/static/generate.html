@@ -71,6 +71,7 @@
     background: none; border: 1px solid var(--line); color: var(--text);
     border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
   }
+  button.ghost:disabled { opacity: 0.5; cursor: not-allowed; }
   button.ghost:hover { background: var(--surface-2); }
   button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.76rem; padding: 0.1rem 0.3rem; }
   .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
@@ -534,10 +535,19 @@ async function onGroupingChanged() {
   const specDescriptorInput = document.getElementById('spec-descriptor');
   specDescriptorInput.value = '';
   renderGroupsFilterCheckboxes(null);
-  // Nothing to generate a spec from when the (descriptor-scoped) dropdown
-  // has no grouping at all — e.g. a report with no approved grouping yet.
-  // Disable rather than let it fail server-side on a missing "grouping".
-  document.getElementById('spec-generate-btn').disabled = !grouping;
+  // Nothing to work with anywhere below Stage 1 when the (descriptor-scoped)
+  // dropdown has no grouping at all — e.g. a report with no approved
+  // grouping yet. Disable every button that would otherwise either fail
+  // server-side on a missing "grouping" (Generate spec) or succeed but be
+  // premature/pointless before that grouping exists (Load/+ Add
+  // correction/Save corrections — corrections themselves don't need a
+  // grouping to exist, but there is nothing here yet worth reviewing them
+  // against).
+  const noGrouping = !grouping;
+  document.getElementById('spec-generate-btn').disabled = noGrouping;
+  document.getElementById('load-corr-btn').disabled = noGrouping;
+  document.getElementById('add-corr-btn').disabled = noGrouping;
+  document.getElementById('save-corr-btn').disabled = noGrouping;
   if (!grouping) return;
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
