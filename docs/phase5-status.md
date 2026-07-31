@@ -1402,3 +1402,16 @@ shows its 3 rows; switching to `kafka-demo` (no file at all) clears the rows to 
 enabled (nothing to protect); switching back to `orderflow` *without* re-clicking Load again shows 0
 rows (correctly cleared, not silently carrying stale data across the detour) and "+ Add correction"
 disabled again — the exact sequence that caught the tracking bug above, now behaving correctly.
+
+## Addendum: Stage 2's Descriptor got its own row (2026-07-31)
+
+Screenshot: "Approved grouping" / "Descriptor" / "Scenarios per Claude call" shared one `flex-wrap`
+row — at a narrow enough window width, the Descriptor *label* fit onto the tail of one line while its
+*input* wrapped down to the start of the next, visually orphaned from its own label (the exact same
+class of bug already fixed once for "Limit to groups" a few addenda back — a label and its field are
+independent flex children, so flex-wrap can split them across lines). Moved Descriptor into its own
+row in [generate.html](../agent-service/src/admin/static/generate.html), same fix as before.
+
+Verified live at a deliberately narrow 950px viewport (the width where the bug reproduced): a
+screenshot confirms the Descriptor label and its `orderflow` input now render together on their own
+line, below "Scenarios per Claude call," never split across a wrap.
