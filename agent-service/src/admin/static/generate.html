@@ -53,6 +53,13 @@
     padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
   }
   input[readonly] { background: var(--surface-2); color: var(--text-mute); cursor: default; }
+  /* Tooltip-bearing labels/inputs/headers otherwise show whatever cursor the
+     browser defaults to for that element type — arrow on some, text-caret on
+     others — with no consistent signal that hovering reveals more info.
+     cursor: help (a "?" cursor on every major browser/OS) makes that
+     consistent and self-explanatory. Placed after input[readonly] so it wins
+     there too — those fields have the exact same "hover to learn why" intent. */
+  label[title], input[title], span[title] { cursor: help; }
   .checkbox-list { display: flex; gap: 0.85rem; flex-wrap: wrap; font-size: 0.82rem; }
   .checkbox-list label { display: flex; align-items: center; gap: 0.3rem; color: var(--text); cursor: pointer; }
   .checkbox-list .empty-note { color: var(--text-mute); font-size: 0.78rem; }
