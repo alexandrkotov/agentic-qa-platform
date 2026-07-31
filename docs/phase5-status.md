@@ -1106,3 +1106,31 @@ Corrections used to auto-fill from that selection). That reason is now gone — 
 derives a descriptor from Stage 1's report-select anymore — so the six early reports without a label
 could safely be un-hidden from Stage 1's dropdown. Left as-is pending the user's call, since they'd
 explicitly signed off on hiding them under the old (now superseded) reasoning.
+
+## Addendum: Stage 1's report change now cascades into Stage 2 (2026-07-30)
+
+The previous addendum fixed *what* both Descriptor fields derive from (Stage 2's own selected
+grouping) but missed *when* that selection updates. Switching Stage 1's report-select did nothing to
+Stage 2's own "Approved grouping" dropdown, so both Descriptor fields kept showing whatever grouping
+Stage 2 already had selected — correct relative to Stage 2's own dropdown, but not what the user
+expected: two screenshots showed switching Stage 1 from a `kafka-consumer-demo` report to an
+`orderflow` one with Stage 2's Descriptor staying on `kafka-demo` throughout, unmoved by either
+switch. Their expectation, stated directly: picking a report in Stage 1 should immediately pull its
+descriptor into both Stage 2 and Scenario corrections.
+
+Fixed by cascading, not by re-deriving Descriptor from Stage 1 directly (that was the original,
+already-buggy design two addenda back). `onReportChanged` already calls
+`/api/generate/grouping-for-report` to decide whether to show "Show last approved grouping"; reused
+that same lookup — if a match exists, it now also sets Stage 2's `spec-grouping-select` to that
+grouping's filename and runs `onGroupingChanged`, letting the existing (correct) derivation chain
+handle both Descriptor fields and the group checkboxes from there. If no approved grouping exists yet
+for the newly picked report, Stage 2 is left exactly as it was — nothing to cascade to, and clearing it
+would just lose whatever the user had already selected there for unrelated work.
+
+Verified live against the real running container, reproducing the exact two-screenshot scenario:
+selecting the `kafka-consumer-demo` report (no grouping exists for it yet) leaves Stage 2 on its prior
+`orderflow`-sourced grouping, unchanged, both Descriptors still `orderflow`; switching to the
+`orderflow` report keeps them on `orderflow` (already correct, but now for the right reason —
+genuinely cascaded, not coincidentally unchanged); switching to the `kafka-demo` report immediately
+flips Stage 2's grouping select, both Descriptor fields, and (implicitly, via the same
+`onGroupingChanged` call) the group checkboxes over to the matching `kafka-demo` grouping.
