@@ -1444,3 +1444,19 @@ adding and saving one correction for `kafka-demo` re-enables Load immediately af
 needing to switch away and back. The verification itself created a real (junk) corrections file for
 `kafka-demo` in the process — deleted it afterward so no test artifact was left behind in the user's
 project data.
+
+## Addendum: consistent "help" cursor on every tooltip-bearing element (2026-07-31)
+
+Reported: hovering the various ⓘ labels/fields showed inconsistent cursors — a plain arrow on some, a
+text caret on others — with nothing signaling that a tooltip was even available. All of this page's
+`title` attributes turned out to sit on only three tag types (`label`, `input`, and the Scenario
+corrections column-header `span`s), each otherwise falling back to whatever cursor the browser defaults
+to for that element. Added `label[title], input[title], span[title] { cursor: help; }` in
+[generate.html](../agent-service/src/admin/static/generate.html), placed after the existing
+`input[readonly]` rule so it wins there too (the readonly Descriptor fields have the same "hover to
+learn why" intent as everything else). `cursor: help` renders as a question-mark cursor on every major
+OS/browser — exactly what was asked for, and no JS needed.
+
+Verified live against the real running container: computed `cursor` for a sample across all three tag
+types (a labeled field, both readonly Descriptor inputs, and a Scenario-corrections header) all read
+`"help"` uniformly.
