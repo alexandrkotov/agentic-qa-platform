@@ -386,9 +386,15 @@ function renderGrouping() {
   if (!state.grouping) return;
   const g = state.grouping;
 
-  if (g.flatFallback) {
-    const total = g.groups.reduce((n, gr) => n + gr.scenarioNames.length, 0) + g.ungrouped.length;
-    const pct = total > 0 ? Math.round((g.ungrouped.length / total) * 100) : 0;
+  // Recomputed live from the current ungrouped/grouped arrays rather than
+  // trusting g.flatFallback — that field is frozen at whatever the
+  // heuristic originally proposed and never updated by moveScenario(), so
+  // manually clearing "ungrouped" by hand left the banner stuck showing
+  // even once nothing was actually ungrouped anymore.
+  const total = g.groups.reduce((n, gr) => n + gr.scenarioNames.length, 0) + g.ungrouped.length;
+  const lowConfidence = total > 0 && g.ungrouped.length / total > g.threshold;
+  if (lowConfidence) {
+    const pct = Math.round((g.ungrouped.length / total) * 100);
     const banner = document.createElement('div');
     banner.className = 'banner';
     banner.textContent = `Low confidence: ${g.ungrouped.length} of ${total} scenarios (${pct}%) didn't clearly match one group — the groups below are still the heuristic's real guess, just flagged as unreliable. Check "ungrouped" below and move scenarios into a group by hand, or approve as-is if it already looks right.`;
