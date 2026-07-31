@@ -1476,3 +1476,17 @@ Verified live against the real running container at three viewport widths: 1200p
 Descriptor and Scenarios per Claude call on the same line, side by side; 480px (narrow enough that they
 no longer fit together) wraps Scenarios per Claude call down to its own line as a complete, unsplit
 pair — label and input never separated by the break at any width tested.
+
+## Addendum: the same wrap-split fix, on Stage 1's row and Scenario corrections' (2026-07-31)
+
+Screenshot: the identical bug, now on Stage 1's "Report" + "Ungrouped threshold" row (shared with the
+Generate grouping / Show last approved grouping buttons) — same cause as every prior round, a label
+and its own input as independent flex children that a wrapping row can split across a line break.
+Applied the same `.field-pair` treatment. While in there, proactively applied it to Scenario
+corrections' Descriptor row too (shared with Load / + Add correction) — same exact pattern, not yet
+reported but visibly one wrap-width away from the same bug, so fixed alongside rather than waiting for
+a fourth screenshot of the same root cause.
+
+Verified live against the real running container at the reported screenshot's approximate width
+(749px): "Report" and "Ungrouped threshold" each wrap as complete, unsplit label+field pairs rather
+than splitting a label from its own input.
