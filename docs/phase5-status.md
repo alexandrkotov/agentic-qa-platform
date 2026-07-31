@@ -1326,3 +1326,27 @@ correctly renamed) corrections, selected the grouping with an approved spec *wit
 last approved spec" — confirmed 0 spec cards visible (nothing expanded) yet 2 of 3 correction rows
 already highlighted (`"Attempt to edit SUBMITTED order"` and `"Verify Kafka event on order submission"`),
 matching the approved spec's real scenario names even though it was never displayed.
+
+## Addendum: the low-confidence banner ignored manual regrouping (2026-07-31)
+
+Reported live: loading an already-approved grouping via "Show last approved grouping" — one where
+every scenario had been manually moved out of "ungrouped" into a real group before it was approved —
+still showed the "Low confidence: 0 of 29 scenarios (0%) didn't clearly match one group" banner. The
+percentage itself was accurate (dynamically computed from the loaded grouping's actual arrays), but the
+decision to show the banner at all wasn't: `renderGrouping()` gated it on `g.flatFallback`, a boolean
+[group.ts](../agent-service/src/agents/generate/group.ts) sets once at proposal time from the
+*original* heuristic's ungrouped ratio — `moveScenario()` (what dragging a scenario between groups
+actually calls) only ever touches `.groups`/`.ungrouped`, never that flag, so it stayed frozen at
+whatever it was before any manual edits. Doing exactly what the banner itself instructs — moving every
+ungrouped scenario into a group by hand — could never make the banner go away.
+
+Fixed by recomputing the same check live in `renderGrouping()` — `ungrouped.length / total >
+threshold` — using the grouping's own stored `.threshold` (`ApprovedGrouping.threshold`, from
+[contract.ts](../agent-service/src/agents/generate/contract.ts), the exact ratio this grouping was
+originally evaluated against) rather than trusting the frozen flag. Same math `group.ts` itself already
+uses, just re-evaluated against whatever the human has actually done to the grouping instead of a
+snapshot from before any edits.
+
+Verified live against the real running container and the exact grouping from the screenshots: loading
+it via "Show last approved grouping" now shows no banner at all (0 of 29 ungrouped, correctly below any
+threshold), with all 29 scenarios still correctly distributed across the 4 groups (2+7+5+15).
