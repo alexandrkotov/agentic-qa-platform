@@ -906,12 +906,20 @@ app.post('/api/tests/run', async (req, res) => {
   try {
     const testEnv: NodeJS.ProcessEnv = {
       ...process.env,
-      // tests/.env is written for a host run (localhost:5173/5432/9094) —
-      // this process runs inside the workbench container instead, so it
-      // needs this compose network's own service names, same reasoning as
-      // the discovery route's descriptor URL rewriting elsewhere in this
-      // file. Values match app/db/kafka's own docker-compose.yml definitions
-      // exactly (db's user/pass/db name, kafka's internal PLAINTEXT listener).
+      // tests/.env (and the currently-committed steps.ts files' own
+      // hardcoded fallback) is written for a host run (localhost:3000/5173/
+      // 5432/9094) — this process runs inside the workbench container
+      // instead, so it needs this compose network's own service names, same
+      // reasoning as the discovery route's descriptor URL rewriting
+      // elsewhere in this file. Values match app/db/kafka's own
+      // docker-compose.yml definitions exactly (db's user/pass/db name,
+      // kafka's internal PLAINTEXT listener). BACKEND_URL specifically:
+      // confirmed live that every single scenario failed with
+      // ECONNREFUSED ::1:3000 until the committed steps.ts files were
+      // changed to read `process.env.BACKEND_URL ?? 'http://localhost:3000'`
+      // instead of a hardcoded literal — this override is what that fallback
+      // now actually uses.
+      BACKEND_URL: 'http://app:3000',
       FRONTEND_URL: 'http://frontend:5173',
       DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
       KAFKA_BROKERS: 'kafka:9092',
