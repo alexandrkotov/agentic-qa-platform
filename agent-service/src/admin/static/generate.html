@@ -526,6 +526,23 @@ function renderGroupsFilterCheckboxes(groupingDetails) {
   }
 }
 
+// Nothing to work with anywhere below Stage 1 when there's no grouping to
+// act on — either because the (descriptor-scoped) dropdown is genuinely
+// empty, or because a real Generate spec call is already in flight against
+// whichever grouping IS selected (a second click, or editing corrections
+// out from under a spec that's about to use them, would both be premature).
+// Covers Generate spec (would fail server-side on a missing "grouping" if
+// forced) and Load/+ Add correction/Save corrections (corrections
+// themselves don't need a grouping to exist, but there is nothing yet
+// worth reviewing them against, or the in-flight call already read
+// whatever was on disk a moment ago).
+function setStage2GatedButtonsDisabled(disabled) {
+  document.getElementById('spec-generate-btn').disabled = disabled;
+  document.getElementById('load-corr-btn').disabled = disabled;
+  document.getElementById('add-corr-btn').disabled = disabled;
+  document.getElementById('save-corr-btn').disabled = disabled;
+}
+
 async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
@@ -535,19 +552,7 @@ async function onGroupingChanged() {
   const specDescriptorInput = document.getElementById('spec-descriptor');
   specDescriptorInput.value = '';
   renderGroupsFilterCheckboxes(null);
-  // Nothing to work with anywhere below Stage 1 when the (descriptor-scoped)
-  // dropdown has no grouping at all — e.g. a report with no approved
-  // grouping yet. Disable every button that would otherwise either fail
-  // server-side on a missing "grouping" (Generate spec) or succeed but be
-  // premature/pointless before that grouping exists (Load/+ Add
-  // correction/Save corrections — corrections themselves don't need a
-  // grouping to exist, but there is nothing here yet worth reviewing them
-  // against).
-  const noGrouping = !grouping;
-  document.getElementById('spec-generate-btn').disabled = noGrouping;
-  document.getElementById('load-corr-btn').disabled = noGrouping;
-  document.getElementById('add-corr-btn').disabled = noGrouping;
-  document.getElementById('save-corr-btn').disabled = noGrouping;
+  setStage2GatedButtonsDisabled(!grouping);
   if (!grouping) return;
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
@@ -645,9 +650,12 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   const groupsChecked = Array.from(document.querySelectorAll('#spec-groups-filter input:checked')).map((cb) => cb.value);
   const groups = groupsChecked.length ? groupsChecked : undefined;
   const statusEl = document.getElementById('spec-gen-status');
-  const btn = document.getElementById('spec-generate-btn');
   if (!(await confirmPaidAction(`Generate a structured spec from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
-  btn.disabled = true;
+  // Also gates Scenario corrections' three buttons for the same duration —
+  // editing/saving corrections out from under a call that already read
+  // whatever was on disk a moment ago, or clicking Generate spec again
+  // before the first call even returned, are both premature here.
+  setStage2GatedButtonsDisabled(true);
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     const result = await api('/api/generate/spec', {
@@ -665,7 +673,11 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {
-    btn.disabled = false;
+    // Re-derive rather than force-enable — the grouping selected when this
+    // call started is still selected (nothing else changes it mid-request),
+    // so this naturally matches onGroupingChanged's own rule instead of
+    // assuming "enabled" is always correct to restore.
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   }
 };
 
