@@ -1263,3 +1263,33 @@ scenarios) via the rewritten `sourceGroupingPath`; a headless Playwright session
 page — the "Approved grouping" dropdown shows the fully consistent list, and clicking "Show last
 approved spec" for the renamed grouping still renders all 5 scenario cards, confirming nothing broke
 across the rename.
+
+## Addendum: gate Corrections' buttons during the in-flight Generate spec call too (2026-07-31)
+
+Generate spec only disabled itself during its own paid call; Load, "+ Add correction," and Save
+corrections stayed clickable the whole time, so corrections could be edited/saved mid-request — after
+a call already read whatever was on disk, or right as it's about to. Extracted the existing "no
+grouping selected -> disable" rule (previously inlined at the end of `onGroupingChanged`, covering the
+same four buttons) into `setStage2GatedButtonsDisabled(disabled)` and called it from both places:
+`onGroupingChanged` for the no-grouping case, and around the `/api/generate/spec` call for the
+in-flight case. The `finally` block re-derives the post-request state from whichever grouping is still
+selected rather than force-enabling — same reasoning as the earlier Generate-spec-only version, just
+now covering all four buttons consistently.
+
+Verified live against the real running container without spending real money, same `page.route`
+interception technique as the earlier Generate-spec-disable addendum: all four buttons start enabled,
+all four disable together the instant the (stubbed, delayed) request begins, and all four re-enable
+together once it resolves.
+
+Separately investigated why no Scenario corrections row highlighted even after a real spec had been
+generated and approved for the "orders" group: not a bug. The three saved corrections' scenario names
+(`"Change order status via API from SUBMITTED to DRAFT"`, `"Edit SUBMITTED order items via API"`,
+`"Kafka message published on order submission"`) don't exactly match any scenario name in the current
+discovery report's "orders" group anymore — the report has since grown and been reworded (e.g. the
+closest current equivalents are `"Attempt to edit SUBMITTED order"` and `"Verify Kafka event on order
+submission"`, different strings). Both the highlighting feature and `spec.ts`'s own
+`buildCorrectionsBlock()` match by exact scenario name, so these three corrections are currently inert
+either way — not applied to real spec generation, not highlighted — until their keys are updated to
+match the current report's actual scenario names, or the scenarios themselves are renamed back. Told
+the user directly rather than changing matching behavior to paper over it — a fuzzy-match would risk
+silently applying a correction to the wrong scenario.
