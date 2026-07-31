@@ -1424,3 +1424,23 @@ sharing one — same wrap-splitting risk, just moved rather than fixed. Each of 
 
 Verified live at the same 950px viewport: a screenshot confirms all three render as separate,
 single-purpose rows, each label staying with its own field regardless of width.
+
+## Addendum: disable Load when there's no corrections file to load (2026-07-31)
+
+Following the user's own suggested rule: Load stayed clickable even when the current descriptor had no
+saved corrections at all — clicking it just silently no-oped (`loadCorrections`'s `ENOENT` catch
+returns `{}`, same as never clicking it). Reused the exact same `GET /api/generate/corrections/:name`
+call already made to decide `correctionsUnloadedRisk` (the "+ Add correction" guard from a few addenda
+back) — that endpoint can't distinguish "no file" from "a file that's genuinely empty," but it doesn't
+need to here either: both mean there's nothing for Load to bring in. New `correctionsFileMissing` flag
+folds into `setStage2GatedButtonsDisabled` alongside `correctionsUnloadedRisk`, and both Load's and
+Save's `onclick` handlers recompute it directly from `corrections`' own key count right after a
+successful call, instead of waiting for the next descriptor switch to notice.
+
+Verified live against the real running container and real data, no Claude calls: `orderflow` (has a
+real file) leaves Load enabled; switching to `kafka-demo` (no file at all) disables Load with an
+explanatory tooltip while leaving "+ Add correction" enabled (nothing there to protect against);
+adding and saving one correction for `kafka-demo` re-enables Load immediately afterward, without
+needing to switch away and back. The verification itself created a real (junk) corrections file for
+`kafka-demo` in the process — deleted it afterward so no test artifact was left behind in the user's
+project data.
