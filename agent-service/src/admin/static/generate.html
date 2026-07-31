@@ -177,8 +177,8 @@
     <div class="row">
       <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
       <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
-      <button class="ghost" id="load-corr-btn">Load</button>
-      <button class="ghost" id="add-corr-btn">+ Add correction</button>
+      <button class="primary" id="load-corr-btn">Load</button>
+      <button class="primary" id="add-corr-btn">+ Add correction</button>
     </div>
     <div class="corr-header">
       <span title="Must exactly match a scenario's name as it appears in Stage 1/Stage 2 — this is the lookup key used to find and apply the correction below when a spec is generated.">Scenario name ⓘ</span>
@@ -299,6 +299,7 @@ async function onReportChanged() {
   const report = document.getElementById('report-select').value;
   const descriptor = descriptorFromReportName(report) ?? '';
   document.getElementById('descriptor-name').value = descriptor;
+  await checkCorrectionsLoadRisk(descriptor);
   if (!report) return;
   await loadGroupingList(descriptor || undefined);
   await onGroupingChanged();
@@ -555,8 +556,10 @@ function renderGroupsFilterCheckboxes(groupingDetails) {
 function setStage2GatedButtonsDisabled(disabled) {
   document.getElementById('spec-generate-btn').disabled = disabled;
   document.getElementById('load-corr-btn').disabled = disabled;
-  document.getElementById('add-corr-btn').disabled = disabled;
   document.getElementById('save-corr-btn').disabled = disabled;
+  // "+ Add correction" has its own extra reason to stay disabled even when
+  // this one doesn't apply — see correctionsUnloadedRisk below.
+  document.getElementById('add-corr-btn').disabled = disabled || correctionsUnloadedRisk;
 }
 
 async function onGroupingChanged() {
@@ -724,6 +727,38 @@ document.getElementById('spec-approve-btn').onclick = async () => {
 
 let corrections = {};
 
+// Which descriptor's file is actually reflected in `corrections` right now —
+// null until a real Load or Save happens for a given descriptor.
+let correctionsLoadedForDescriptor = null;
+// True when a real, non-empty corrections file already exists on disk for
+// the current descriptor but hasn't been loaded into memory this session.
+// Clicking "+ Add correction" then Save in that state would silently
+// overwrite that file with just the one new entry, discarding every
+// correction already saved for every other group — this is exactly the
+// footgun explained earlier in this conversation. Disables "+ Add
+// correction" until Load (or a Save, which also catches memory up with
+// disk) clears it. Re-checked every time the descriptor changes.
+let correctionsUnloadedRisk = false;
+
+async function checkCorrectionsLoadRisk(descriptor) {
+  correctionsUnloadedRisk = false;
+  const addBtn = document.getElementById('add-corr-btn');
+  addBtn.title = '';
+  if (descriptor && descriptor !== correctionsLoadedForDescriptor) {
+    try {
+      const existing = await api('/api/generate/corrections/' + encodeURIComponent(descriptor));
+      correctionsUnloadedRisk = Object.keys(existing).length > 0;
+    } catch {
+      // Soft-fail, same reasoning as this page's other non-critical checks
+      // — worst case "+ Add correction" stays enabled as before.
+    }
+  }
+  if (correctionsUnloadedRisk) {
+    addBtn.title = "This descriptor already has a saved corrections file that hasn't been loaded here yet — click Load first, or Save could silently overwrite it.";
+  }
+  setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+}
+
 // Corrections are stored per-descriptor (all groups mixed together — see
 // corrections.ts), so Load pulls in far more than whatever group Stage 2
 // currently shows. Highlighting narrows that down visually: a row matches
@@ -778,6 +813,12 @@ document.getElementById('load-corr-btn').onclick = async () => {
     corrections = await api('/api/generate/corrections/' + encodeURIComponent(name));
     renderCorrections();
     setStatus(statusEl, '');
+    // Memory now genuinely matches disk for this descriptor — "+ Add
+    // correction" is safe again.
+    correctionsLoadedForDescriptor = name;
+    correctionsUnloadedRisk = false;
+    document.getElementById('add-corr-btn').title = '';
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
@@ -801,6 +842,11 @@ document.getElementById('save-corr-btn').onclick = async () => {
       body: JSON.stringify(corrections),
     });
     setStatus(statusEl, 'Saved.', 'ok');
+    // Disk now matches memory for this descriptor too.
+    correctionsLoadedForDescriptor = name;
+    correctionsUnloadedRisk = false;
+    document.getElementById('add-corr-btn').title = '';
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
