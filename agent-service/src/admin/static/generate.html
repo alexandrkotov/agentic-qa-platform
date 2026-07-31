@@ -109,6 +109,12 @@
   .corr-row input { flex: 0 0 260px; }
   .corr-row textarea { flex: 1; }
   .corr-row.relevant { background: var(--accent-bg); border-radius: 6px; border-left: 3px solid var(--accent); padding: 0.4rem 0.5rem; margin: 0 0 0.6rem -0.5rem; }
+  .corr-header {
+    display: flex; gap: 0.6rem; margin-bottom: 0.4rem;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-mute);
+  }
+  .corr-header span:first-child { flex: 0 0 260px; }
+  .corr-header span:last-child { flex: 1; }
 </style>
 </head>
 <body>
@@ -173,6 +179,10 @@
       <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
       <button class="ghost" id="load-corr-btn">Load</button>
       <button class="ghost" id="add-corr-btn">+ Add correction</button>
+    </div>
+    <div class="corr-header">
+      <span title="Must exactly match a scenario's name as it appears in Stage 1/Stage 2 — this is the lookup key used to find and apply the correction below when a spec is generated.">Scenario name ⓘ</span>
+      <span title="Plain-language instructions on what's actually true for this scenario — applied OVER the discovery report's own text when Stage 2 generates its spec.">Correction ⓘ</span>
     </div>
     <div id="corr-body"></div>
     <div class="row">
