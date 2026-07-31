@@ -1460,3 +1460,19 @@ OS/browser — exactly what was asked for, and no JS needed.
 Verified live against the real running container: computed `cursor` for a sample across all three tag
 types (a labeled field, both readonly Descriptor inputs, and a Scenario-corrections header) all read
 `"help"` uniformly.
+
+## Addendum: Descriptor and Scenarios per Claude call share a row again (2026-07-31)
+
+Per a follow-up screenshot: move "Scenarios per Claude call" back onto Descriptor's row instead of
+giving it a fully separate one, since giving every field its own row (two addenda back) turned out to
+be more separation than wanted. Doing this without reintroducing the label/input wrap-split bug fixed
+in that same round needed a small structural change: each label+input pair is now wrapped in a new
+`.field-pair` span (`display: inline-flex`) in
+[generate.html](../agent-service/src/admin/static/generate.html), so the row's `flex-wrap` treats a
+whole pair as one atomic item — it either fits and stays inline with its neighbor, or the *entire* pair
+moves to the next line together, never splitting a label from its own input mid-pair.
+
+Verified live against the real running container at three viewport widths: 1200px and 700px both keep
+Descriptor and Scenarios per Claude call on the same line, side by side; 480px (narrow enough that they
+no longer fit together) wraps Scenarios per Claude call down to its own line as a complete, unsplit
+pair — label and input never separated by the break at any width tested.
