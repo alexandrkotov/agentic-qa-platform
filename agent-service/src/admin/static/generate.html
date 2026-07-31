@@ -145,10 +145,14 @@
   <section>
     <h2>Stage 1: Grouping</h2>
     <div class="row">
-      <label>Report</label>
-      <select id="report-select"></select>
-      <label title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">Ungrouped threshold ⓘ</label>
-      <input type="number" id="threshold-percent" value="30" step="5" min="0" max="100" style="width:4.5rem" title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">%
+      <span class="field-pair">
+        <label>Report</label>
+        <select id="report-select"></select>
+      </span>
+      <span class="field-pair">
+        <label title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">Ungrouped threshold ⓘ</label>
+        <input type="number" id="threshold-percent" value="30" step="5" min="0" max="100" style="width:4.5rem" title="If more than this % of scenarios can't be confidently placed in a group, skip grouping and show one flat list instead.">%
+      </span>
       <button class="primary" id="recompute-btn">Generate grouping</button>
       <button class="primary" id="show-approved-grouping-btn" style="display:none">Show last approved grouping</button>
     </div>
@@ -194,8 +198,10 @@
   <section>
     <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the spec tied to Stage 2's selected grouping)</span></h2>
     <div class="row">
-      <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
-      <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
+      <span class="field-pair">
+        <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
+        <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
+      </span>
       <button class="primary" id="load-corr-btn">Load</button>
       <button class="primary" id="add-corr-btn">+ Add correction</button>
     </div>
