@@ -1562,3 +1562,53 @@ Verified live against the real running container and real infrastructure, in ful
   clicking "Run tests" opens the confirm modal, and clicking Cancel does *not* fire the request
   (verified via route interception) — the expensive, real side-effecting path was only exercised once,
   directly via `curl` above, not repeated through the UI.
+
+## Addendum: "Run tests" was actually failing everything — two real infra gaps (2026-07-31)
+
+The user's first real click-through: rendered a spec, ran the suite, got **35 of 35 scenarios red**,
+and asked why 35 at all when they'd only been working with much smaller specs in Stage 1/2. The "35"
+answer first: "Run tests" runs `bddgen && playwright test` over *everything* currently in `tests/
+features`/`tests/steps`, not just whatever group was last rendered — 35 is simply the total scenario
+count across the 6 `.feature` files already committed to this repo before any of this session's Stage
+3 work (confirmed: `grep -c "Scenario:"` across them sums to exactly 35, and `git status` showed zero
+uncommitted changes to `tests/`, meaning the user's own render hadn't actually touched any of those
+6 files — it silently landed on files with different names, or didn't run at all this time).
+
+The "all red" part was the real bug, in two independent layers, both real gaps in the verification
+from the previous addendum:
+
+1. **Wrong Playwright browser build.** The committed report showed `chrome-headless-shell-1228 doesn't
+   exist` on *every* scenario's `Before` hook. `tests/` has its own `@playwright/test` (1.61.1, wanting
+   build 1228) — a completely separate install from whatever `agent-service`'s own bare
+   `npx playwright install chromium` happened to pull in for its `@playwright/mcp` dependency (build
+   1232; confirmed neither `agent-service/package.json` nor the Dockerfile actually pins a specific
+   `playwright` version at all, so that number was always somewhat arbitrary). The previous addendum's
+   own live verification missed this because it only checked "did the route respond with JSON" and
+   glanced at a truncated output tail — never actually looked at *why* the exit code was non-zero.
+   Fixed in `docker-compose.yml`: `workbench` now runs
+   `npx playwright install chromium; (cd tests && npx playwright install chromium); npx tsx
+   src/admin/server.ts` as its startup command instead of going straight to the server, with a new
+   `playwright-browsers` named volume at the default cache path so the ~300MB combined download is a
+   one-time cost, not a redownload every restart. That same volume, mounted at the same path the image
+   had a browser baked into at build time, also *shadows* that build-time install — hence reinstalling
+   agent-service's own browser too, not just tests/'s, to avoid quietly breaking Discovery.
+2. **Hardcoded backend URL.** Once the browser was fixed, every scenario still failed at its first API
+   call with `ECONNREFUSED ::1:3000`. All 7 currently-committed `tests/steps/*.ts` files — real,
+   pre-existing suite code, predating this session's Stage 3 work entirely — declare
+   `const BASE_URL = 'http://localhost:3000'` as a bare literal, never an env var, unlike `playwright
+   .config.ts`'s own `FRONTEND_URL` handling. `localhost:3000` is correct for a host-run `pnpm test` but
+   unreachable from inside the `workbench` container the exact same way `FRONTEND_URL`/`DATABASE_URL`/
+   `KAFKA_BROKERS` already needed overriding. Fixed both sides: all 7 files now read
+   `process.env.BACKEND_URL ?? 'http://localhost:3000'` (same fallback-default pattern as
+   `playwright.config.ts`, so a plain host-run `pnpm test` is unaffected), and `/api/tests/run` in
+   [server.ts](../agent-service/src/admin/server.ts) now also overrides `BACKEND_URL` to `http://app:3000`
+   alongside the other three.
+
+Verified live against the real running container and real infrastructure, twice — once confirming each
+fix landed (a fresh, volume-cleared container start, polled until `chromium_headless_shell-1228`
+actually appeared, confirmed via container logs that a real ~300MB download had happened rather than
+being silently skipped), then a real full `bddgen && playwright test` run via `curl` against the actual
+`app`/`db`/`kafka`/`frontend` containers: **26 of 35 passed**, and the 9 real failures are legitimate UI
+timing/locator issues (`Test timeout of 30000ms exceeded`, visibility assertions) — the same *class* of
+result Milestone 7's own full live-pipeline verification found (some real failures, zero infrastructure
+failures), not a repeat of the "everything red" infra breakage reported at the start of this addendum.
