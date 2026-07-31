@@ -1134,3 +1134,35 @@ selecting the `kafka-consumer-demo` report (no grouping exists for it yet) leave
 genuinely cascaded, not coincidentally unchanged); switching to the `kafka-demo` report immediately
 flips Stage 2's grouping select, both Descriptor fields, and (implicitly, via the same
 `onGroupingChanged` call) the group checkboxes over to the matching `kafka-demo` grouping.
+
+## Addendum: Corrections' Descriptor still didn't update with no grouping to cascade to (2026-07-30)
+
+The cascade fix above explicitly left Stage 2 (and both Descriptor fields, since they'd just been
+unified onto the same source one addendum earlier) untouched whenever the newly picked Stage 1 report
+had no approved grouping yet. Screenshot from the user: `kafka-consumer-demo` selected in Stage 1 (no
+grouping exists for it — "Show last approved grouping" not shown), yet both Descriptor fields still
+read `kafka-demo`, left over from an unrelated grouping selected earlier. Reported as a bug: the
+descriptor should reflect the newly picked report immediately, grouping or not.
+
+Untangled the two fields' sources rather than patching the symptom: Scenario corrections isn't gated on
+a grouping existing at all — the report's own filename already answers "which descriptor," same
+`descriptorFromReportName` parse used everywhere else. Moved its assignment out of `onGroupingChanged`
+and into `onReportChanged`, unconditional on whether the grouping lookup finds a match. Stage 2's own
+Descriptor field keeps deriving *only* from Stage 2's own selected grouping (unchanged) — it feeds a
+real paid `/api/generate/spec` call and must always match whichever grouping is actually selected
+there, cascade or manual pick, so it can't safely follow Stage 1's report directly the way Corrections
+now does.
+
+Net effect: in the normal flow (a grouping already exists for whatever report Stage 1 lands on) both
+fields still agree, because the cascade from the prior addendum selects the matching grouping and both
+derivations end up parsing the same report filename. Right after switching to a report with no grouping
+yet, they can now visibly differ for a moment — Corrections already shows the new report's descriptor,
+Stage 2 still shows whatever grouping it had selected before — which is accurate state, not staleness:
+a nudge that Generate grouping needs to run for the new report before Stage 2 has anything of its own
+to offer.
+
+Verified live against the real running container, reproducing the exact screenshot: selecting
+`kafka-consumer-demo` (no grouping exists) now shows Corrections' Descriptor as `kafka-consumer-demo`
+immediately, while Stage 2's Descriptor correctly stays `orderflow` (still matching its own,
+unrelated, previously-selected grouping); reselecting `orderflow` (grouping exists) brings both back
+into agreement via the existing cascade, confirming the normal-flow case wasn't disturbed by this fix.
