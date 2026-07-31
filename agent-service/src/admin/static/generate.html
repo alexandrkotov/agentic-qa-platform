@@ -166,8 +166,8 @@
   <section>
     <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match Stage 2's currently shown spec)</span></h2>
     <div class="row">
-      <label title="Derived from the grouping selected in Stage 2 above — not editable. Kept in lockstep with Stage 2's own Descriptor field so this always matches whichever system's corrections Stage 2 would actually use.">Descriptor ⓘ</label>
-      <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the grouping selected in Stage 2 above — not editable. Kept in lockstep with Stage 2's own Descriptor field so this always matches whichever system's corrections Stage 2 would actually use.">
+      <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
+      <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
       <button class="ghost" id="load-corr-btn">Load</button>
       <button class="ghost" id="add-corr-btn">+ Add correction</button>
     </div>
@@ -258,20 +258,29 @@ async function loadReportList() {
 
 // Lets a report reselect reveal "Show last approved grouping" for free,
 // instead of forcing a fresh (re-)grouping just to see what was already
-// approved for this report in an earlier session. Also cascades that same
-// lookup down to Stage 2: if a matching approved grouping exists, select it
-// in Stage 2's own dropdown too, so both Descriptor fields (still derived
-// from Stage 2's selected grouping — see onGroupingChanged, the one place
-// that's actually correct to derive them from) update immediately instead
-// of silently staying on whatever grouping was selected before. If no
-// grouping exists yet for the newly picked report, Stage 2 is left alone —
-// nothing to switch it to.
+// approved for this report in an earlier session. Also drives two other
+// things from this same report selection:
+//  - Scenario corrections' Descriptor — set directly from the report's own
+//    filename (descriptorFromReportName), unconditionally, whether or not a
+//    grouping exists for it yet. Corrections isn't gated on a grouping
+//    existing at all, so there's no reason its Descriptor should wait for
+//    one — the report alone already answers "which system."
+//  - Stage 2's own selected grouping — cascaded (not re-derived) by
+//    auto-selecting the matching approved grouping if one exists, so Stage
+//    2's Descriptor (see onGroupingChanged, still the only correct source
+//    for THAT field — it feeds a real paid API call and must match
+//    whichever grouping is actually selected there) updates too. If no
+//    grouping exists yet for the newly picked report, Stage 2 is left
+//    alone; it can legitimately show a different descriptor than
+//    Corrections in that case — that's accurate, not a bug, and resolves
+//    itself once a grouping gets approved for the new report.
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved grouping';
   state.existingApprovedGrouping = null;
   const report = document.getElementById('report-select').value;
+  document.getElementById('descriptor-name').value = descriptorFromReportName(report) ?? '';
   if (!report) return;
   try {
     const existing = await api('/api/generate/grouping-for-report?report=' + encodeURIComponent(report));
@@ -502,23 +511,19 @@ async function onGroupingChanged() {
   existingApprovedSpec = null;
   const grouping = document.getElementById('spec-grouping-select').value;
   const specDescriptorInput = document.getElementById('spec-descriptor');
-  const corrDescriptorInput = document.getElementById('descriptor-name');
   specDescriptorInput.value = '';
-  corrDescriptorInput.value = '';
   renderGroupsFilterCheckboxes(null);
   if (!grouping) return;
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
     const reportName = groupingDetails.sourceReportPath.split('/').pop();
-    const descriptor = descriptorFromReportName(reportName) ?? '';
-    // Both Descriptor fields share this one derivation — Scenario
-    // corrections used to follow Stage 1's report-select instead, which
-    // could show a different descriptor than Stage 2 whenever the two
-    // dropdowns pointed at different systems (a real bug a user hit: Stage
-    // 2 on a kafka-demo grouping, Corrections still showing "orderflow"
-    // from Stage 1's own unrelated report selection).
-    specDescriptorInput.value = descriptor;
-    corrDescriptorInput.value = descriptor;
+    // Stage 2's Descriptor only — NOT Scenario corrections' (see
+    // onReportChanged, which owns that one unconditionally from Stage 1's
+    // report). This field feeds a real paid /api/generate/spec call, so it
+    // must always match whichever grouping is actually selected here, even
+    // when the user picks a grouping manually instead of via the Stage 1
+    // cascade.
+    specDescriptorInput.value = descriptorFromReportName(reportName) ?? '';
     renderGroupsFilterCheckboxes(groupingDetails);
   } catch (e) {
     setStatus(document.getElementById('spec-gen-status'), "Failed to read this grouping's source report: " + e.message, 'err');
