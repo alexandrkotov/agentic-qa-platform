@@ -230,7 +230,13 @@ export function expectBodyField(ctx: Ctx, { field, expected }: { field: string; 
  */
 export function expectErrorMessage(ctx: Ctx, { matches }: { matches: string }): void {
   const sentinel = ' ';
-  const withSentinels = matches.replace(/\{\w+\}/g, sentinel);
+  // Bare "{word}" (e.g. a correction's own "{id}") and the same
+  // "{resource.id}"/"{resource[N].id}" form resolveValue() understands
+  // elsewhere both become the same wildcard here — the model doesn't
+  // reliably stick to the bare form even when a correction's own text does,
+  // generalizing instead from the {resource.id} convention used in every
+  // other field.
+  const withSentinels = matches.replace(/\{[\w.[\]]+\}/g, sentinel);
   const escaped = withSentinels.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(escaped.split(sentinel).join('\\d+'), 'i');
   expect(JSON.stringify(ctx.lastBody ?? {})).toMatch(pattern);
