@@ -1210,3 +1210,19 @@ all) empties the dropdown entirely rather than leaving a stale unrelated groupin
 outcome than the "leave Stage 2 untouched" compromise from the prior addendum, achieved as a natural
 side effect of scoping rather than needing separate handling — while Corrections' Descriptor still
 updates immediately to `kafka-consumer-demo`, and no red error appears anywhere in the process.
+
+## Addendum: two small Stage 2 polish requests (2026-07-31)
+
+1. The "Limit to groups" checkboxes shared a flex row with their own label, wrapping onto the same
+   line as the label when there was room — moved into their own row (stacked vertically, label above,
+   checkboxes below) so they always start on the next line regardless of window width.
+2. Now that an empty "Approved grouping" dropdown is a real, reachable state (previous addendum — a
+   report with no approved grouping for its descriptor yet), Generate spec disables itself whenever
+   there's nothing selected there, rather than letting a click through to fail server-side on a missing
+   `"grouping"` parameter. `onGroupingChanged` already runs on every dropdown (re)population, so this
+   is one line — `disabled = !grouping` — with no new event wiring.
+
+Verified live against the real running container: `kafka-consumer-demo`'s empty grouping list now also
+shows Generate spec disabled (grey, `cursor: not-allowed`, matching the existing `button.primary:disabled`
+style already used elsewhere); reselecting `orderflow` re-enables it; a bounding-box check confirmed the
+checkbox list renders below its label rather than beside it.
