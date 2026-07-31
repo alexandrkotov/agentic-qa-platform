@@ -83,6 +83,37 @@ function groupingFilePath(name: string): string {
   return join(config.reportsDir, name);
 }
 
+// Mirrors generate.html's own descriptorFromReportName — discovery.ts names
+// every report "discovery-<isoTimestamp>-<descriptorLabel>.json", timestamp
+// first (sortable), descriptor label last. Duplicated here rather than
+// shared: this admin server and its static pages are two separate JS
+// worlds in this codebase (server-side TS vs. self-contained browser
+// script), with no existing mechanism to share code between them.
+const REPORT_DESCRIPTOR_PATTERN = /^discovery-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(.+)\.json$/;
+function descriptorFromReportName(reportName: string): string | null {
+  const m = reportName.match(REPORT_DESCRIPTOR_PATTERN);
+  return m ? m[1] : null;
+}
+
+// Same idea, one layer down: newly-approved groupings now carry the
+// descriptor in their own filename too (see /api/generate/group/approve),
+// so most lookups never need to open the file. Groupings approved before
+// that convention existed fall back to reading sourceReportPath — there
+// are only ever a handful of files here, so the extra read is cheap.
+const GROUPING_DESCRIPTOR_PATTERN = /^generate-grouping-approved-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(.+)\.json$/;
+async function descriptorForGroupingFile(name: string): Promise<string | null> {
+  const fromName = name.match(GROUPING_DESCRIPTOR_PATTERN);
+  if (fromName) return fromName[1];
+  try {
+    const raw = JSON.parse(await readFile(join(config.reportsDir, name), 'utf-8'));
+    const reportPath = typeof raw.sourceReportPath === 'string' ? raw.sourceReportPath : undefined;
+    const reportName = reportPath?.split('/').pop();
+    return reportName ? descriptorFromReportName(reportName) : null;
+  } catch {
+    return null;
+  }
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, 'static')));
@@ -639,7 +670,16 @@ app.post('/api/generate/group/approve', async (req, res) => {
     const approved = ApprovedGroupingSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
     await mkdir(config.reportsDir, { recursive: true });
     const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
-    const outPath = join(config.reportsDir, `generate-grouping-approved-${timestamp}.json`);
+    // Suffix with the descriptor when the source report carries one (see
+    // descriptorFromReportName) so Stage 2's "Approved grouping" dropdown can
+    // filter to the current descriptor by filename alone, without opening
+    // every grouping file. Groupings from reports that predate the naming
+    // convention just don't get a suffix — same graceful-degrade as
+    // everywhere else this convention is used.
+    const sourceReportName = approved.sourceReportPath.split('/').pop() ?? '';
+    const descriptorSuffix = descriptorFromReportName(sourceReportName);
+    const outName = `generate-grouping-approved-${timestamp}${descriptorSuffix ? `-${descriptorSuffix}` : ''}.json`;
+    const outPath = join(config.reportsDir, outName);
     await writeFile(outPath, JSON.stringify(approved, null, 2), 'utf-8');
     res.status(201).json({ path: outPath, approved });
   } catch (err) {
@@ -679,10 +719,21 @@ app.put('/api/generate/corrections/:descriptorName', async (req, res) => {
 // (ClaudeProvider), unlike every other route on this server.
 // ---------------------------------------------------------------------------
 
-app.get('/api/generate/groupings', async (_req, res) => {
+app.get('/api/generate/groupings', async (req, res) => {
   const files = await readdir(config.reportsDir).catch(() => [] as string[]);
   const names = files.filter((f) => GROUPING_NAME_PATTERN.test(f)).sort();
-  res.json(names);
+  const descriptor = req.query.descriptor;
+  // Optional filter — omit entirely for the unfiltered list (e.g. before
+  // Stage 1 has picked a report and a "current descriptor" even exists).
+  if (typeof descriptor !== 'string' || !descriptor) {
+    res.json(names);
+    return;
+  }
+  const matches: string[] = [];
+  for (const name of names) {
+    if ((await descriptorForGroupingFile(name)) === descriptor) matches.push(name);
+  }
+  res.json(matches);
 });
 
 /** A single approved grouping's own content, by exact filename — lets the UI read back e.g. sourceReportPath (to derive Stage 2's Descriptor field) without duplicating that derivation server-side per caller. */

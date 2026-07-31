@@ -258,30 +258,37 @@ async function loadReportList() {
 
 // Lets a report reselect reveal "Show last approved grouping" for free,
 // instead of forcing a fresh (re-)grouping just to see what was already
-// approved for this report in an earlier session. Also drives two other
+// approved for this report in an earlier session. Also drives three other
 // things from this same report selection:
 //  - Scenario corrections' Descriptor — set directly from the report's own
 //    filename (descriptorFromReportName), unconditionally, whether or not a
 //    grouping exists for it yet. Corrections isn't gated on a grouping
 //    existing at all, so there's no reason its Descriptor should wait for
 //    one — the report alone already answers "which system."
-//  - Stage 2's own selected grouping — cascaded (not re-derived) by
-//    auto-selecting the matching approved grouping if one exists, so Stage
-//    2's Descriptor (see onGroupingChanged, still the only correct source
-//    for THAT field — it feeds a real paid API call and must match
-//    whichever grouping is actually selected there) updates too. If no
-//    grouping exists yet for the newly picked report, Stage 2 is left
-//    alone; it can legitimately show a different descriptor than
-//    Corrections in that case — that's accurate, not a bug, and resolves
-//    itself once a grouping gets approved for the new report.
+//  - Stage 2's "Approved grouping" dropdown — reloaded scoped to this same
+//    descriptor, so it only ever lists groupings for the system Stage 1 is
+//    currently showing, not every approved grouping across every descriptor
+//    mixed together.
+//  - Within that scoped list, the grouping matching this EXACT report (not
+//    just the same descriptor) gets auto-selected when one exists — Stage
+//    2's own Descriptor (see onGroupingChanged, still the only correct
+//    source for THAT field) follows from there. If no grouping exists yet
+//    for the new report at all (even a same-descriptor one), Stage 2 is
+//    left on whatever the descriptor-scoped list's own default picked;
+//    it can legitimately show a different descriptor than Corrections only
+//    in the rarer case where NO grouping exists yet for this descriptor at
+//    all — accurate, not a bug, and resolves itself once one is approved.
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved grouping';
   state.existingApprovedGrouping = null;
   const report = document.getElementById('report-select').value;
-  document.getElementById('descriptor-name').value = descriptorFromReportName(report) ?? '';
+  const descriptor = descriptorFromReportName(report) ?? '';
+  document.getElementById('descriptor-name').value = descriptor;
   if (!report) return;
+  await loadGroupingList(descriptor || undefined);
+  await onGroupingChanged();
   try {
     const existing = await api('/api/generate/grouping-for-report?report=' + encodeURIComponent(report));
     if (!existing) return;
@@ -293,8 +300,11 @@ async function onReportChanged() {
       groupingSelect.value = groupingName;
       await onGroupingChanged();
     }
-  } catch (e) {
-    setStatus(document.getElementById('status'), 'Failed to check for an existing approved grouping: ' + e.message, 'err');
+  } catch {
+    // Soft-fail on purpose — this only decides whether to offer "Show last
+    // approved grouping" for free; a network hiccup here shouldn't alarm
+    // the user with a red error over what's a non-critical convenience
+    // check. Worst case, the button just doesn't appear this time.
   }
 }
 // Native <select> only fires "change" when the value actually differs, so
@@ -453,7 +463,10 @@ document.getElementById('approve-btn').onclick = async () => {
     // "change" either, so also re-check for an approved spec explicitly —
     // otherwise "Show last approved spec" could stay stuck showing/hiding
     // stale state left over from whatever grouping was selected before.
-    await loadGroupingList();
+    // Scoped to the current descriptor, same as everywhere else the
+    // dropdown gets (re)loaded — the grouping just approved is for
+    // whichever report is currently selected in Stage 1.
+    await loadGroupingList(document.getElementById('descriptor-name').value || undefined);
     await onGroupingChanged();
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
@@ -465,8 +478,14 @@ document.getElementById('approve-btn').onclick = async () => {
 let specState = null; // { generatedAt, sourceGroupingPath, scenarios: [...] }
 let existingApprovedSpec = null;
 
-async function loadGroupingList() {
-  const names = await api('/api/generate/groupings');
+// descriptor is optional — pass it to scope the dropdown to groupings for
+// that one system only (Stage 2 used to list every approved grouping across
+// every descriptor mixed together, easy to pick the wrong one once more
+// than one system is in play). Omit it for the unfiltered list, e.g. the
+// very first load before Stage 1 has resolved a report yet.
+async function loadGroupingList(descriptor) {
+  const url = descriptor ? '/api/generate/groupings?descriptor=' + encodeURIComponent(descriptor) : '/api/generate/groupings';
+  const names = await api(url);
   const select = document.getElementById('spec-grouping-select');
   select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.length > 0) select.value = names[names.length - 1];
