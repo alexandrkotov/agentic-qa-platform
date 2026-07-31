@@ -744,13 +744,26 @@ async function checkCorrectionsLoadRisk(descriptor) {
   correctionsUnloadedRisk = false;
   const addBtn = document.getElementById('add-corr-btn');
   addBtn.title = '';
-  if (descriptor && descriptor !== correctionsLoadedForDescriptor) {
-    try {
-      const existing = await api('/api/generate/corrections/' + encodeURIComponent(descriptor));
-      correctionsUnloadedRisk = Object.keys(existing).length > 0;
-    } catch {
-      // Soft-fail, same reasoning as this page's other non-critical checks
-      // — worst case "+ Add correction" stays enabled as before.
+  if (descriptor !== correctionsLoadedForDescriptor) {
+    // Switching to (or away from, and back to) a descriptor that hasn't
+    // been freshly loaded in THIS transition — whatever's sitting in
+    // `corrections` right now belongs to a different descriptor (or
+    // nothing) and must not silently carry over into this one via +Add
+    // correction/Save. Reset to null (not just "skip re-checking") so
+    // returning to a descriptor loaded earlier, then abandoned, then
+    // revisited, is correctly treated as unloaded again rather than
+    // trusting a stale claim from before the detour.
+    corrections = {};
+    correctionsLoadedForDescriptor = null;
+    renderCorrections();
+    if (descriptor) {
+      try {
+        const existing = await api('/api/generate/corrections/' + encodeURIComponent(descriptor));
+        correctionsUnloadedRisk = Object.keys(existing).length > 0;
+      } catch {
+        // Soft-fail, same reasoning as this page's other non-critical
+        // checks — worst case "+ Add correction" stays enabled.
+      }
     }
   }
   if (correctionsUnloadedRisk) {
