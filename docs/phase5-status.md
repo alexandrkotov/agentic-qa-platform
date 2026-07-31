@@ -1293,3 +1293,36 @@ either way — not applied to real spec generation, not highlighted — until th
 match the current report's actual scenario names, or the scenarios themselves are renamed back. Told
 the user directly rather than changing matching behavior to paper over it — a fuzzy-match would risk
 silently applying a correction to the wrong scenario.
+
+## Addendum: corrections' two real matches renamed, then a real highlighting gap fixed (2026-07-31)
+
+Followed up on the stale-corrections finding above: two of the three corrections had clear current
+equivalents once cross-checked against the discovery report's actual scenario descriptions —
+`"Edit SUBMITTED order items via API"` → `"Attempt to edit SUBMITTED order"` (the correction
+deliberately overrides the report's UI-only framing with an API-level 409 check — corrections are
+meant to override the report's own text, so renaming to the report's real scenario name is correct
+even though the description mismatch looks odd at a glance) and
+`"Kafka message published on order submission"` → `"Verify Kafka event on order submission"` (same
+scenario, just reworded). The third, `"Change order status via API from SUBMITTED to DRAFT"`, still has
+no match — every status/Kafka-related scenario in the current report was checked individually, and
+none cover a SUBMITTED→DRAFT rollback attempt specifically; left unchanged, still inert. Applied via
+the real `PUT /api/generate/corrections/orderflow` endpoint (same one Save corrections itself calls),
+not a raw file edit.
+
+Then a real, separate issue surfaced by using this live: highlighting only reflected `specState`, which
+only gets populated by actually clicking Generate spec or "Show last approved spec" — so a grouping
+with a real approved spec still showed zero highlighted rows until that extra click happened.
+`relevantCorrectionNames()` in [generate.html](../agent-service/src/admin/static/generate.html) now
+falls back to `existingApprovedSpec` (already fetched by `onGroupingChanged` whenever the selected
+grouping has an approved spec) when nothing is actively shown, so highlighting reflects reality as soon
+as a grouping is picked — `specState` still wins when present, since a freshly generated or explicitly
+shown spec is the more specific, current answer. `onGroupingChanged` now calls `renderCorrections()`
+itself on both the no-grouping and found-a-spec paths, rather than relying only on the places that
+change `specState` elsewhere. Reworded the section's subtitle since it no longer strictly requires the
+spec to be "shown."
+
+Verified live against the real running container and real data, no Claude calls: loaded the (now
+correctly renamed) corrections, selected the grouping with an approved spec *without* clicking "Show
+last approved spec" — confirmed 0 spec cards visible (nothing expanded) yet 2 of 3 correction rows
+already highlighted (`"Attempt to edit SUBMITTED order"` and `"Verify Kafka event on order submission"`),
+matching the approved spec's real scenario names even though it was never displayed.
