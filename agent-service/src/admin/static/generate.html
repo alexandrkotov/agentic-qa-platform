@@ -60,6 +60,12 @@
      consistent and self-explanatory. Placed after input[readonly] so it wins
      there too — those fields have the exact same "hover to learn why" intent. */
   label[title], input[title], span[title] { cursor: help; }
+  /* Groups a label+input pair into one atomic flex item, so a wrapping row
+     moves the WHOLE pair to the next line together rather than splitting
+     the label from its own input across the break (the exact bug fixed for
+     Descriptor/Scenarios per Claude call a moment ago, now needed again
+     since those two share a row once more). */
+  .field-pair { display: inline-flex; align-items: center; gap: 0.4rem; }
   .checkbox-list { display: flex; gap: 0.85rem; flex-wrap: wrap; font-size: 0.82rem; }
   .checkbox-list label { display: flex; align-items: center; gap: 0.3rem; color: var(--text); cursor: pointer; }
   .checkbox-list .empty-note { color: var(--text-mute); font-size: 0.78rem; }
@@ -160,12 +166,14 @@
       <select id="spec-grouping-select"></select>
     </div>
     <div class="row">
-      <label title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">Descriptor ⓘ</label>
-      <input type="text" id="spec-descriptor" readonly style="width:8rem" title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">
-    </div>
-    <div class="row">
-      <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
-      <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
+      <span class="field-pair">
+        <label title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">Descriptor ⓘ</label>
+        <input type="text" id="spec-descriptor" readonly style="width:8rem" title="Derived from the selected grouping's own source report — not editable, so it can't drift out of sync with whichever system this grouping actually came from.">
+      </span>
+      <span class="field-pair">
+        <label title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">Scenarios per Claude call ⓘ</label>
+        <input type="number" id="spec-max-scenarios" value="6" style="width:4rem" title="Stage 1 groups are never capped or dropped — a group bigger than this just gets sent as several separate Claude calls instead of one, and the results are combined back into the same group.">
+      </span>
     </div>
     <div class="row" style="flex-direction:column; align-items:flex-start; gap:0.4rem;">
       <label title="Same Stage 1 group names shown above — checking a group includes it whole, batched however many Claude calls it internally needs. Leave all unchecked to generate every group.">Limit to groups (optional) ⓘ</label>
