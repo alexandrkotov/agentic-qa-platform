@@ -167,7 +167,7 @@
   </section>
 
   <section>
-    <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match Stage 2's currently shown spec)</span></h2>
+    <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the spec tied to Stage 2's selected grouping)</span></h2>
     <div class="row">
       <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
       <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
@@ -553,7 +553,10 @@ async function onGroupingChanged() {
   specDescriptorInput.value = '';
   renderGroupsFilterCheckboxes(null);
   setStage2GatedButtonsDisabled(!grouping);
-  if (!grouping) return;
+  if (!grouping) {
+    renderCorrections(); // clears any stale highlighting from a prior grouping
+    return;
+  }
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
     const reportName = groupingDetails.sourceReportPath.split('/').pop();
@@ -575,6 +578,12 @@ async function onGroupingChanged() {
     btn.style.display = '';
   } catch (e) {
     setStatus(document.getElementById('spec-gen-status'), 'Failed to check for an existing approved spec: ' + e.message, 'err');
+  } finally {
+    // Recompute highlighting either way — existingApprovedSpec may have
+    // just been set (or cleared, on a grouping with no approved spec),
+    // and relevantCorrectionNames() reads it directly without requiring
+    // the spec to actually be displayed via "Show last approved spec".
+    renderCorrections();
   }
 }
 // Both "change" and "click" — see report-select's onReportChanged comment
@@ -702,12 +711,18 @@ let corrections = {};
 // Corrections are stored per-descriptor (all groups mixed together — see
 // corrections.ts), so Load pulls in far more than whatever group Stage 2
 // currently shows. Highlighting narrows that down visually: a row matches
-// when its scenario name is one Stage 2's currently-shown spec (freshly
-// generated or loaded via "Show last approved spec") actually contains —
-// i.e. the ones that would actually be sent to Claude if Generate spec ran
-// again right now. specState is Stage 2's own state.
+// when its scenario name appears in the spec tied to Stage 2's *selected
+// grouping* — i.e. the ones that would actually be sent to Claude if
+// Generate spec ran again right now. Falls back to existingApprovedSpec
+// (set by onGroupingChanged whenever the selected grouping already has an
+// approved spec) so this works as soon as a grouping is picked, without
+// requiring the extra step of clicking "Show last approved spec" to
+// actually display it — specState (a freshly generated or explicitly
+// shown spec) still takes priority when present, since that's the more
+// specific, up-to-date answer to "what's in the spec right now."
 function relevantCorrectionNames() {
-  return specState ? new Set(specState.scenarios.map((s) => s.scenarioName)) : new Set();
+  const spec = specState || existingApprovedSpec?.approved;
+  return spec ? new Set(spec.scenarios.map((s) => s.scenarioName)) : new Set();
 }
 
 function renderCorrections() {
