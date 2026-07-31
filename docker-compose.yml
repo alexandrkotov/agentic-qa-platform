@@ -125,6 +125,28 @@ services:
       dockerfile: Dockerfile.workbench
     ports: ["4400:4400"]
     env_file: ./agent-service/.env
+    # tests/ is a separate package with its own @playwright/test version, so
+    # it needs its own browser binary — the one the Dockerfile installs at
+    # build time is for agent-service's own @playwright/mcp dependency, a
+    # different (and not necessarily version-compatible) Playwright install.
+    # Confirmed live: "Run tests" failed every single scenario with
+    # "chrome-headless-shell-1228 doesn't exist" while the image only had
+    # build 1232 (whatever agent-service's own install pulled in). tests/
+    # isn't present at image-build time (bind-mounted, not baked in), so this
+    # has to run at container *start* instead — the playwright-browsers
+    # volume below makes that a no-op after the first successful start
+    # rather than a fresh multi-hundred-MB download every restart.
+    #
+    # That same volume, mounted at the default cache path, also SHADOWS the
+    # image's own build-time-installed browser (agent-service's, for
+    # Discovery) — the volume wins over whatever the image layer had baked
+    # in at that path. So this reinstalls agent-service's own chromium here
+    # too, not just tests/'s; --with-deps isn't needed again for either (the
+    # OS-level apt packages it installs live outside this cache path
+    # entirely, so the Dockerfile's build-time --with-deps already covers
+    # both — only the actual browser binary needs redownloading into the
+    # now-fresh named volume).
+    command: sh -c "npx playwright install chromium; (cd tests && npx playwright install chromium); npx tsx src/admin/server.ts"
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors
       - ./agent-service/reports:/usr/src/app/reports
@@ -133,7 +155,9 @@ services:
       # would only touch the container's own ephemeral filesystem, never
       # the real tests/ directory this project's suite actually lives in.
       - ./tests:/usr/src/app/tests
+      - playwright-browsers:/root/.cache/ms-playwright
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   pgdata:
+  playwright-browsers:
