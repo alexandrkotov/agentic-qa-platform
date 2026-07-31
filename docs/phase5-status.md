@@ -1226,3 +1226,40 @@ Verified live against the real running container: `kafka-consumer-demo`'s empty 
 shows Generate spec disabled (grey, `cursor: not-allowed`, matching the existing `button.primary:disabled`
 style already used elsewhere); reselecting `orderflow` re-enables it; a bounding-box check confirmed the
 checkbox list renders below its label rather than beside it.
+
+## Addendum: two more follow-ups — disable everything below, migrate old grouping names (2026-07-31)
+
+Two more requests from screenshots. First: "no grouping exists" should disable every button below
+Stage 1, not just Generate spec — Load, "+ Add correction," and Save corrections in Scenario
+corrections now disable too, driven from the same `onGroupingChanged` check as before. Corrections
+themselves don't technically need a grouping to exist (they're per-descriptor, not per-grouping — see
+several addenda back), but there is nothing yet worth reviewing them against, and leaving those three
+active while everything else greys out read as inconsistent. Added `button.ghost:disabled` styling
+(Load/+ Add correction use that class) to match the `button.primary:disabled` treatment Save
+corrections already had.
+
+Second: even after the previous addendum's descriptor-scoped filtering (verified correct — old
+groupings without a filename suffix were already being matched via the `sourceReportPath`-reading
+fallback), the dropdown still visibly mixed suffixed and unsuffixed names, which read as inconsistent
+even though the filtering itself was right. Asked the user whether to migrate the old files or just
+annotate the display — they chose migration. Ran a one-off script against the real `reports/`
+directory: 6 old-style grouping files found, 2 skipped (their own source reports predate the
+descriptor-suffix convention entirely, so there's nothing reliable to embed — same "can't know, don't
+guess" rule used everywhere else), 4 renamed to add their descriptor suffix (3 `orderflow`, 1
+`kafka-demo`). The one `generate-spec-approved-*.json` file referencing a renamed grouping via
+`sourceGroupingPath` had that reference rewritten to match — the whole reason a blind rename was
+flagged as risky in the prior addendum, now handled explicitly rather than left to break silently.
+
+The grouping files are owned by `root` on disk (written by the containerized admin server, which runs
+as root) while the migration script initially ran on the host as a non-root user — renames succeeded
+(only needs write access to the directory) but the spec-file rewrite hit `EACCES` (needs write access
+to the file itself). Re-ran that one write via `docker exec` into the running `workbench` container,
+which owns the files, rather than escalating host-side permissions.
+
+Verified live against the real running container and real data, no Claude calls: confirmed via `curl`
+that `descriptor=orderflow` now returns all 5 orderflow groupings with visually consistent suffixed
+names, and that `spec-for-grouping` still resolves the renamed grouping's approved spec correctly (5
+scenarios) via the rewritten `sourceGroupingPath`; a headless Playwright session then drove the actual
+page — the "Approved grouping" dropdown shows the fully consistent list, and clicking "Show last
+approved spec" for the renamed grouping still renders all 5 scenario cards, confirming nothing broke
+across the rename.
