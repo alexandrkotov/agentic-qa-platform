@@ -1612,3 +1612,50 @@ being silently skipped), then a real full `bddgen && playwright test` run via `c
 timing/locator issues (`Test timeout of 30000ms exceeded`, visibility assertions) — the same *class* of
 result Milestone 7's own full live-pipeline verification found (some real failures, zero infrastructure
 failures), not a repeat of the "everything red" infra breakage reported at the start of this addendum.
+
+## Addendum: replaced the whole committed suite via the new pipeline, live (2026-07-31)
+
+With "Run tests" actually working, the user proposed the obvious next step: delete every
+pre-redesign `.feature`/`.steps.ts` file and regenerate the whole suite fresh through Stage 1→2→3
+instead. Two real, paid-generation findings came out of actually doing this, beyond the infra fixes
+above.
+
+**A genuine Zod validation failure, twice, on the same batch.** Regenerating the full 29-scenario spec
+(reusing the already-approved, fully-distributed `orderflow` grouping — no need to redo Stage 1) failed
+render-groups `customers-2` and `orders-1` with schema errors (`expected: "record"`, `invalid_union`,
+"Invalid discriminator value"). `orders-1` succeeded on retry; `customers-2` (`Update customer
+information`, `Delete customer with no orders`, `Delete customer with existing orders`) failed *three*
+times running. Traced it to the same class of report ambiguity the corrections mechanism exists for —
+the report's own description for "Delete customer with existing orders" is `"verify behavior (cascading
+delete or error)"`, genuinely undecided — and this time actually resolved the ambiguity by reading
+`app/src/customers/customers.service.ts:29-38` directly: `remove()` checks the customer's order count
+first and throws a `ConflictException` (409, `"Cannot delete customer {id}: they have {orderCount}
+order(s)"`) whenever it's nonzero — no cascading delete. Added this as a new `orderflow.corrections.json`
+entry; the retry succeeded cleanly (0 failures) on the very next attempt.
+
+**A second, more interesting bug the correction's own retry then exposed.** The live test run still
+failed exactly that one scenario — not because the correction was wrong, but because the *model* wrote
+the placeholder as `"Cannot delete customer {customers.id}: they have 1 order(s)"` even after the
+correction text itself was edited to use the bare `{id}` form
+`expectErrorMessage`'s own doc comment says is correct. The model generalizes from the
+`{resource.id}`/`{resource[N].id}` convention `resolveValue()` uses for every *other* field in this
+pipeline, regardless of which form a correction's own text happens to use — rewording the correction a
+second time didn't change the model's choice. Real fix was in
+[generateRuntime.ts](../tests/support/generateRuntime.ts): `expectErrorMessage`'s placeholder-detection
+regex only recognized the bare form, so `{customers.id}` survived into the final assertion regex as a
+literal substring (never becoming the intended `\d+` wildcard) and failed to match an otherwise
+completely correct 409 response. Broadened the regex to recognize both forms.
+
+Final result of actually deleting the old suite and generating a complete replacement live: 29
+scenarios across 7 groups (`security`, `products`, `orders-1/2/3`, `customers-1/2`), approved, rendered
+to real `.feature`/`.steps.ts` files on disk, and run for real — **21 of 29 passed**. All 8 remaining
+failures are the same *class* of already-documented, non-pipeline finding (`Create Customer with
+duplicate email` → 500 instead of 409, two invalid-id lookups → 400 instead of 404, `Create Product
+with zero or negative price` → 201 instead of 400, `SQL Injection in customer email` → 400 instead of
+201 the model assumed, and three UI-locator/timing issues) — not one of them a pipeline or
+infrastructure defect, and the one that *was* about to be misdiagnosed as a test failure (the
+placeholder bug) got caught and fixed instead of quietly miscounted as "app misbehavior."
+
+Both real fixes from this addendum (`orderflow.corrections.json`'s new entry, `generateRuntime.ts`'s
+broadened regex) are already live and verified against the real running container — no further action
+needed to reproduce this result.
