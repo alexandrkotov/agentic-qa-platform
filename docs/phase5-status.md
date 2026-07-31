@@ -1415,3 +1415,12 @@ row in [generate.html](../agent-service/src/admin/static/generate.html), same fi
 Verified live at a deliberately narrow 950px viewport (the width where the bug reproduced): a
 screenshot confirms the Descriptor label and its `orderflow` input now render together on their own
 line, below "Scenarios per Claude call," never split across a wrap.
+
+## Addendum: "Scenarios per Claude call" got the same fix (2026-07-31)
+
+Removing Descriptor from the shared row left "Approved grouping" and "Scenarios per Claude call"
+sharing one — same wrap-splitting risk, just moved rather than fixed. Each of Stage 2's three fields
+(Approved grouping, Descriptor, Scenarios per Claude call) now gets its own row.
+
+Verified live at the same 950px viewport: a screenshot confirms all three render as separate,
+single-purpose rows, each label staying with its own field regardless of width.
