@@ -1166,3 +1166,47 @@ Verified live against the real running container, reproducing the exact screensh
 immediately, while Stage 2's Descriptor correctly stays `orderflow` (still matching its own,
 unrelated, previously-selected grouping); reselecting `orderflow` (grouping exists) brings both back
 into agreement via the existing cascade, confirming the normal-flow case wasn't disturbed by this fix.
+
+## Addendum: scope Stage 2's "Approved grouping" list to the current descriptor (2026-07-31)
+
+The remark held back until the mismatch bugs above were settled: with `orderflow`, `kafka-demo`, and
+`kafka-consumer-demo` all now real, in-use descriptors, Stage 2's "Approved grouping" dropdown listed
+every approved grouping across all of them in one flat list, distinguishable only by raw approval
+timestamp — easy to pick the wrong system's grouping by accident, and the exact kind of cross-descriptor
+confusion behind every bug in this session's last several rounds.
+
+Followed the user's own suggested fix: new approved groupings now carry the descriptor in their own
+filename, `generate-grouping-approved-<timestamp>-<descriptor>.json`, mirroring
+[discovery.ts](../agent-service/src/bootstrap/discovery.ts)'s existing report-naming convention — added
+in the `/api/generate/group/approve` route in [server.ts](../agent-service/src/admin/server.ts), deriving
+the suffix from the approved grouping's own `sourceReportPath` via a `descriptorFromReportName` helper
+now duplicated server-side (mirroring generate.html's client-side one — no code-sharing mechanism exists
+between this admin server and its static pages, same reasoning as every other duplicated helper in this
+file). `GET /api/generate/groupings` gained an optional `?descriptor=` filter.
+
+Existing groupings approved before this — all of them, as of this session — have no suffix to parse.
+Rather than rename them (risky: `ApprovedSpec.sourceGroupingPath` inside already-approved specs
+references these files by their exact current path; renaming would silently break that reference),
+`descriptorForGroupingFile()` falls back to opening the file and reading its `sourceReportPath` when the
+filename itself carries no suffix — a few extra file reads at list-time, cheap given how few grouping
+files ever exist, and zero risk to existing data.
+
+`generate.html`'s `loadGroupingList()` now takes an optional descriptor and is called from
+`onReportChanged` (Stage 1) scoped to whatever descriptor Stage 1 currently shows, and from the
+Approve-grouping handler the same way. Landed together with the change agreed on earlier in this same
+conversation: the "Failed to check for an existing approved grouping" red error is gone entirely — that
+lookup only decides whether to offer "Show last approved grouping," a non-critical convenience, so a
+network hiccup there now soft-fails instead of alarming the user (this also explained the screenshot
+that prompted the discussion: the container had just finished a redeploy-triggered restart, and the
+fetch landed in the brief connectivity gap).
+
+Verified live against the real running container and its real data, including one genuinely fresh
+(free, mechanical) grouping approved during verification to confirm the new suffix convention actually
+fires: selecting the `orderflow` report scopes the dropdown to exactly its 4 groupings (3 old-style,
+descriptor recovered via the file-read fallback, plus the newly-approved
+`...-2026-07-31T03-20-18-541Z-orderflow.json`, descriptor read straight from its filename); selecting
+`kafka-demo` scopes to its 1 grouping; selecting `kafka-consumer-demo` (no groupings exist for it at
+all) empties the dropdown entirely rather than leaving a stale unrelated grouping selected — a better
+outcome than the "leave Stage 2 untouched" compromise from the prior addendum, achieved as a natural
+side effect of scoping rather than needing separate handling — while Corrections' Descriptor still
+updates immediately to `kafka-consumer-demo`, and no red error appears anywhere in the process.
