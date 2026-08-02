@@ -34,12 +34,15 @@
   }
   .app-nav a {
     font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
-    color: var(--text-mute); text-decoration: none;
+    color: var(--text-mute); text-decoration: none; border: 1px solid var(--line);
   }
   .app-nav a:hover { background: var(--surface-2); color: var(--text); }
-  .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
-  main { max-width: 920px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
-  .page-head { margin-bottom: 1.5rem; }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+  main { max-width: 920px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 3rem) 4rem; }
+  /* Shared verbatim across generate.html/visualize.html/index.html so the
+     title never visibly shifts left/right or up/down when switching pages —
+     sits outside each page's own (differently laid out) content column. */
+  .page-head { padding: 1.5rem clamp(1rem, 4vw, 3rem) 1.25rem; }
   .page-head h1 { font-size: 0.95rem; margin: 0; }
   .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
 
@@ -92,7 +95,6 @@
   .rule-list.guards li { border-left-color: var(--warn); background: var(--warn-bg); }
   .rule-list.invariants li { border-left-color: var(--accent); background: var(--accent-bg); }
 
-  .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
 
   .confirm-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
@@ -102,7 +104,19 @@
   .confirm-modal {
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
     padding: 1.25rem 1.4rem; max-width: 26rem;
+    display: flex; gap: 1rem; align-items: flex-start;
   }
+  .confirm-modal-icon { font-size: 2.1rem; line-height: 1; flex-shrink: 0; }
+  /* The money icon is fully hand-drawn (two bars + a stroked S path) —
+     no text and no font involved anywhere in it, so it renders identically
+     everywhere. A real "$" character's stroke count (one bar vs two) is a
+     font design choice, and even drawing just the "S" via a <text> element
+     still inherits that font's own cap-height/baseline, which is exactly
+     what made the two bars look uneven on some systems earlier. */
+  .confirm-modal-icon svg { display: block; }
+  .confirm-modal-icon.money { color: #2f8f5b; }
+  .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
@@ -211,14 +225,13 @@
 <header class="app-nav">
   <a href="/index.html">Discovery</a>
   <a href="/visualize.html" class="active">Analysis</a>
-  <a href="/generate.html">Test Generation</a>
+  <a href="/generate.html">Test Suite</a>
 </header>
+<div class="page-head">
+  <h1>Analysis</h1>
+  <div class="subtitle">Turns an approved discovery report into diagrams — architecture and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money)</div>
+</div>
 <main>
-  <div class="page-head">
-    <h1>Analysis</h1>
-    <div class="subtitle">See how the target system works before grouping scenarios — architecture and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money). Click any diagram to open it enlarged, with scrolling.</div>
-  </div>
-
   <section>
     <h2>Architecture</h2>
     <div class="row">
@@ -246,7 +259,8 @@
     <div class="row">
       <label>Report</label>
       <select id="uf-report-select"></select>
-      <button class="primary" id="uf-propose-btn"><span class="cost-badge">$</span>Generate UI inventory</button>
+      <button class="primary" id="uf-show-btn">Show</button>
+      <button class="primary" id="uf-propose-btn" style="display:none">Generate UI inventory</button>
       <span id="uf-gen-status"></span>
     </div>
     <div id="uf-body"></div>
@@ -262,7 +276,8 @@
     <div class="row">
       <label>Report</label>
       <select id="seq-report-select"></select>
-      <button class="primary" id="seq-propose-btn"><span class="cost-badge">$</span>Generate sequence flow</button>
+      <button class="primary" id="seq-show-btn">Show</button>
+      <button class="primary" id="seq-propose-btn" style="display:none">Generate sequence flow</button>
       <span id="seq-gen-status"></span>
     </div>
     <div id="seq-body"></div>
@@ -278,7 +293,8 @@
     <div class="row">
       <label>Report</label>
       <select id="wf-report-select"></select>
-      <button class="primary" id="wf-propose-btn"><span class="cost-badge">$</span>Generate workflow model</button>
+      <button class="primary" id="wf-show-btn">Show</button>
+      <button class="primary" id="wf-propose-btn" style="display:none">Generate workflow model</button>
       <span id="wf-gen-status"></span>
     </div>
     <div id="wf-body"></div>
@@ -307,10 +323,13 @@
 
 <div class="confirm-modal-overlay" id="confirm-modal-overlay">
   <div class="confirm-modal">
+    <div class="confirm-modal-icon" id="confirm-modal-icon"></div>
+    <div class="confirm-modal-body">
     <p id="confirm-modal-message"></p>
     <div class="confirm-modal-actions">
       <button class="primary" id="confirm-modal-cancel">Cancel</button>
       <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
     </div>
   </div>
 </div>
@@ -320,14 +339,29 @@
 // Any button that calls Claude for real must be confirmed first — resolves
 // true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
 // the backdrop all resolve false without touching the network.
-function confirmPaidAction(message) {
+// Hand-drawn rather than the text "$" — real "$" glyphs render with either
+// one or two vertical strokes depending on the viewer's font, so text can't
+// guarantee the two-bar look this project wants.
+const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <line x1="9.5" y1="2" x2="9.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// kind picks the big icon: 'money' (default) for actions that call Claude
+// and cost real money, 'time' for actions that are free but slow and/or
+// mutate real state, so the two read as visually distinct at a glance.
+function confirmModal(message, kind = 'money') {
   return new Promise((resolve) => {
     document.getElementById('confirm-modal-message').textContent = message;
+    const icon = document.getElementById('confirm-modal-icon');
+    icon.innerHTML = kind === 'time' ? '⏳' : MONEY_ICON_SVG;
+    icon.className = 'confirm-modal-icon ' + kind;
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
     // Cancel, not "Yes, proceed", is the default — focusing it means Enter
     // does the safe thing on a modal that exists specifically to warn about
-    // spending real money.
+    // a consequential action.
     document.getElementById('confirm-modal-cancel').focus();
     const cleanup = (result) => {
       overlay.classList.remove('open');
@@ -340,20 +374,6 @@ function confirmPaidAction(message) {
     document.addEventListener('keydown', onKey);
     overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
   });
-}
-
-// Sets a propose button's label, with a green $ badge when this click would
-// trigger a real paid call — the "Show ..." (free, reuses an already
-// approved model) state passes costsMoney: false and gets no badge.
-function setButtonLabel(btn, label, costsMoney) {
-  btn.textContent = '';
-  if (costsMoney) {
-    const badge = document.createElement('span');
-    badge.className = 'cost-badge';
-    badge.textContent = '$';
-    btn.appendChild(badge);
-  }
-  btn.appendChild(document.createTextNode(label));
 }
 
 // Theme the diagram with this page's own palette instead of Mermaid's
@@ -499,9 +519,9 @@ document.addEventListener('mouseup', () => {
 });
 
 const state = {
-  workflow: null, existingWorkflow: null,
-  uiFlow: null, existingUiFlow: null,
-  sequenceFlow: null, existingSequenceFlow: null,
+  workflow: null,
+  uiFlow: null,
+  sequenceFlow: null,
 };
 
 async function api(path, opts) {
@@ -668,22 +688,9 @@ function renderUiFlowEditor() {
 }
 
 document.getElementById('uf-propose-btn').onclick = async () => {
-  const btn = document.getElementById('uf-propose-btn');
   const statusEl = document.getElementById('uf-gen-status');
-
-  if (btn.textContent === 'Show') {
-    setButtonLabel(btn, 'Generate UI inventory', true);
-    const existing = state.existingUiFlow;
-    if (!existing) return;
-    state.uiFlow = existing.approved;
-    renderUiFlowEditor();
-    await renderUiFlowDiagrams(existing.rendered);
-    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
-    return;
-  }
-
   const report = document.getElementById('uf-report-select').value;
-  if (!(await confirmPaidAction(`Generate a UI inventory for "${report}"? This calls Claude and costs real money.`))) return;
+  if (!(await confirmModal(`Generate a UI inventory for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.uiFlow = await api('/api/workflow/propose-ui-flow', {
@@ -735,40 +742,66 @@ document.getElementById('uf-approve-btn').onclick = async () => {
   }
 };
 
-function resetUiFlowSection() {
+// Tracks which report the expanded section's contents belong to, so a
+// report-select change can tell "still the same report" (no-op) apart from
+// "genuinely different report" (collapse, since what's on screen is stale).
+let ufShownReport = null;
+
+function collapseUiFlow() {
   state.uiFlow = null;
-  state.existingUiFlow = null;
+  ufShownReport = null;
   document.getElementById('uf-body').innerHTML = '';
   document.getElementById('uf-diagrams').innerHTML = '';
   const approveBtn = document.getElementById('uf-approve-btn');
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
-  setButtonLabel(document.getElementById('uf-propose-btn'), 'Generate UI inventory', true);
+  document.getElementById('uf-show-btn').textContent = 'Show';
+  document.getElementById('uf-propose-btn').style.display = 'none';
   setStatus(document.getElementById('uf-gen-status'), '');
   setStatus(document.getElementById('uf-status'), '');
 }
 
-// Same "don't display an existing model unasked" rule as Business workflow —
-// the button label communicates that a free model is available instead of
-// dumping it on screen right after a report reselect.
-async function onUiFlowReportChanged() {
-  resetUiFlowSection();
+async function expandUiFlow() {
+  document.getElementById('uf-show-btn').textContent = 'Hide';
+  document.getElementById('uf-propose-btn').style.display = '';
   const report = document.getElementById('uf-report-select').value;
-  if (!report) return;
+  ufShownReport = report;
   const statusEl = document.getElementById('uf-gen-status');
   try {
     const existing = await api('/api/workflow/ui-flow-for-report?report=' + encodeURIComponent(report));
-    if (!existing) return;
-    state.existingUiFlow = existing;
-    setButtonLabel(document.getElementById('uf-propose-btn'), 'Show', false);
-    setStatus(statusEl, 'An approved model already exists for this report.');
+    if (!existing) {
+      setStatus(statusEl, 'No approved model yet for this report — click Generate to create one.');
+      return;
+    }
+    state.uiFlow = existing.approved;
+    renderUiFlowEditor();
+    await renderUiFlowDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
 }
-// Both "change" and "click" — see onArchReportChanged's comment for why.
+
+document.getElementById('uf-show-btn').onclick = () => {
+  if (document.getElementById('uf-show-btn').textContent === 'Hide') {
+    collapseUiFlow();
+    return;
+  }
+  expandUiFlow();
+};
+
+// Only a genuine change of report should invalidate the expanded section —
+// re-picking the report that's already shown is a no-op. Listen on both
+// "change" and "click" — see onArchReportChanged's comment for why "click"
+// is needed (re-picking the same value fires no "change" event at all).
+function onUiFlowReportChanged() {
+  if (document.getElementById('uf-show-btn').textContent !== 'Hide') return;
+  if (document.getElementById('uf-report-select').value === ufShownReport) return;
+  collapseUiFlow();
+}
 document.getElementById('uf-report-select').addEventListener('change', onUiFlowReportChanged);
 document.getElementById('uf-report-select').addEventListener('click', onUiFlowReportChanged);
+
 
 // --- Sequence flow ----------------------------------------------------------
 
@@ -812,22 +845,9 @@ function renderSequenceEditor() {
 }
 
 document.getElementById('seq-propose-btn').onclick = async () => {
-  const btn = document.getElementById('seq-propose-btn');
   const statusEl = document.getElementById('seq-gen-status');
-
-  if (btn.textContent === 'Show') {
-    setButtonLabel(btn, 'Generate sequence flow', true);
-    const existing = state.existingSequenceFlow;
-    if (!existing) return;
-    state.sequenceFlow = existing.approved;
-    renderSequenceEditor();
-    await renderSequenceDiagrams(existing.rendered);
-    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
-    return;
-  }
-
   const report = document.getElementById('seq-report-select').value;
-  if (!(await confirmPaidAction(`Generate a sequence flow model for "${report}"? This calls Claude and costs real money.`))) return;
+  if (!(await confirmModal(`Generate a sequence flow model for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.sequenceFlow = await api('/api/workflow/propose-sequence', {
@@ -884,36 +904,59 @@ document.getElementById('seq-approve-btn').onclick = async () => {
   }
 };
 
-function resetSequenceSection() {
+let seqShownReport = null;
+
+function collapseSequence() {
   state.sequenceFlow = null;
-  state.existingSequenceFlow = null;
+  seqShownReport = null;
   document.getElementById('seq-body').innerHTML = '';
   document.getElementById('seq-diagrams').innerHTML = '';
   const approveBtn = document.getElementById('seq-approve-btn');
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
-  setButtonLabel(document.getElementById('seq-propose-btn'), 'Generate sequence flow', true);
+  document.getElementById('seq-show-btn').textContent = 'Show';
+  document.getElementById('seq-propose-btn').style.display = 'none';
   setStatus(document.getElementById('seq-gen-status'), '');
   setStatus(document.getElementById('seq-status'), '');
 }
 
-async function onSequenceReportChanged() {
-  resetSequenceSection();
+async function expandSequence() {
+  document.getElementById('seq-show-btn').textContent = 'Hide';
+  document.getElementById('seq-propose-btn').style.display = '';
   const report = document.getElementById('seq-report-select').value;
-  if (!report) return;
+  seqShownReport = report;
   const statusEl = document.getElementById('seq-gen-status');
   try {
     const existing = await api('/api/workflow/sequence-for-report?report=' + encodeURIComponent(report));
-    if (!existing) return;
-    state.existingSequenceFlow = existing;
-    setButtonLabel(document.getElementById('seq-propose-btn'), 'Show', false);
-    setStatus(statusEl, 'An approved model already exists for this report.');
+    if (!existing) {
+      setStatus(statusEl, 'No approved model yet for this report — click Generate to create one.');
+      return;
+    }
+    state.sequenceFlow = existing.approved;
+    renderSequenceEditor();
+    await renderSequenceDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
 }
+
+document.getElementById('seq-show-btn').onclick = () => {
+  if (document.getElementById('seq-show-btn').textContent === 'Hide') {
+    collapseSequence();
+    return;
+  }
+  expandSequence();
+};
+
+function onSequenceReportChanged() {
+  if (document.getElementById('seq-show-btn').textContent !== 'Hide') return;
+  if (document.getElementById('seq-report-select').value === seqShownReport) return;
+  collapseSequence();
+}
 document.getElementById('seq-report-select').addEventListener('change', onSequenceReportChanged);
 document.getElementById('seq-report-select').addEventListener('click', onSequenceReportChanged);
+
 
 // --- Business workflow -------------------------------------------------------
 
@@ -955,25 +998,9 @@ function renderWorkflowEditor() {
 }
 
 document.getElementById('wf-propose-btn').onclick = async () => {
-  const btn = document.getElementById('wf-propose-btn');
   const statusEl = document.getElementById('wf-gen-status');
-
-  // An approved model already exists for this report — show it instead of
-  // generating a new one, then flip the button back to its normal "Generate"
-  // behavior in case the human wants a fresh one anyway.
-  if (btn.textContent === 'Show') {
-    setButtonLabel(btn, 'Generate workflow model', true);
-    const existing = state.existingWorkflow;
-    if (!existing) return;
-    state.workflow = existing.approved;
-    renderWorkflowEditor();
-    await renderDiagrams(existing.rendered);
-    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
-    return;
-  }
-
   const report = document.getElementById('wf-report-select').value;
-  if (!(await confirmPaidAction(`Generate a workflow model for "${report}"? This calls Claude and costs real money.`))) return;
+  if (!(await confirmModal(`Generate a workflow model for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.workflow = await api('/api/workflow/propose', {
@@ -1048,48 +1075,64 @@ document.getElementById('wf-approve-btn').onclick = async () => {
   }
 };
 
-function resetWorkflowSection() {
+let wfShownReport = null;
+
+function collapseWorkflow() {
   state.workflow = null;
-  state.existingWorkflow = null;
+  wfShownReport = null;
   document.getElementById('wf-body').innerHTML = '';
   document.getElementById('wf-diagrams').innerHTML = '';
   const approveBtn = document.getElementById('wf-approve-btn');
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
-  setButtonLabel(document.getElementById('wf-propose-btn'), 'Generate workflow model', true);
+  document.getElementById('wf-show-btn').textContent = 'Show';
+  document.getElementById('wf-propose-btn').style.display = 'none';
   setStatus(document.getElementById('wf-gen-status'), '');
   setStatus(document.getElementById('wf-status'), '');
 }
 
-// Same "switching reports invalidates the screen" rule as Entity relationships
-// — but here a report may already have an approved model from an earlier
-// session. Don't display it right away (a report reselect shouldn't dump a
-// possibly-large diagram on screen unasked) — just flip the button to "Show"
-// so its label itself communicates that something is available for free.
-async function onWorkflowReportChanged() {
-  resetWorkflowSection();
+async function expandWorkflow() {
+  document.getElementById('wf-show-btn').textContent = 'Hide';
+  document.getElementById('wf-propose-btn').style.display = '';
   const report = document.getElementById('wf-report-select').value;
-  if (!report) return;
+  wfShownReport = report;
   const statusEl = document.getElementById('wf-gen-status');
   try {
     const existing = await api('/api/workflow/for-report?report=' + encodeURIComponent(report));
-    if (!existing) return;
-    state.existingWorkflow = existing;
-    setButtonLabel(document.getElementById('wf-propose-btn'), 'Show', false);
-    setStatus(statusEl, 'An approved model already exists for this report.');
+    if (!existing) {
+      setStatus(statusEl, 'No approved model yet for this report — click Generate to create one.');
+      return;
+    }
+    state.workflow = existing.approved;
+    renderWorkflowEditor();
+    await renderDiagrams(existing.rendered);
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed to check for an existing model: ' + e.message, 'err');
   }
 }
-// Both "change" and "click" — see onArchReportChanged's comment for why.
+
+document.getElementById('wf-show-btn').onclick = () => {
+  if (document.getElementById('wf-show-btn').textContent === 'Hide') {
+    collapseWorkflow();
+    return;
+  }
+  expandWorkflow();
+};
+
+function onWorkflowReportChanged() {
+  if (document.getElementById('wf-show-btn').textContent !== 'Hide') return;
+  if (document.getElementById('wf-report-select').value === wfShownReport) return;
+  collapseWorkflow();
+}
 document.getElementById('wf-report-select').addEventListener('change', onWorkflowReportChanged);
 document.getElementById('wf-report-select').addEventListener('click', onWorkflowReportChanged);
 
 loadReportOptions('arch-report-select');
 loadReportOptions('er-report-select');
-loadReportOptions('uf-report-select').then(onUiFlowReportChanged);
-loadReportOptions('seq-report-select').then(onSequenceReportChanged);
-loadReportOptions('wf-report-select').then(onWorkflowReportChanged);
+loadReportOptions('uf-report-select');
+loadReportOptions('seq-report-select');
+loadReportOptions('wf-report-select');
 </script>
 </body>
 </html>

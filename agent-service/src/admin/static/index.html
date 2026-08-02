@@ -33,19 +33,31 @@
   }
   .app-nav a {
     font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
-    color: var(--text-mute); text-decoration: none;
+    color: var(--text-mute); text-decoration: none; border: 1px solid var(--line);
   }
   .app-nav a:hover { background: var(--surface-2); color: var(--text); }
-  .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+  /* Shared verbatim across generate.html/visualize.html/index.html so the
+     title never visibly shifts left/right or up/down when switching pages —
+     sits outside each page's own (differently laid out) content column. */
+  .page-head { padding: 1.5rem clamp(1rem, 4vw, 3rem) 1.25rem; }
+  .page-head h1 { font-size: 0.95rem; margin: 0; }
+  .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
+
   .app-body { display: flex; flex: 1; min-height: 0; }
   aside {
-    width: 260px; flex-shrink: 0; background: var(--surface);
+    width: 260px; flex-shrink: 0; background: var(--bg);
     border-right: 1px solid var(--line); padding: 1.25rem 1rem;
     display: flex; flex-direction: column; gap: 1rem;
   }
-  aside h1 { font-size: 0.95rem; margin: 0; }
+  aside h2 { font-size: 0.95rem; margin: 0; }
   aside .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
-  aside .section-break { border-top: 1px solid var(--line); padding-top: 1rem; margin-top: 0.2rem; }
+  /* Each of System Descriptors / Run Discovery reads as its own tile — the
+     gap between them shows the page background rather than a divider line. */
+  .side-tile {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem; display: flex; flex-direction: column; gap: 1rem;
+  }
   aside select {
     width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.45rem 0.6rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
@@ -60,9 +72,13 @@
     font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.72rem;
     color: var(--text-mute); white-space: pre-wrap; line-height: 1.5; box-sizing: border-box;
   }
-  #descriptor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+  #descriptor-list {
+    list-style: none; margin: 0; padding: 0;
+    border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  }
+  #descriptor-list li + li { border-top: 1px solid var(--line); }
   #descriptor-list li button {
-    width: 100%; text-align: left; padding: 0.5rem 0.65rem; border-radius: 6px;
+    width: 100%; text-align: left; padding: 0.5rem 0.65rem; display: block;
     border: none; background: none; color: var(--text); cursor: pointer; font-size: 0.87rem;
     font-family: ui-monospace, "SF Mono", Consolas, monospace;
   }
@@ -79,7 +95,6 @@
   }
   button.ghost:hover { background: var(--surface-2); }
   button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.78rem; padding: 0.2rem 0.4rem; }
-  .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
 
   .confirm-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
@@ -89,7 +104,19 @@
   .confirm-modal {
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
     padding: 1.25rem 1.4rem; max-width: 26rem;
+    display: flex; gap: 1rem; align-items: flex-start;
   }
+  .confirm-modal-icon { font-size: 2.1rem; line-height: 1; flex-shrink: 0; }
+  /* The money icon is fully hand-drawn (two bars + a stroked S path) —
+     no text and no font involved anywhere in it, so it renders identically
+     everywhere. A real "$" character's stroke count (one bar vs two) is a
+     font design choice, and even drawing just the "S" via a <text> element
+     still inherits that font's own cap-height/baseline, which is exactly
+     what made the two bars look uneven on some systems earlier. */
+  .confirm-modal-icon svg { display: block; }
+  .confirm-modal-icon.money { color: #2f8f5b; }
+  .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
@@ -130,25 +157,33 @@
   <header class="app-nav">
     <a href="/index.html" class="active">Discovery</a>
     <a href="/visualize.html">Analysis</a>
-    <a href="/generate.html">Test Generation</a>
+    <a href="/generate.html">Test Suite</a>
   </header>
+  <div class="page-head">
+    <h1>Discovery</h1>
+    <div class="subtitle">Manage system descriptors, then run the discovery agent against one to produce a fresh JSON report</div>
+  </div>
   <div class="app-body">
   <aside>
-    <div>
-      <h1>System Descriptors</h1>
-      <div class="subtitle">Target systems the discovery agent can explore</div>
+    <div class="side-tile">
+      <div>
+        <h2>System Descriptors</h2>
+        <div class="subtitle">Target systems the discovery agent can explore</div>
+      </div>
+      <ul id="descriptor-list"></ul>
+      <button class="primary" id="new-btn">+ New descriptor</button>
     </div>
-    <ul id="descriptor-list"></ul>
-    <button class="ghost" id="new-btn">+ New descriptor</button>
 
-    <div class="section-break">
-      <h1>Run Discovery</h1>
-      <div class="subtitle">Generate a fresh JSON report — calls Claude, costs money, can take a few minutes</div>
+    <div class="side-tile">
+      <div>
+        <h2>Run Discovery</h2>
+        <div class="subtitle">Generate a fresh JSON report — calls Claude, costs money, can take a few minutes</div>
+      </div>
+      <select id="discovery-descriptor-select"></select>
+      <button class="primary" id="run-discovery-btn">Run discovery</button>
+      <div id="discovery-status"></div>
+      <pre id="discovery-log" class="gen-log" style="display:none"></pre>
     </div>
-    <select id="discovery-descriptor-select"></select>
-    <button class="primary" id="run-discovery-btn"><span class="cost-badge">$</span>Run discovery</button>
-    <div id="discovery-status"></div>
-    <pre id="discovery-log" class="gen-log" style="display:none"></pre>
   </aside>
   <main>
     <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
@@ -176,10 +211,14 @@
 
 <div class="confirm-modal-overlay" id="confirm-modal-overlay">
   <div class="confirm-modal">
+    <div class="confirm-modal-icon" id="confirm-modal-icon"></div>
+    <div class="confirm-modal-body">
     <p id="confirm-modal-message"></p>
     <div class="confirm-modal-actions">
       <button class="primary" id="confirm-modal-cancel">Cancel</button>
       <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
+    </div>
     </div>
   </div>
 </div>
@@ -188,14 +227,29 @@
 // Any button that calls Claude for real must be confirmed first — resolves
 // true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
 // the backdrop all resolve false without touching the network.
-function confirmPaidAction(message) {
+// Hand-drawn rather than the text "$" — real "$" glyphs render with either
+// one or two vertical strokes depending on the viewer's font, so text can't
+// guarantee the two-bar look this project wants.
+const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <line x1="9.5" y1="2" x2="9.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// kind picks the big icon: 'money' (default) for actions that call Claude
+// and cost real money, 'time' for actions that are free but slow and/or
+// mutate real state, so the two read as visually distinct at a glance.
+function confirmModal(message, kind = 'money') {
   return new Promise((resolve) => {
     document.getElementById('confirm-modal-message').textContent = message;
+    const icon = document.getElementById('confirm-modal-icon');
+    icon.innerHTML = kind === 'time' ? '⏳' : MONEY_ICON_SVG;
+    icon.className = 'confirm-modal-icon ' + kind;
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
     // Cancel, not "Yes, proceed", is the default — focusing it means Enter
     // does the safe thing on a modal that exists specifically to warn about
-    // spending real money.
+    // a consequential action.
     document.getElementById('confirm-modal-cancel').focus();
     const cleanup = (result) => {
       overlay.classList.remove('open');
@@ -227,6 +281,11 @@ const FIELD_DEFS = {
   'kafka': [
     { key: 'brokers', label: 'Brokers (one per line)', type: 'lines', placeholder: 'localhost:9094' },
     { key: 'clientId', label: 'Client ID (optional)', type: 'text' },
+  ],
+  'kafka-consumer': [
+    { key: 'brokers', label: 'Brokers (one per line)', type: 'lines', placeholder: 'localhost:9094' },
+    { key: 'topic', label: 'Topic', type: 'text', placeholder: 'orders.status-changed' },
+    { key: 'sampleSize', label: 'Sample size (optional)', type: 'number', placeholder: '5' },
   ],
 };
 
@@ -370,6 +429,13 @@ function renderField(comp, def) {
     ta.value = (comp[def.key] || []).join('\n');
     ta.oninput = () => { comp[def.key] = ta.value.split('\n').map((s) => s.trim()).filter(Boolean); };
     wrap.appendChild(ta);
+  } else if (def.type === 'number') {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = comp[def.key] ?? '';
+    input.placeholder = def.placeholder || '';
+    input.oninput = () => { comp[def.key] = input.value ? Number(input.value) : undefined; };
+    wrap.appendChild(input);
   } else {
     const input = document.createElement('input');
     input.value = comp[def.key] || '';
@@ -491,7 +557,7 @@ document.getElementById('run-discovery-btn').onclick = async () => {
   const statusEl = document.getElementById('discovery-status');
   const btn = document.getElementById('run-discovery-btn');
   if (!name) return;
-  if (!(await confirmPaidAction(`Run discovery on "${name}"? This calls Claude and costs real money, and can take a few minutes.`))) return;
+  if (!(await confirmModal(`Run discovery on "${name}"? This calls Claude and costs real money, and can take a few minutes.`))) return;
   btn.disabled = true;
   statusEl.className = '';
   statusEl.textContent = `Running discovery on "${name}" — calling Claude, this can take a few minutes…`;

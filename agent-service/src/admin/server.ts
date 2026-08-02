@@ -778,7 +778,19 @@ function specFilePath(name: string): string {
   return join(config.reportsDir, name);
 }
 
-/** Latest approved spec whose sourceGroupingPath matches this grouping, if any — same reuse-existing-approval idea as /api/generate/grouping-for-report, one layer down the pipeline. */
+/**
+ * Merged view of every approved spec whose sourceGroupingPath matches this
+ * grouping, newest-per-group-key wins — not just the single latest file. A
+ * grouping this large is normally approved across several separate rounds
+ * (see /api/generate/specs's own comment, same reasoning), each covering
+ * only a subset of groups; returning just the latest FILE meant Generate's
+ * "Show last approved generation" and Corrections' relevance-highlighting
+ * (both consumers of this route) only ever saw whichever round happened
+ * most recently, silently missing every group approved in an earlier round.
+ * `path` becomes a comma-joined list of every file that actually
+ * contributed at least one group to the merge, so the "Loaded approved
+ * generation from …" status stays honest about it being a merge.
+ */
 app.get('/api/generate/spec-for-grouping', async (req, res) => {
   try {
     const groupingName = req.query.grouping;
@@ -788,16 +800,41 @@ app.get('/api/generate/spec-for-grouping', async (req, res) => {
     }
     const targetPath = groupingFilePath(groupingName);
     const files = await readdir(config.reportsDir).catch(() => [] as string[]);
-    const candidates = files.filter((f) => SPEC_APPROVED_NAME_PATTERN.test(f)).sort();
-    for (let i = candidates.length - 1; i >= 0; i--) {
-      const candidatePath = join(config.reportsDir, candidates[i]);
+    const candidates = files.filter((f) => SPEC_APPROVED_NAME_PATTERN.test(f)).sort().reverse(); // newest first
+
+    const groupsByKey = new Map<string, ReturnType<typeof ApprovedGenerationSchema.parse>['groups'][number]>();
+    const contributingPaths: string[] = [];
+    let newest: ReturnType<typeof ApprovedGenerationSchema.parse> | null = null;
+
+    for (const name of candidates) {
+      const candidatePath = join(config.reportsDir, name);
       const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
       if (raw.sourceGroupingPath !== targetPath) continue;
       const approved = ApprovedGenerationSchema.parse(raw);
-      res.json({ path: candidatePath, approved });
+      if (!newest) newest = approved; // first match in newest-first order
+
+      let contributedSomething = false;
+      for (const group of approved.groups) {
+        if (!groupsByKey.has(group.key)) {
+          groupsByKey.set(group.key, group);
+          contributedSomething = true;
+        }
+      }
+      if (contributedSomething) contributingPaths.push(candidatePath);
+    }
+
+    if (!newest) {
+      res.json(null);
       return;
     }
-    res.json(null);
+
+    const merged = ApprovedGenerationSchema.parse({
+      generatedAt: newest.generatedAt,
+      sourceGroupingPath: targetPath,
+      approvedAt: newest.approvedAt,
+      groups: [...groupsByKey.values()],
+    });
+    res.json({ path: contributingPaths.join(', '), approved: merged });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }

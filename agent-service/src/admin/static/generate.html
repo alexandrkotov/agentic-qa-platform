@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Test Generation</title>
+<title>Test Suite</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
 <style>
   :root {
@@ -34,16 +34,19 @@
   }
   .app-nav a {
     font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
-    color: var(--text-mute); text-decoration: none;
+    color: var(--text-mute); text-decoration: none; border: 1px solid var(--line);
   }
   .app-nav a:hover { background: var(--surface-2); color: var(--text); }
-  .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
   /* Wider than a typical admin form — Stage 2's Feature/Steps review below
      needs the room; the other three stages read fine at this measure too,
      just with more breathing room. Was 920px before Stage 2 started showing
      full real files instead of compact JSON snippets. */
-  main { max-width: 1150px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
-  .page-head { margin-bottom: 1.25rem; }
+  main { max-width: 1150px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 3rem) 4rem; }
+  /* Shared verbatim across generate.html/visualize.html/index.html so the
+     title never visibly shifts left/right or up/down when switching pages —
+     sits outside each page's own (differently laid out) content column. */
+  .page-head { padding: 1.5rem clamp(1rem, 4vw, 3rem) 1.25rem; }
   .page-head h1 { font-size: 0.95rem; margin: 0; }
   .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
 
@@ -63,9 +66,6 @@
      rather than genuinely unclickable, so a gating bug can never strand
      someone on a tab they can't leave. Just a visual "not much here yet". */
   .stage-tab.dim { opacity: 0.55; }
-  .stage-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-mute); flex: none; }
-  .stage-tab.active .stage-dot { border-color: var(--accent); }
-  .stage-dot.filled { background: var(--accent); border-color: var(--accent); }
 
   section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
   section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
@@ -120,7 +120,6 @@
      cross-reference (Generate tab -> Corrections tab), not a destructive
      action — var(--danger) there would misread as a warning. */
   button.link.accent { color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0; }
-  .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
 
   .confirm-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
@@ -130,7 +129,19 @@
   .confirm-modal {
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
     padding: 1.25rem 1.4rem; max-width: 26rem;
+    display: flex; gap: 1rem; align-items: flex-start;
   }
+  .confirm-modal-icon { font-size: 2.1rem; line-height: 1; flex-shrink: 0; }
+  /* The money icon is fully hand-drawn (two bars + a stroked S path) —
+     no text and no font involved anywhere in it, so it renders identically
+     everywhere. A real "$" character's stroke count (one bar vs two) is a
+     font design choice, and even drawing just the "S" via a <text> element
+     still inherits that font's own cap-height/baseline, which is exactly
+     what made the two bars look uneven on some systems earlier. */
+  .confirm-modal-icon svg { display: block; }
+  .confirm-modal-icon.money { color: #2f8f5b; }
+  .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
@@ -205,19 +216,19 @@
 <header class="app-nav">
   <a href="/index.html">Discovery</a>
   <a href="/visualize.html">Analysis</a>
-  <a href="/generate.html" class="active">Test Generation</a>
+  <a href="/generate.html" class="active">Test Suite</a>
 </header>
+<div class="page-head">
+  <h1>Test Suite</h1>
+  <div class="subtitle">Turns an approved discovery report into a reviewed BDD test suite, one approved stage at a time</div>
+</div>
 <main>
-  <div class="page-head">
-    <h1>Test Generation</h1>
-    <div class="subtitle">Turns an approved discovery report into a reviewed BDD test suite, one approved stage at a time</div>
-  </div>
 
   <nav class="stage-nav">
-    <button class="stage-tab active" id="tab-grouping"><span class="stage-dot" id="dot-grouping"></span>① Grouping</button>
-    <button class="stage-tab" id="tab-generate"><span class="stage-dot" id="dot-generate"></span>② Generate</button>
-    <button class="stage-tab" id="tab-corrections"><span class="stage-dot" id="dot-corrections"></span>③ Corrections</button>
-    <button class="stage-tab" id="tab-render"><span class="stage-dot" id="dot-render"></span>④ Render &amp; Run</button>
+    <button class="stage-tab active" id="tab-grouping">Grouping</button>
+    <button class="stage-tab" id="tab-generate">Generate</button>
+    <button class="stage-tab" id="tab-corrections">Corrections</button>
+    <button class="stage-tab" id="tab-render">Write &amp; Run</button>
   </nav>
 
   <section id="stage-grouping">
@@ -263,7 +274,7 @@
     </div>
     <div class="row" id="corrections-link-row" style="display:none"></div>
     <div class="row">
-      <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate tests</button>
+      <button class="primary" id="spec-generate-btn">Generate tests</button>
       <button class="primary" id="show-approved-spec-btn" style="display:none">Show last approved generation</button>
       <span id="spec-gen-status"></span>
     </div>
@@ -303,16 +314,15 @@
   </section>
 
   <section id="stage-render" hidden>
-    <h2>Render &amp; Run</h2>
-    <div class="stage-note">A large grouping is often approved across several separate rounds (e.g. retrying just the groups that failed last time) — each round has its own approved file covering only its own groups. Pick which one to write to tests/; render each round in turn to get the complete suite on disk. Run tests always runs whatever's currently on disk, whether or not a new generation is pending review.</div>
+    <h2>Write &amp; Run</h2>
     <div class="row">
       <span class="field-pair">
-        <label title="Scoped to Generate's currently selected grouping — switch that first if you don't see the round you're after.">Approved spec ⓘ</label>
+        <label title="Scoped to Generate's currently selected grouping — switch that first if you don't see the round you're after. A large grouping is often approved across several separate rounds (e.g. retrying just the groups that failed last time), each covering only its own groups — pick one here and write it, then repeat for any other round, to get the complete suite on disk.">Approved spec ⓘ</label>
         <select id="render-spec-select" style="min-width:22rem"></select>
       </span>
     </div>
     <div class="row">
-      <button class="primary" id="render-btn" style="display:none">Generate render</button>
+      <button class="primary" id="render-btn" style="display:none">Write files</button>
       <span id="render-status"></span>
     </div>
     <div class="row">
@@ -330,10 +340,13 @@
 
 <div class="confirm-modal-overlay" id="confirm-modal-overlay">
   <div class="confirm-modal">
+    <div class="confirm-modal-icon" id="confirm-modal-icon"></div>
+    <div class="confirm-modal-body">
     <p id="confirm-modal-message"></p>
     <div class="confirm-modal-actions">
       <button class="primary" id="confirm-modal-cancel">Cancel</button>
       <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
     </div>
   </div>
 </div>
@@ -357,34 +370,42 @@ for (const s of STAGE_NAMES) {
   document.getElementById('tab-' + s).onclick = () => showStage(s);
 }
 
-// Small at-a-glance status per tab, reusing state this page already tracks
-// (no new API calls). Dots are purely informational — "dim" on the Generate
-// tab is a visual nudge, never an actual click-block, so a gating bug here
-// can never strand someone on a tab they can't leave.
-function updateStageDots() {
-  document.getElementById('dot-grouping').classList.toggle('filled', !!state.grouping);
-  document.getElementById('dot-generate').classList.toggle('filled', !!(generationState || existingApprovedGeneration));
-  document.getElementById('dot-corrections').classList.toggle('filled', Object.keys(corrections).length > 0);
-  document.getElementById('dot-render').classList.toggle('filled', !!existingApprovedGeneration);
-
+// "dim" on the Generate tab is a visual nudge, never an actual click-block,
+// so a gating bug here can never strand someone on a tab they can't leave.
+function updateStageGating() {
   const hasApprovedGrouping = document.getElementById('spec-grouping-select').options.length > 0;
   const generateTab = document.getElementById('tab-generate');
   generateTab.classList.toggle('dim', !hasApprovedGrouping);
   generateTab.title = hasApprovedGrouping ? '' : 'Approve a grouping in Stage 1 first.';
 }
 
-// Any button that calls Claude for real must be confirmed first — resolves
-// true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
-// the backdrop all resolve false without touching the network.
-function confirmPaidAction(message) {
+// Any button that calls Claude for real, or otherwise does something
+// consequential, must be confirmed first — resolves true only if the human
+// clicks "Yes, proceed"; Cancel, Escape, or clicking the backdrop all
+// resolve false without touching the network.
+// Hand-drawn rather than the text "$" — real "$" glyphs render with either
+// one or two vertical strokes depending on the viewer's font, so text can't
+// guarantee the two-bar look this project wants.
+const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <line x1="9.5" y1="2" x2="9.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// kind picks the big icon: 'money' (default) for actions that call Claude
+// and cost real money, 'time' for actions that are free but slow and/or
+// mutate real state, so the two read as visually distinct at a glance.
+function confirmModal(message, kind = 'money') {
   return new Promise((resolve) => {
     document.getElementById('confirm-modal-message').textContent = message;
+    const icon = document.getElementById('confirm-modal-icon');
+    icon.innerHTML = kind === 'time' ? '⏳' : MONEY_ICON_SVG;
+    icon.className = 'confirm-modal-icon ' + kind;
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
     // Cancel, not "Yes, proceed", is the default — focusing it means Enter
-    // does the safe thing on a modal that exists to warn before a
-    // consequential action (originally just "costs real money"; also reused
-    // for "Run tests", which costs nothing but mutates real data instead).
+    // does the safe thing on a modal that exists specifically to warn about
+    // a consequential action.
     document.getElementById('confirm-modal-cancel').focus();
     const cleanup = (result) => {
       overlay.classList.remove('open');
@@ -595,7 +616,7 @@ function renderGrouping() {
   const approveBtn = document.getElementById('approve-btn');
   approveBtn.style.display = state.grouping ? '' : 'none';
   approveBtn.disabled = !state.grouping;
-  if (!state.grouping) { updateStageDots(); return; }
+  if (!state.grouping) { updateStageGating(); return; }
   const g = state.grouping;
 
   // Recomputed live from the current ungrouped/grouped arrays rather than
@@ -647,7 +668,7 @@ function renderGrouping() {
     for (const name of g.ungrouped) card.appendChild(renderScenarioRow(name, '__ungrouped__'));
     body.appendChild(card);
   }
-  updateStageDots();
+  updateStageGating();
 }
 
 document.getElementById('recompute-btn').onclick = async () => {
@@ -711,7 +732,7 @@ async function loadGroupingList(descriptor) {
   const select = document.getElementById('spec-grouping-select');
   select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.length > 0) select.value = names[names.length - 1];
-  updateStageDots();
+  updateStageGating();
 }
 
 // Same "Show/Hide last approved ..." idea as Stage 1's grouping button — lets
@@ -766,7 +787,7 @@ function setStage2GatedButtonsDisabled(disabled) {
   document.getElementById('add-corr-btn').disabled = disabled || correctionsUnloadedRisk;
 }
 
-// Render & Run's own approved-file picker — deliberately independent of
+// Write & Run's own approved-file picker — deliberately independent of
 // existingApprovedGeneration (Stage 2's "last one shown" convenience state).
 // A grouping this large is normally approved across several separate
 // Generate+Approve rounds, each its own generate-spec-approved-*.json
@@ -813,7 +834,7 @@ async function onGroupingChanged() {
   setStage2GatedButtonsDisabled(!grouping);
   if (!grouping) {
     renderCorrections(); // clears any stale highlighting from a prior grouping
-    updateStageDots();
+    updateStageGating();
     return;
   }
   try {
@@ -844,7 +865,7 @@ async function onGroupingChanged() {
     // requiring the generation to actually be displayed via "Show last
     // approved generation".
     renderCorrections();
-    updateStageDots();
+    updateStageGating();
   }
 }
 // Both "change" and "click" — see report-select's onReportChanged comment
@@ -881,7 +902,7 @@ function renderSpec() {
   approveBtn.style.display = generationState ? '' : 'none';
   approveBtn.disabled = !generationState || generationState.groups.length === 0;
   expandControls.style.display = generationState && generationState.groups.length > 0 ? '' : 'none';
-  if (!generationState) { updateStageDots(); return; }
+  if (!generationState) { updateStageGating(); return; }
 
   generationState.groups.forEach((group, i) => {
     const details = document.createElement('details');
@@ -950,7 +971,7 @@ function renderSpec() {
     details.appendChild(bodyDiv);
     body.appendChild(details);
   });
-  updateStageDots();
+  updateStageGating();
 }
 
 document.getElementById('expand-all-btn').onclick = () => {
@@ -967,7 +988,7 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   const groupsChecked = Array.from(document.querySelectorAll('#spec-groups-filter input:checked')).map((cb) => cb.value);
   const groups = groupsChecked.length ? groupsChecked : undefined;
   const statusEl = document.getElementById('spec-gen-status');
-  if (!(await confirmPaidAction(`Generate real .feature/.steps.ts tests from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
+  if (!(await confirmModal(`Generate real .feature/.steps.ts tests from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
   // Also gates Scenario corrections' three buttons for the same duration —
   // editing/saving corrections out from under a call that already read
   // whatever was on disk a moment ago, or clicking Generate tests again
@@ -1024,14 +1045,14 @@ document.getElementById('spec-approve-btn').onclick = async () => {
       body: JSON.stringify(generationState),
     });
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
-    updateStageDots();
+    updateStageGating();
     refreshRenderSpecOptions(); // this round's file should show up immediately, not just after switching tabs
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
 };
 
-// --- Render & Run --------------------------------------------------------
+// --- Write & Run -----------------------------------------------------------
 
 document.getElementById('render-btn').onclick = async () => {
   const specName = document.getElementById('render-spec-select').value;
@@ -1057,11 +1078,7 @@ document.getElementById('render-btn').onclick = async () => {
 document.getElementById('run-tests-btn').onclick = async () => {
   const btn = document.getElementById('run-tests-btn');
   const statusEl = document.getElementById('run-tests-status');
-  // Reusing confirmPaidAction here even though this costs nothing — same
-  // "pause before a consequential action" modal, just for a different
-  // reason: this runs the real suite against the real app, mutating real
-  // DB/Kafka state, and can take a few minutes.
-  if (!(await confirmPaidAction('Run the full test suite against the live app? This mutates real data (creates orders/customers/products) and may take a few minutes.'))) return;
+  if (!(await confirmModal('Run the full test suite against the live app? This mutates real data (creates orders/customers/products) and may take a few minutes.', 'time'))) return;
   btn.disabled = true;
   setStatus(statusEl, 'Running tests — this may take a few minutes…');
   const logRow = document.getElementById('run-tests-log-row');
@@ -1220,7 +1237,7 @@ function renderCorrections() {
     body.appendChild(row);
   }
   renderCorrectionsLink();
-  updateStageDots();
+  updateStageGating();
 }
 
 document.getElementById('load-corr-btn').onclick = async () => {
