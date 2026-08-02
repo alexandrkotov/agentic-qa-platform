@@ -1691,3 +1691,241 @@ fires, no `pageerror` occurs, all 7 feature rows still render in the Features Ov
 raw JSON no longer leaks into the page's visible text. The XSS payload itself now shows up in the report
 as literal, safely-escaped text (`&lt;script&gt;alert('XSS-{{unique}}')&lt;/script&gt;`) — still fully
 readable by a human reviewing what was tested, just no longer live markup.
+
+## Addendum: Stage 2 stopped generating a JSON DSL — real Gherkin, real step code (2026-08-02)
+
+Comparing the freshly-regenerated suite above against this project's pre-redesign history (fetched from
+GitHub), the user flagged a second, deeper problem with the Generate Agent pipeline, deliberately kept
+separate from the two infra bugs above. Every `.feature` file it produced used one of 8-9 fixed generic
+phrases (e.g. `an API request is sent for "products":`) followed by a JSON docstring carrying the actual
+data, and every `.steps.ts` file was the same 5-line-per-step dispatcher forwarding into a shared generic
+runtime ([generateRuntime.ts](../tests/support/generateRuntime.ts)) — a self-made JSON-DSL riding on
+Gherkin syntax, not real BDD. The pre-redesign suite had real parameterized Gherkin (`Given a product
+payload with name "Zero Price Item" and price 0`) and real, specific Playwright/DB implementations per
+step. The user wanted that back.
+
+**The real tension underneath it.** The generic-phrase design wasn't arbitrary — `templates/phrases.ts`'s
+own comment said why: a single shared source of literal phrase text for both the `.feature` renderer and
+the `.steps.ts` renderer made a step's text and its step definition *structurally* impossible to
+mismatch, eliminating Cucumber "Undefined step" errors by construction. Freeform generation gives that
+guarantee up — one LLM call now has to keep a scenario's Gherkin wording and its step definition's
+pattern consistent in its own head, in one shot, same as the pre-redesign pipeline did.
+
+**Resolution, agreed with the user before writing any code:** one LLM call per render-group still writes
+both the real `.feature` and real `.steps.ts` content directly (dropping the JSON DSL and Stage 3's
+template renderer entirely), but a new deterministic, no-LLM check
+([verify.ts](../agent-service/src/agents/generate/verify.ts)) replaces the old structural guarantee with
+a real one: it parses the generated `.steps.ts` with the TypeScript compiler API to extract every
+`Given`/`When`/`Then` pattern, compiles each one with `@cucumber/cucumber-expressions` (the same library
+Cucumber/playwright-bdd use internally, not a regex heuristic), and confirms every Gherkin step in the
+generated `.feature` actually matches one — plus scenario-name coverage, plus no step-pattern text
+colliding with a pattern already owned by a different group (playwright-bdd step text is global across
+every loaded `.steps.ts` file, not scoped per group, so identical wording in two groups would
+shadow/collide at runtime). A group that fails any of this is added to the existing `failures: string[]`
+list and skipped — the same failure-handling shape this pipeline already used, no new retry logic. The
+check runs twice: once at generation time, and again when a human approves (since the admin UI lets
+`.feature`/`.steps.ts` text be hand-edited before approval, which could reintroduce a mismatch the first
+check never saw).
+
+**What changed, by file:**
+- [contract.ts](../agent-service/src/agents/generate/contract.ts) — the old `Action`/`Assertion`/
+  `ScenarioSpec` JSON-DSL schemas are gone, replaced by `GeneratedGroup` (`key`, `scenarioNames`,
+  `featureContent`, `stepsContent`) and its `Proposed`/`Approved` wrappers.
+- [spec.ts](../agent-service/src/agents/generate/spec.ts) — Stage 2's system prompt rewritten from "emit
+  a structured given/when/then array" to "write real parameterized Gherkin and real Playwright/DB step
+  code", with explicit rules for reusing identical step text within one group, phrasing steps in the
+  group's own entity vocabulary (the primary defense against cross-group collisions, backed by
+  `verify.ts`'s hard check), inline uniqueness expressions (e.g. `` `product-${Date.now()}@example.com` ``
+  — the old `{{unique}}` JSON-placeholder trick no longer has anywhere to be resolved, since there's no
+  template renderer left), and Postgres NUMERIC-comparison handling.
+- [render.ts](../agent-service/src/agents/generate/render.ts) and the whole `templates/` directory — Stage
+  3's templating is gone; it now just writes `featureContent`/`stepsContent` to disk unchanged, since
+  Stage 2 already produced the real files.
+- [tests/support/generateRuntime.ts](../tests/support/generateRuntime.ts) deleted outright (the generic
+  dispatch/JSON-placeholder machinery being eliminated), along with two already-orphaned pre-redesign
+  leftovers found while doing this (`orderCardLocator.ts`, `orderCtx.ts` — confirmed unreferenced
+  anywhere). The one genuinely reusable piece, `findScopedLocator` (DOM-climbing disambiguation for a
+  page that repeats the same role+label per row/card), survives as a new
+  [tests/support/ui.ts](../tests/support/ui.ts) that generated steps may import for that specific case.
+- [server.ts](../agent-service/src/admin/server.ts) and the two `bootstrap/generateSpec.ts`/
+  `generateRender.ts` CLI wrappers — updated for the new contract and function names; endpoint paths and
+  persisted-file naming left unchanged to keep the diff to payload shape only.
+- [generate.html](../agent-service/src/admin/static/generate.html) — the user separately asked for a full
+  rework here too, not just the renames the schema change already forced (see its own addendum below).
+
+**Live-verified before regenerating anything for real.** Ran the new pipeline against the real,
+already-approved `orderflow` grouping's `security` group (2 scenarios — SQL injection and XSS) via a
+locally-run admin server hitting the real Claude API: generation produced real parameterized Gherkin and
+real `db.query`/`request.post`/Playwright-locator step code, `compileAndVerify` accepted it at both
+generation and approve time, and — the strongest check available — running the real `bddgen` from
+`playwright-bdd` against the generated pair (temporarily swapped in for validation, then reverted) exited
+`0` with zero "Undefined step" errors, confirming `verify.ts`'s check agrees with the actual Cucumber
+matching engine, not just its own reimplementation of it. `tsc --noEmit` on the generated `.steps.ts` was
+also clean. This was a scoped dry run only — the rest of the committed suite (`customers-*`, `orders-*`,
+`products`) still references the now-deleted `generateRuntime.ts` and will not typecheck/run until it
+goes through this same pipeline; regenerating it for real, reviewed through the admin UI, is deliberately
+a separate, later step (not preemptively written here — see this doc's own convention).
+
+## Addendum: Test Generation page — full rework, not just relabeling (2026-08-02)
+
+Fixing the "Structured spec" wording left over from the JSON-DSL era (the H2 and button labels
+literally promised something the pipeline no longer does) surfaced a bigger ask: the user wanted the
+whole `generate.html` page reworked — layout, navigation, and visuals — not just its copy. Trigger: Stage
+2's review content was about to go from a compact JSON snippet per *scenario* to two full real files per
+*group*, and the page's "stack all 4 stages top to bottom, scroll past everything" layout doesn't hold up
+once one section's content is that much heavier.
+
+Kept this file's existing ethos throughout — one static HTML file, vanilla JS, no framework/build step,
+no new library, same CSS-variable light/dark theme — and reorganized rather than rearchitected:
+- **Stepper/tab navigation** replaces the 4 stacked sections: `① Grouping` `② Generate` `③ Corrections`
+  `④ Render & Run`, exactly one visible at a time via a plain `showStage(name)` function (no hash
+  routing). Each tab carries a small status dot reflecting real pipeline state — filled once that stage
+  has something (an approved grouping, a generation, saved corrections) — and the Generate tab dims
+  (never hard-disables, so a gating bug can't strand anyone) when no approved grouping exists yet to work
+  from.
+- **Stage 2's review redesign** — the part this change actually forced: one collapsible native
+  `<details>` per render-group (first one open by default) instead of one textarea per scenario, each
+  showing a two-column Feature/Steps grid of real monospace file text, plus a small amber badge counting
+  `# TODO (unconfirmed):` lines so a reviewer can see which groups need a closer look without opening
+  every one, and Expand-all/Collapse-all controls above the list.
+- **Corrections cross-link** — the old "highlighted rows match the spec" affordance was invisible unless
+  already scrolled to that section; now the Generate tab shows "N correction(s) relevant to this grouping
+  →" that jumps straight to the Corrections tab.
+- `main`'s max-width widened from 920px to ~1150px for the two-column review grid; every other
+  copy/rename this schema change already required (`Generate spec` → `Generate tests`, `Show/Hide last
+  approved spec` → `.../generation`, `Approve spec` → `Approve generation`) folded into the same pass.
+
+No new dependencies — no syntax-highlighting library, no client-side router, no CSS framework. Verified
+statically (no visible-browser check performed in this pass): every `getElementById` call in the script
+resolves to a real element id in the markup, and the embedded script parses cleanly under `node --check`.
+
+## Addendum: full-suite regeneration through the rewritten pipeline, live (2026-08-02)
+
+Same move as the previous full regeneration (see that addendum above) but through the freeform pipeline:
+reused the already-approved `orderflow` grouping (Stage 1 untouched), ran Stage 2 fresh via the CLI
+(`generate-spec` — the admin server's own `APP_ROOT` derivation only works inside the container, not run
+directly on the host, so the CLI wrappers were used for this instead) against all 7 render groups, then
+rendered and ran the real suite live.
+
+**Three real, live findings — none of them undermined the pipeline's own safety net; each was either
+caught by it or led to strengthening it:**
+
+1. **A genuine model misinterpretation, resolved via `corrections.json`, not code.** `products` failed
+   `compileAndVerify`'s scenario-coverage check twice running: the model kept splitting the report's one
+   scenario, "Create Product with zero or negative price," into two separate Gherkin scenarios. Blind
+   retries wouldn't have fixed a consistent interpretation, not random noise — so, following this
+   project's established practice, resolved it by reading the real app source
+   (`app/src/products/dto/create-product.dto.ts`'s `@Min(0)` + `app/src/main.ts`'s global
+   `ValidationPipe`) and adding a `orderflow.corrections.json` entry stating plainly that price=0 is
+   valid (201) and negative is not (400), and that this is ONE scenario covering both cases. Retried
+   clean on the next attempt.
+2. **A real cross-group step-pattern collision, caught exactly as designed.** `orders-3` failed with
+   `verify.ts`'s new collision check: both it and `customers-2` (generated in a separate, unaware-of-
+   each-other CLI call) had independently written the identical step text `a customer exists with email
+   {string} and name {string}`. A blind retry of `orders-3` alone happened to phrase it differently the
+   second time and passed — but since 3 separate CLI invocations can't see each other's in-flight output,
+   a final cross-check merging all 7 groups' patterns into one registry (via `compileAndVerify` run
+   directly against the merged result) was still necessary before approving, and confirmed zero
+   collisions across the real, final set.
+3. **A systemic bug in the prompt itself, not caught by any check — found only by actually running the
+   tests.** Every generated API step called `request.post('/customers', ...)` etc. with a bare relative
+   path. `playwright.config.ts`'s own `baseURL` points at the FRONTEND dev server (port 5173) for
+   `page.goto(...)` to work — but Playwright's `request` fixture resolves a relative path against that
+   *same* `baseURL`, so every API call was silently hitting the frontend dev server, not the backend
+   (port 3000). The old, pre-redesign style avoided this by hardcoding a `BASE_URL` constant and building
+   full URLs from it; the new prompt never said to. Fixed the prompt (`spec.ts`: declare
+   `BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:3000'` and prefix every API call with it,
+   for future generations) and mechanically patched all 7 already-generated `.steps.ts` files to match
+   (a uniform, scriptable transform — not worth a full expensive regeneration of every group just for
+   this).
+
+**`bddgen` (the real Cucumber/playwright-bdd toolchain, run as an independent check beyond `verify.ts`'s
+own reimplementation) then caught two classes of bug `verify.ts` didn't check for yet:**
+- **Ambiguous step matches** — `products` had two separate step definitions, `... with price {float}`
+  and `... with price {int}`, both matching the literal step text `... with price 0` (0 satisfies both
+  parameter types). The `{int}` one turned out to be entirely dead code (never referenced by the actual
+  Gherkin), so it was simply deleted.
+- **Handler/pattern arity mismatches** — three step definitions in `orders-2`/`orders-3` had fewer
+  declared function parameters than their own pattern's placeholder count (e.g. a pattern with
+  `{int}`/`{float}` but a handler taking no arguments, silently hardcoding a literal instead of using the
+  captured value). Fixed each to actually use its captured parameter.
+
+Rather than leave these two classes as a permanent `bddgen`-only backstop, **extended `verify.ts` itself**
+to catch both going forward: the per-step match loop now collects *every* compiled pattern that matches
+a given step text (not just "at least one") and throws if that count isn't exactly 1, and for the single
+matching pattern, extracts its handler's actual declared parameter count (via the TypeScript compiler
+API, `ts.isArrowFunction`/`ts.isFunctionExpression`'s own `.parameters`) and compares it against how many
+arguments `@cucumber/cucumber-expressions` actually captured for that real step text. Re-ran `bddgen`
+against the fully-corrected suite after this: clean, `0` errors, matching `verify.ts`'s own final
+`compileAndVerify` pass across all 7 groups.
+
+**Final live result**, running the real suite (`npx bddgen && npx playwright test`) against the real
+`app`/`db`/`kafka` (host-run, since the container-UID fix mentioned earlier is still pending in a
+separate worktree): **23 of 29 passed.** The 6 remaining failures are the same *class* of
+already-documented, non-pipeline findings the previous regeneration's addendum described — not new
+pipeline or infra defects:
+- `Create Customer with duplicate email` — app returns 500, not 400/409 (already-known app-behavior gap).
+- `Attempt to delete SUBMITTED order` — a pre-existing limitation of `findScopedLocator` (unchanged from
+  the deleted `generateRuntime.ts`, carried into the new `tests/support/ui.ts` verbatim): it throws when
+  it can't find the target element at all, which breaks a scenario whose whole point is asserting the
+  element is *absent* rather than merely hidden.
+- Three `orders-3` scenarios timed out waiting for a `combobox` — the same *class* of UI-locator/timing
+  issue the previous regeneration also hit three of.
+- `XSS in product name` failed on a strict-mode locator violation — self-inflicted by re-running the live
+  suite three times during this same verification session, which (correctly, per the scenario's own
+  point) accumulates multiple identically-named XSS-payload products across runs; a single clean run
+  would not hit this.
+
+None of the 6 are pipeline or infrastructure defects — every one is either an already-known class of app
+behavior, a pre-existing `ui.ts` limitation inherited unchanged, or an artifact of this session's own
+repeated live verification runs.
+
+## Addendum: budget-split render-groups now merge back into one file per Stage 1 group (2026-08-02)
+
+Right after the above, the user noticed the output still had `customers-1.feature`/`customers-2.feature`
+and `orders-1/2/3.feature` sitting side by side instead of one `customers.feature`/`orders.feature` —
+budget.ts's token-budget chunking (splitting a big Stage 1 group into several Claude calls) was leaking
+into the *final file layout*, not just the generation step. Fixed by adding a merge pass to Stage 3.
+
+`RenderGroup`/`GeneratedGroup` (contract.ts) gained a `sourceKey` field — the original Stage 1 group's
+key, equal to a render-group's own `key` when it wasn't split, distinct when it was (e.g. `orders-1`'s
+`sourceKey` is `orders`). `budget.ts` sets it; `spec.ts` copies it straight through into each
+`GeneratedGroup`. A new [merge.ts](../agent-service/src/agents/generate/merge.ts), no LLM, clusters
+`ApprovedGeneration.groups` by `sourceKey` inside `render.ts` (right before writing files) and merges
+every cluster with more than one member into a single `.feature`/`.steps.ts` pair — a singleton cluster
+(never split) passes through untouched.
+
+Merging is safe *by construction*, not just "probably fine": `verify.ts` already requires every
+render-group — sibling or not — to have zero colliding step-pattern text against every other
+render-group, so concatenating any set of already-verified render-groups can never produce a duplicate or
+ambiguous step definition in the merged file. Confirmed nothing else needed to change for that guarantee
+to keep holding across the merge.
+
+That said, getting the actual text-splicing right took three real, live-caught bugs before `bddgen` came
+back clean:
+1. **Gherkin indentation lost.** The first cut used `.trim()` on each piece's feature body before joining
+   — which also strips the meaningful leading `  ` indent of that piece's very first tag line, since
+   `.trim()` doesn't distinguish "boundary whitespace" from "this line's own indentation". Switched to
+   `.trimEnd()`.
+2. **Duplicate `const BACKEND_URL = ...;`.** The merge only special-cased the `createBdd()` destructure
+   and the `ctx` declaration as "shared header, keep one" — every *other* top-level `const`, including the
+   `BACKEND_URL` constant added in the previous addendum's fix, fell through to "body" and got duplicated
+   once per merged piece (a real `Cannot redeclare` error). Generalized: any top-level `const`/`let NAME =
+   ...;` declaring a single plain identifier is now deduped by name, first occurrence wins — not just
+   `ctx` and not just `BACKEND_URL` by name, so this doesn't quietly break again the next time a future
+   prompt change introduces some other shared constant.
+3. **A Feature's free-text description is only legal right under its own `Feature:` header.** One piece's
+   own one-line description (the model sometimes writes a sentence describing the feature, valid Gherkin
+   right after `Feature: orders-3`) ended up stranded mid-file once merged behind an earlier piece's
+   scenarios — a real Gherkin parse error (`bddgen` caught it immediately: "expected #EOF... got 'Order
+   creation validation and multi-item scenarios'"). Fixed generally, not just for that one instance: any
+   leading description-like lines on ANY piece (not only non-first ones) are turned into `#` comments
+   before merging, since a comment is legal anywhere in a Feature file.
+
+Verified: patched `sourceKey` into the already-approved `generate-spec-approved-*.json` from the previous
+addendum's live run (no need to re-spend on Claude calls — the mapping back to Stage 1 group keys was
+already known), re-ran `generate-render`, deleted the now-superseded split-named files, confirmed `tsc`
+and `bddgen` both clean, and reran the live suite: **23/29 passed — the exact same result and the exact
+same 6 failures as the pre-merge run**, confirming the merge is behaviorally identical to the unmerged
+files, just consolidated. Final layout: `security.feature`, `products.feature`, `customers.feature`
+(merged from 2 render-groups), `orders.feature` (merged from 3) — one pair per Stage 1 group.
