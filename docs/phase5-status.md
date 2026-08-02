@@ -1659,3 +1659,35 @@ placeholder bug) got caught and fixed instead of quietly miscounted as "app misb
 Both real fixes from this addendum (`orderflow.corrections.json`'s new entry, `generateRuntime.ts`'s
 broadened regex) are already live and verified against the real running container — no further action
 needed to reproduce this result.
+
+## Addendum: the Cucumber report was self-XSSing on its own security-test data (2026-07-31)
+
+After the full regeneration above, the user reported the report at `localhost:8080` had gone blank and
+was popping a browser `alert()` reading `XSS-{{unique}}`. Root cause: `multiple-cucumber-html-reporter`
+(the vendored npm package generating `tests/reports/cucumber-html`) embeds each step's argument data
+directly into an inline `<script>` blob in `index.html`, and does so *unescaped* for our data shape. The
+package does have its own `_escapeHtml()` helper, but it only fires for a `step.doc_string` field;
+`playwright-bdd`'s Cucumber JSON formatter emits `step.arguments` instead, so that escaping path is dead
+code here. The `security.feature` scenario "XSS in product name" deliberately posts a payload of
+`<script>alert('XSS-{{unique}}')</script>` (to verify the app itself escapes it before rendering) — that
+literal string, carried verbatim into the report's own JSON blob, breaks straight out of the reporter's
+`<script>` tag: the browser's HTML parser closes on the *first* `</script>` sequence it finds, even
+sitting inside a JS string, so everything before that point in the blob executes as real JavaScript (the
+alert box) and everything after it renders as raw, unparsed text — which is exactly the "empty report
+full of garbage JSON" the user saw.
+
+Since the bug lives in the vendored package's templates, not our code, fixed it at the data boundary
+instead of patching `node_modules`:
+[generate-html-report.mjs](../tests/support/generate-html-report.mjs) now HTML-entity-escapes (`&`, `<`,
+`>`) every string value in a *copy* of the raw Cucumber JSON before handing it to the reporter, writing
+that copy to a new `reports/cucumber-json-sanitized/` directory (gitignored, already covered by
+`tests/.gitignore`'s blanket `reports/`) and leaving the original `report.json` untouched. This is a
+general fix, not a one-off escape of this one payload — any future scenario data containing `<`/`>`/`&`
+is now safe against the same class of report-viewer injection.
+
+Verified live: regenerated the report from the real (already-captured) Cucumber JSON with the fix in
+place, confirmed via a headless Playwright check against the actual `index.html` that no `dialog` event
+fires, no `pageerror` occurs, all 7 feature rows still render in the Features Overview table, and the
+raw JSON no longer leaks into the page's visible text. The XSS payload itself now shows up in the report
+as literal, safely-escaped text (`&lt;script&gt;alert('XSS-{{unique}}')&lt;/script&gt;`) — still fully
+readable by a human reviewing what was tested, just no longer live markup.
