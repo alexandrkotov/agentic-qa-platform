@@ -53,6 +53,13 @@
   #discovery-status { font-size: 0.78rem; line-height: 1.4; word-break: break-word; }
   #discovery-status.ok { color: #2f8f5b; }
   #discovery-status.err { color: var(--danger); }
+  /* Live progress feed while discovery's own long tool-using agent call runs — same look as generate.html's .gen-log. */
+  .gen-log {
+    width: 100%; margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; max-height: 11rem; overflow-y: auto;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.72rem;
+    color: var(--text-mute); white-space: pre-wrap; line-height: 1.5; box-sizing: border-box;
+  }
   #descriptor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
   #descriptor-list li button {
     width: 100%; text-align: left; padding: 0.5rem 0.65rem; border-radius: 6px;
@@ -141,6 +148,7 @@
     <select id="discovery-descriptor-select"></select>
     <button class="primary" id="run-discovery-btn"><span class="cost-badge">$</span>Run discovery</button>
     <div id="discovery-status"></div>
+    <pre id="discovery-log" class="gen-log" style="display:none"></pre>
   </aside>
   <main>
     <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
@@ -231,6 +239,37 @@ async function api(path, opts) {
     throw e;
   }
   return body;
+}
+
+/**
+ * Reads an NDJSON-streamed response (one `{"type": ...}` JSON object per
+ * line) as it arrives, calling `onEvent` for each — Discovery is one long
+ * tool-using agent call (real browser/DB actions via MCP) that can run for
+ * minutes with nothing but a static "running…" status otherwise. Same
+ * helper as generate.html's own copy (this project has no shared JS module
+ * between static pages, matching how api() above is already duplicated per
+ * page rather than pulling in a build step for two small files).
+ */
+async function streamNdjson(path, opts, onEvent) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex;
+    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line.trim()) onEvent(JSON.parse(line));
+    }
+  }
 }
 
 async function loadList() {
@@ -456,14 +495,30 @@ document.getElementById('run-discovery-btn').onclick = async () => {
   btn.disabled = true;
   statusEl.className = '';
   statusEl.textContent = `Running discovery on "${name}" — calling Claude, this can take a few minutes…`;
+  const logEl = document.getElementById('discovery-log');
+  logEl.textContent = '';
+  logEl.style.display = '';
   try {
-    const result = await api('/api/discovery/run', {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson('/api/discovery/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ descriptor: name }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
     });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
     statusEl.className = 'ok';
-    statusEl.textContent = 'Report saved: ' + result.path;
+    statusEl.textContent = 'Report saved: ' + doneEvent.path;
   } catch (e) {
     statusEl.className = 'err';
     statusEl.textContent = 'Failed: ' + e.message;

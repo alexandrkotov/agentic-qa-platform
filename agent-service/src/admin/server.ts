@@ -12,6 +12,7 @@ import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
 import { generateGeneration } from '../agents/generate/spec.ts';
+import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { renderGeneration, writeRenderedFiles } from '../agents/generate/render.ts';
 import { compileAndVerify, collectExistingStepPatterns } from '../agents/generate/verify.ts';
 import {
@@ -331,19 +332,35 @@ app.post('/api/discovery/run', async (req, res) => {
     }
     const savedInitScriptPath = initScriptPath;
 
+    // Discovery is one long tool-using agent call (browser actions, DB
+    // queries, all via MCP) that can run for minutes with previously zero
+    // feedback beyond a static "calling Claude" status — stream NDJSON
+    // progress the same way Generate's own long-running calls do. Once the
+    // first res.write() below fires, status/headers are already sent — any
+    // failure past that point has to be a `{"type":"error"}` line, not a
+    // status code.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
     const provider = new ClaudeProvider();
-    const reportPath = await runDiscoveryForDescriptor(
-      provider,
-      rewritten,
-      name,
-      savedInitScriptPath
-        ? (servers) =>
-            servers.map((s) =>
-              s.command.includes('playwright-mcp') ? { ...s, args: [...s.args, '--init-script', savedInitScriptPath] } : s,
-            )
-        : undefined,
-    );
-    res.json({ path: reportPath });
+    try {
+      const reportPath = await runDiscoveryForDescriptor(
+        provider,
+        rewritten,
+        name,
+        savedInitScriptPath
+          ? (servers) =>
+              servers.map((s) =>
+                s.command.includes('playwright-mcp') ? { ...s, args: [...s.args, '--init-script', savedInitScriptPath] } : s,
+              )
+          : undefined,
+        (message) => send({ type: 'progress', message }),
+      );
+      send({ type: 'done', path: reportPath });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   } finally {
@@ -786,6 +803,39 @@ app.get('/api/generate/spec-for-grouping', async (req, res) => {
   }
 });
 
+/**
+ * EVERY approved spec for this grouping, newest first — not just the latest
+ * one /api/generate/spec-for-grouping returns. A grouping this large usually
+ * gets approved across several separate Generate+Approve rounds (one
+ * "Limit to groups" batch at a time, e.g. retrying just the groups that
+ * failed last time), each producing its OWN generate-spec-approved-*.json
+ * covering only that round's groups — Render & Run needs to render each of
+ * those in turn to get the complete suite on disk, not just whichever round
+ * happened most recently.
+ */
+app.get('/api/generate/specs', async (req, res) => {
+  try {
+    const groupingName = req.query.grouping;
+    if (typeof groupingName !== 'string' || !groupingName) {
+      res.status(400).json({ error: '"grouping" query param is required' });
+      return;
+    }
+    const targetPath = groupingFilePath(groupingName);
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => SPEC_APPROVED_NAME_PATTERN.test(f)).sort().reverse();
+    const results: { name: string; approvedAt: string; groups: string[] }[] = [];
+    for (const name of candidates) {
+      const raw = JSON.parse(await readFile(join(config.reportsDir, name), 'utf-8'));
+      if (raw.sourceGroupingPath !== targetPath) continue;
+      const approved = ApprovedGenerationSchema.parse(raw);
+      results.push({ name, approvedAt: approved.approvedAt, groups: approved.groups.map((g) => g.key) });
+    }
+    res.json(results);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // APP_ROOT/TESTS_ROOT — needed by both /api/generate/spec below (to seed the
 // step-pattern-collision registry from whatever's already in tests/steps/)
@@ -842,9 +892,49 @@ app.post('/api/generate/spec', async (req, res) => {
       return;
     }
 
-    const provider = new ClaudeProvider();
-    const { generation, failures } = await generateGeneration(provider, renderGroups, reportJson, corrections, groupingPath, TESTS_STEPS_DIR);
-    res.json({ generation, failures });
+    // Real Claude calls here run sequentially and can easily take several
+    // minutes for a large grouping (one call per render-group, ~15-40s
+    // each) with nothing but a static "Calling Claude…" status otherwise —
+    // stream NDJSON progress lines instead of a single buffered JSON
+    // response, so the browser can show what's actually happening. Once the
+    // first res.write() below fires, the HTTP status/headers are already
+    // sent — any failure past that point has to be reported as a
+    // `{"type":"error"}` line, not a status code, since it's too late to
+    // change either.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    const rawProvider = new ClaudeProvider();
+    const provider: AgentProvider = {
+      run: async (opts) => {
+        const t0 = Date.now();
+        send({ type: 'progress', message: `Calling Claude for "${opts.operation}"…` });
+        try {
+          const result = await rawProvider.run(opts);
+          send({ type: 'progress', message: `"${opts.operation}" responded (${((Date.now() - t0) / 1000).toFixed(1)}s)` });
+          return result;
+        } catch (err) {
+          send({ type: 'progress', message: `"${opts.operation}" errored after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${(err as Error).message}` });
+          throw err;
+        }
+      },
+    };
+
+    try {
+      const { generation, failures } = await generateGeneration(
+        provider,
+        renderGroups,
+        reportJson,
+        corrections,
+        groupingPath,
+        TESTS_STEPS_DIR,
+        (message) => send({ type: 'progress', message }),
+      );
+      send({ type: 'done', generation, failures });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
@@ -911,15 +1001,41 @@ app.post('/api/generate/render', async (req, res) => {
   }
 });
 
-/** Runs a command to completion, resolving with its exit code and combined stdout+stderr regardless of that code — a failing test run is a normal, expected *result* to report back to the caller, not a server error. Only rejects if the process itself can't be spawned at all. */
-function runCommand(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<{ code: number; output: string }> {
+/**
+ * Runs a command to completion, resolving with its exit code and combined
+ * stdout+stderr regardless of that code — a failing test run is a normal,
+ * expected *result* to report back to the caller, not a server error. Only
+ * rejects if the process itself can't be spawned at all.
+ *
+ * `onLine`, if given, fires once per complete line of combined stdout+stderr
+ * AS IT ARRIVES (plus once more for any trailing partial line once the
+ * process exits) — `npx bddgen && npx playwright test` can run for minutes
+ * with nothing but a static "running…" status otherwise; this is what lets a
+ * caller stream that instead.
+ */
+function runCommand(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, onLine?: (line: string) => void): Promise<{ code: number; output: string }> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(cmd, args, { cwd, env });
     let output = '';
-    child.stdout.on('data', (chunk) => { output += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+    let lineBuffer = '';
+    const handleChunk = (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      if (!onLine) return;
+      lineBuffer += text;
+      let newlineIndex;
+      while ((newlineIndex = lineBuffer.indexOf('\n')) >= 0) {
+        onLine(lineBuffer.slice(0, newlineIndex));
+        lineBuffer = lineBuffer.slice(newlineIndex + 1);
+      }
+    };
+    child.stdout.on('data', handleChunk);
+    child.stderr.on('data', handleChunk);
     child.on('error', reject);
-    child.on('close', (code) => resolvePromise({ code: code ?? 1, output }));
+    child.on('close', (code) => {
+      if (onLine && lineBuffer) onLine(lineBuffer);
+      resolvePromise({ code: code ?? 1, output });
+    });
   });
 }
 
@@ -945,16 +1061,34 @@ app.post('/api/tests/run', async (req, res) => {
       DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
       KAFKA_BROKERS: 'kafka:9092',
     };
-    const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv);
-    // Always regenerate the HTML report afterward, whether or not the run
-    // above passed — the report's whole purpose is showing what failed.
-    const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv);
-    res.json({
-      testsPassed: testRun.code === 0,
-      testsExitCode: testRun.code,
-      reportGenerated: reportRun.code === 0,
-      output: (testRun.output + '\n' + reportRun.output).slice(-8000),
-    });
+    // bddgen + the real Playwright/Cucumber suite can run for minutes with
+    // nothing but a static "running…" status otherwise — stream NDJSON
+    // progress (one line of real command output per event), the same
+    // pattern Generate's own long-running calls use. No separate
+    // request-validation phase exists here (this route takes no params), so
+    // headers are streamed from the very start — any failure has to be a
+    // `{"type":"error"}` line, never a status code.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    try {
+      send({ type: 'progress', message: '$ npx bddgen && npx playwright test' });
+      const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+      // Always regenerate the HTML report afterward, whether or not the run
+      // above passed — the report's whole purpose is showing what failed.
+      send({ type: 'progress', message: '$ node support/generate-html-report.mjs' });
+      const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+      send({
+        type: 'done',
+        testsPassed: testRun.code === 0,
+        testsExitCode: testRun.code,
+        reportGenerated: reportRun.code === 0,
+        output: (testRun.output + '\n' + reportRun.output).slice(-8000),
+      });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

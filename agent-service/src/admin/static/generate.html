@@ -170,6 +170,16 @@
     letter-spacing: 0.03em; color: var(--text-mute); margin-bottom: 0.3rem;
   }
   .gen-col textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.78rem; overflow-y: auto; }
+  /* Live progress feed for a Generate call — NDJSON "progress" lines the
+     server streams while its (often minutes-long, one-call-per-group)
+     sequence of real Claude calls runs, so there's something to watch
+     besides a static "Calling Claude…" status the whole time. */
+  .gen-log {
+    width: 100%; margin: 0; padding: 0.6rem 0.8rem; max-height: 11rem; overflow-y: auto;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.74rem;
+    color: var(--text-mute); white-space: pre-wrap; line-height: 1.5;
+  }
 
   /* One shared rule for every status span setStatus() ever touches — these
      used to be defined per-ID for just #status/#corr-status, so the two
@@ -257,6 +267,9 @@
       <button class="primary" id="show-approved-spec-btn" style="display:none">Show last approved generation</button>
       <span id="spec-gen-status"></span>
     </div>
+    <div class="row" id="gen-log-row" style="display:none">
+      <pre id="spec-gen-log" class="gen-log"></pre>
+    </div>
     <div class="row" id="gen-expand-controls" style="display:none">
       <button class="ghost" id="expand-all-btn">Expand all</button>
       <button class="ghost" id="collapse-all-btn">Collapse all</button>
@@ -291,7 +304,13 @@
 
   <section id="stage-render" hidden>
     <h2>Render &amp; Run</h2>
-    <div class="stage-note">Render writes the last <em>approved</em> generation's files to tests/. Run tests always runs whatever's currently on disk, whether or not a new generation is pending review.</div>
+    <div class="stage-note">A large grouping is often approved across several separate rounds (e.g. retrying just the groups that failed last time) — each round has its own approved file covering only its own groups. Pick which one to write to tests/; render each round in turn to get the complete suite on disk. Run tests always runs whatever's currently on disk, whether or not a new generation is pending review.</div>
+    <div class="row">
+      <span class="field-pair">
+        <label title="Scoped to Generate's currently selected grouping — switch that first if you don't see the round you're after.">Approved spec ⓘ</label>
+        <select id="render-spec-select" style="min-width:22rem"></select>
+      </span>
+    </div>
     <div class="row">
       <button class="primary" id="render-btn" style="display:none">Generate render</button>
       <span id="render-status"></span>
@@ -299,6 +318,9 @@
     <div class="row">
       <button class="primary" id="run-tests-btn">Run tests</button>
       <span id="run-tests-status"></span>
+    </div>
+    <div class="row" id="run-tests-log-row" style="display:none">
+      <pre id="run-tests-log" class="gen-log"></pre>
     </div>
     <div class="row">
       <a class="primary" href="http://localhost:8080/" target="_blank" rel="noopener">Show Cucumber test report</a>
@@ -325,6 +347,11 @@ function showStage(name) {
     document.getElementById('stage-' + s).hidden = s !== name;
     document.getElementById('tab-' + s).classList.toggle('active', s === name);
   }
+  // Defensive re-fetch, not just the on-approve/on-grouping-change refreshes
+  // elsewhere — catches anything approved while this tab wasn't the active
+  // one (e.g. a Generate round finished and got approved from the Generate
+  // tab, then the user switches here directly).
+  if (name === 'render') refreshRenderSpecOptions();
 }
 for (const s of STAGE_NAMES) {
   document.getElementById('tab-' + s).onclick = () => showStage(s);
@@ -379,6 +406,36 @@ async function api(path, opts) {
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(body?.error || res.statusText);
   return body;
+}
+
+/**
+ * Reads an NDJSON-streamed response (one `{"type": ...}` JSON object per
+ * line) as it arrives, calling `onEvent` for each — used by any long-running
+ * action (real sequential Claude calls, a real spawned test run) that wants
+ * to show live progress instead of a static "running…" status for minutes.
+ * A non-2xx response is still a single plain JSON `{error}` body (the route
+ * hasn't started streaming yet), same shape `api()` already expects.
+ */
+async function streamNdjson(path, opts, onEvent) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex;
+    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line.trim()) onEvent(JSON.parse(line));
+    }
+  }
 }
 
 function setStatus(el, text, kind) {
@@ -709,12 +766,46 @@ function setStage2GatedButtonsDisabled(disabled) {
   document.getElementById('add-corr-btn').disabled = disabled || correctionsUnloadedRisk;
 }
 
+// Render & Run's own approved-file picker — deliberately independent of
+// existingApprovedGeneration (Stage 2's "last one shown" convenience state).
+// A grouping this large is normally approved across several separate
+// Generate+Approve rounds, each its own generate-spec-approved-*.json
+// covering only that round's groups (see /api/generate/specs's own comment)
+// — "last shown" is not the same question as "which files exist to render".
+async function refreshRenderSpecOptions() {
+  const select = document.getElementById('render-spec-select');
+  const renderBtn = document.getElementById('render-btn');
+  select.innerHTML = '';
+  const grouping = document.getElementById('spec-grouping-select').value;
+  if (!grouping) {
+    renderBtn.style.display = 'none';
+    return;
+  }
+  try {
+    const specs = await api('/api/generate/specs?grouping=' + encodeURIComponent(grouping));
+    if (specs.length === 0) {
+      renderBtn.style.display = 'none';
+      return;
+    }
+    for (const spec of specs) {
+      const opt = document.createElement('option');
+      opt.value = spec.name;
+      opt.textContent = `${spec.groups.join(', ')} — approved ${spec.approvedAt}`;
+      select.appendChild(opt);
+    }
+    renderBtn.style.display = '';
+  } catch (e) {
+    setStatus(document.getElementById('render-status'), 'Failed to list approved specs: ' + e.message, 'err');
+    renderBtn.style.display = 'none';
+  }
+}
+
 async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
   btn.textContent = 'Show last approved generation';
-  document.getElementById('render-btn').style.display = 'none';
   existingApprovedGeneration = null;
+  refreshRenderSpecOptions();
   const grouping = document.getElementById('spec-grouping-select').value;
   const specDescriptorInput = document.getElementById('spec-descriptor');
   specDescriptorInput.value = '';
@@ -744,10 +835,6 @@ async function onGroupingChanged() {
     if (!existing) return;
     existingApprovedGeneration = existing;
     btn.style.display = '';
-    // Render & Run only makes sense once there's an approved generation to
-    // render — same gating as "Show last approved generation" right above,
-    // same source.
-    document.getElementById('render-btn').style.display = '';
   } catch (e) {
     setStatus(document.getElementById('spec-gen-status'), 'Failed to check for an existing approved generation: ' + e.message, 'err');
   } finally {
@@ -815,13 +902,19 @@ function renderSpec() {
     const mergeNote = group.sourceKey && group.sourceKey !== group.key ? ` (will merge into ${group.sourceKey}.feature)` : '';
     meta.textContent = `${group.scenarioNames.length} scenario(s): ${group.scenarioNames.join(', ')}${mergeNote}`;
     summary.appendChild(meta);
-    const unconfirmedCount = (group.featureContent.match(/# TODO \(unconfirmed\):/g) || []).length;
-    if (unconfirmedCount > 0) {
-      const badge = document.createElement('span');
-      badge.className = 'gen-badge-unconfirmed';
+    const badge = document.createElement('span');
+    badge.className = 'gen-badge-unconfirmed';
+    badge.title = 'Open this group to see it: a "# TODO (unconfirmed):" comment sits directly above the step it concerns. The step still works — it\'s an assumption the discovery report had no data to confirm, worth checking against the real app before you trust it.';
+    // Recomputed on every Feature-textarea edit below, not just at render
+    // time, so removing/adding a "# TODO (unconfirmed):" line updates the
+    // badge live instead of only after the next full renderSpec() pass.
+    const updateUnconfirmedBadge = () => {
+      const unconfirmedCount = (group.featureContent.match(/# TODO \(unconfirmed\):/g) || []).length;
       badge.textContent = `${unconfirmedCount} unconfirmed`;
-      summary.appendChild(badge);
-    }
+      badge.style.display = unconfirmedCount > 0 ? '' : 'none';
+    };
+    updateUnconfirmedBadge();
+    summary.appendChild(badge);
     details.appendChild(summary);
 
     const bodyDiv = document.createElement('div');
@@ -836,7 +929,7 @@ function renderSpec() {
     const featureTa = document.createElement('textarea');
     featureTa.rows = 18;
     featureTa.value = group.featureContent;
-    featureTa.oninput = () => { group.featureContent = featureTa.value; };
+    featureTa.oninput = () => { group.featureContent = featureTa.value; updateUnconfirmedBadge(); };
     featureCol.appendChild(featureLabel);
     featureCol.appendChild(featureTa);
 
@@ -881,19 +974,36 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   // before the first call even returned, are both premature here.
   setStage2GatedButtonsDisabled(true);
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
+  const logRow = document.getElementById('gen-log-row');
+  const logEl = document.getElementById('spec-gen-log');
+  logEl.textContent = '';
+  logRow.style.display = '';
   try {
-    const result = await api('/api/generate/spec', {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson('/api/generate/spec', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ grouping, descriptor, maxScenarios, groups }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
     });
-    generationState = result.generation;
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    generationState = doneEvent.generation;
     renderSpec();
     renderCorrections();
     // What's on screen is now a fresh (unapproved) generation, not the
     // approved snapshot the toggle button may have been showing.
     document.getElementById('show-approved-spec-btn').textContent = 'Show last approved generation';
-    setStatus(statusEl, result.failures.length ? `Done, but failed: ${result.failures.join(', ')}` : 'Done.', result.failures.length ? 'err' : 'ok');
+    setStatus(statusEl, doneEvent.failures.length ? `Done, but failed: ${doneEvent.failures.join(', ')}` : 'Done.', doneEvent.failures.length ? 'err' : 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {
@@ -915,6 +1025,7 @@ document.getElementById('spec-approve-btn').onclick = async () => {
     });
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
     updateStageDots();
+    refreshRenderSpecOptions(); // this round's file should show up immediately, not just after switching tabs
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
@@ -923,10 +1034,10 @@ document.getElementById('spec-approve-btn').onclick = async () => {
 // --- Render & Run --------------------------------------------------------
 
 document.getElementById('render-btn').onclick = async () => {
-  if (!existingApprovedGeneration) return;
+  const specName = document.getElementById('render-spec-select').value;
+  if (!specName) return;
   const btn = document.getElementById('render-btn');
   const statusEl = document.getElementById('render-status');
-  const specName = existingApprovedGeneration.path.split('/').pop();
   btn.disabled = true;
   setStatus(statusEl, 'Rendering .feature/.steps.ts files…');
   try {
@@ -953,10 +1064,27 @@ document.getElementById('run-tests-btn').onclick = async () => {
   if (!(await confirmPaidAction('Run the full test suite against the live app? This mutates real data (creates orders/customers/products) and may take a few minutes.'))) return;
   btn.disabled = true;
   setStatus(statusEl, 'Running tests — this may take a few minutes…');
+  const logRow = document.getElementById('run-tests-log-row');
+  const logEl = document.getElementById('run-tests-log');
+  logEl.textContent = '';
+  logRow.style.display = '';
   try {
-    const result = await api('/api/tests/run', { method: 'POST' });
-    const summary = result.testsPassed ? 'All tests passed.' : `Tests finished with failures (exit code ${result.testsExitCode}).`;
-    setStatus(statusEl, summary + (result.reportGenerated ? ' Report updated.' : ' Report generation failed — see server logs.'), result.testsPassed ? 'ok' : 'err');
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson('/api/tests/run', { method: 'POST' }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    const summary = doneEvent.testsPassed ? 'All tests passed.' : `Tests finished with failures (exit code ${doneEvent.testsExitCode}).`;
+    setStatus(statusEl, summary + (doneEvent.reportGenerated ? ' Report updated.' : ' Report generation failed — see server logs.'), doneEvent.testsPassed ? 'ok' : 'err');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {

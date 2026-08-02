@@ -98,9 +98,14 @@ export async function runDiscoveryForDescriptor(
   descriptorLabel: string,
   /** Optional last-chance edit of the assembled MCP server list — e.g. admin/server.ts appends a browser --init-script to the web-ui entry so the frontend's own client-side API calls also get rewritten to this network's service names, not just the URL the agent navigates to. Unused (and behavior-identical to before) on the plain CLI path. */
   mcpServersOverride?: (servers: McpServerConfig[]) => McpServerConfig[],
+  /** Forwarded straight into provider.run() — see AgentRunOptions.onProgress. Lets a caller like admin/server.ts stream this one long tool-using agent call's own [tool →]/[tool ←] progress to a browser instead of it only ever reaching docker logs. */
+  onProgress?: (message: string) => void,
 ): Promise<string> {
-  console.log('\n=== Phase 1: System Discovery ===\n');
+  const startMsg = '=== Phase 1: System Discovery ===';
+  console.log(`\n${startMsg}\n`);
   console.log(`Descriptor: ${descriptorLabel}`);
+  onProgress?.(startMsg);
+  onProgress?.(`Descriptor: ${descriptorLabel}`);
 
   const assembled = assembleDiscovery(descriptor);
   const { tools, componentPromptSections } = assembled;
@@ -113,6 +118,7 @@ export async function runDiscoveryForDescriptor(
     tools,
     maxIterations: 60,
     operation: 'discovery',
+    onProgress,
   });
 
   // Save report — filename carries the descriptor name (e.g.
@@ -139,6 +145,7 @@ export async function runDiscoveryForDescriptor(
   await writeFile(reportPath, reportContent, 'utf-8');
   console.log(`\n=== Report saved: ${reportPath} ===\n`);
   console.log(reportContent.slice(0, 800) + (reportContent.length > 800 ? '\n...(truncated)' : ''));
+  onProgress?.(`Report saved: ${reportPath}`);
 
   await runCleanupSql(descriptor);
 

@@ -23,6 +23,7 @@ export class ClaudeProvider implements AgentProvider {
     model = config.model.claude,
     maxIterations = 50,
     operation = 'unspecified',
+    onProgress,
   }: AgentRunOptions): Promise<string> {
     const mcp = new McpManager();
     const totalUsage = {
@@ -64,9 +65,9 @@ export class ClaudeProvider implements AgentProvider {
         { role: 'user', content: userMessage },
       ];
 
-      console.log(
-        `[Claude] Starting agent with model=${model}, tools=${anthropicTools.length}, maxIterations=${maxIterations}`,
-      );
+      const startMsg = `[Claude] Starting agent with model=${model}, tools=${anthropicTools.length}, maxIterations=${maxIterations}`;
+      console.log(startMsg);
+      onProgress?.(startMsg);
 
       for (let i = 0; i < maxIterations; i++) {
         const response = await this.client.messages.create({
@@ -100,7 +101,9 @@ export class ClaudeProvider implements AgentProvider {
             if (block.type !== 'tool_use') continue;
 
             const input = block.input as Record<string, unknown>;
-            console.log(`  [tool →] ${block.name}  ${JSON.stringify(input).slice(0, 160)}`);
+            const callMsg = `[tool →] ${block.name}  ${JSON.stringify(input).slice(0, 160)}`;
+            console.log(`  ${callMsg}`);
+            onProgress?.(callMsg);
 
             try {
               let result: string;
@@ -114,11 +117,15 @@ export class ClaudeProvider implements AgentProvider {
                 result = await customTool.execute(input);
               }
 
-              console.log(`  [tool ←] ${block.name}  ${result.slice(0, 120).replace(/\n/g, ' ')}`);
+              const resultMsg = `[tool ←] ${block.name}  ${result.slice(0, 120).replace(/\n/g, ' ')}`;
+              console.log(`  ${resultMsg}`);
+              onProgress?.(resultMsg);
               toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
             } catch (err) {
               const msg = (err as Error).message;
-              console.error(`  [tool ✗] ${block.name}: ${msg}`);
+              const errMsg = `[tool ✗] ${block.name}: ${msg}`;
+              console.error(`  ${errMsg}`);
+              onProgress?.(errMsg);
               toolResults.push({
                 type: 'tool_result',
                 tool_use_id: block.id,
@@ -140,12 +147,13 @@ export class ClaudeProvider implements AgentProvider {
     } finally {
       const cost = estimateClaudeCostUsd(model, totalUsage);
       const costStr = cost === null ? 'cost unknown for this model' : `~$${cost.toFixed(4)}`;
-      console.log(
+      const usageMsg =
         `[Claude] Usage: ${totalUsage.input_tokens.toLocaleString()} input + ` +
-          `${totalUsage.output_tokens.toLocaleString()} output tokens ` +
-          `(cache write ${totalUsage.cache_creation_input_tokens.toLocaleString()}, ` +
-          `cache read ${totalUsage.cache_read_input_tokens.toLocaleString()}) — ${costStr}`,
-      );
+        `${totalUsage.output_tokens.toLocaleString()} output tokens ` +
+        `(cache write ${totalUsage.cache_creation_input_tokens.toLocaleString()}, ` +
+        `cache read ${totalUsage.cache_read_input_tokens.toLocaleString()}) — ${costStr}`;
+      console.log(usageMsg);
+      onProgress?.(usageMsg);
       await recordUsage({
         timestamp: new Date().toISOString(),
         operation,
