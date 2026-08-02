@@ -8,7 +8,7 @@ const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:3000';
 
 let ctx: Record<string, any> = {};
 
-Before({ tags: '@security' }, async () => {
+Before({ name: 'Reset test context', tags: '@security' }, async () => {
   ctx = {};
 });
 

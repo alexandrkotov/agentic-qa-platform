@@ -1,17 +1,20 @@
 import { createBdd } from 'playwright-bdd';
 import { expect } from '@playwright/test';
 import { db, ensureDbConnected } from '../support/db';
-import { ensureKafkaConsumerReady, waitForKafkaMessage } from '../support/kafka';
-import { findScopedLocator } from '../support/ui';
+import { ensureKafkaConsumerReady, waitForKafkaMessage, disconnectKafkaConsumer } from '../support/kafka';
 
-const { Given, When, Then, Before } = createBdd();
+const { Given, When, Then, Before, AfterAll } = createBdd();
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:3000';
 
 let ctx: Record<string, any> = {};
 
-Before({ tags: '@orders' }, async () => {
+Before({ name: 'Reset test context', tags: '@orders' }, async () => {
   ctx = {};
+});
+
+AfterAll({ name: 'Close Kafka consumer connection' }, async () => {
+  await disconnectKafkaConsumer();
 });
 
 Given('the Kafka consumer is ready for order status events', async () => {
@@ -152,14 +155,13 @@ Then('the order should no longer exist in the Order table', async () => {
 });
 
 Then('the submitted order should not have a Delete button', async ({ page }) => {
-  const orderIdText = `Order #${ctx.orderId}`;
-  const deleteButton = await findScopedLocator(page, orderIdText, 'button', 'Delete');
-  await expect(deleteButton).toHaveCount(0);
-});
-
-Before({ tags: '@orders' }, async () => {
-  ctx = {};
-  await ensureDbConnected();
+  // findScopedLocator (tests/support/ui.ts) is for finding exactly one match
+  // and throws when it finds zero — the wrong tool for an absence assertion
+  // like this one, since the throw would fire before toHaveCount(0) ever ran.
+  // Scope directly to this order's own card (the `.rounded-lg` wrapper div
+  // frontend/src/pages/OrdersPage.tsx renders per order) instead.
+  const orderCard = page.locator('div.rounded-lg', { hasText: `Order #${ctx.orderId}` });
+  await expect(orderCard.getByRole('button', { name: 'Delete' })).toHaveCount(0);
 });
 
 // Given steps for customer creation
@@ -441,10 +443,6 @@ Then('the OrderStatusHistory should have a {string} entry for the created order'
   expect(statuses).toContain(status);
 });
 
-Before({ tags: '@orders' }, async () => {
-  ctx = {};
-});
-
 Given('I am on the orders page for order creation', async ({ page }) => {
   await page.goto('/orders');
 });
@@ -460,9 +458,19 @@ Given('a product is available for order creation with name {string} and price {f
 });
 
 When('I add the product {string} to the order form', async ({ page }, productName: string) => {
+  // The page was navigated to in the earlier "I am on the orders page..."
+  // step, BEFORE this scenario's product existed — its product list was
+  // fetched once on mount and never refetches, so the new product would be
+  // missing from the <select> without reloading here.
+  await page.goto('/orders');
+  // Native <select>: click-to-open + getByRole('option').click() doesn't
+  // reliably surface real DOM option elements in headless Chromium.
+  // selectOption() is Playwright's own API for this element type. Select by
+  // value (the real product id), not by the option's visible label text —
+  // that text includes the price too (e.g. "Order Test Product ($15.99)"),
+  // not just the plain name this step receives.
   const productCombobox = page.getByRole('combobox', { name: 'Product' });
-  await productCombobox.click();
-  await page.getByRole('option', { name: productName }).click();
+  await productCombobox.selectOption({ value: String(ctx.availableProductId) });
 });
 
 When('I click the Create Order button without selecting a customer', async ({ page }) => {
@@ -494,9 +502,12 @@ Given('a customer is available for empty order test with email {string} and name
 
 When('I select the customer {string} for the order', async ({ page }, customerName: string) => {
   await page.goto('/orders');
+  // Native <select>: selectOption() instead of click + getByRole('option')
+  // (see "I add the product..." above for why), by value (the real
+  // customer id) rather than the option's visible text, which also includes
+  // the email (e.g. "Empty Order Tester (empty-order-...@example.com)").
   const customerCombobox = page.getByRole('combobox', { name: 'Customer' });
-  await customerCombobox.click();
-  await page.getByRole('option', { name: ctx.emptyOrderCustomerName }).click();
+  await customerCombobox.selectOption({ value: String(ctx.emptyOrderCustomerId) });
 });
 
 When('I click the Create Order button without adding any items', async ({ page }) => {

@@ -62,6 +62,19 @@ export function ensureKafkaConsumerReady(topics: string[]): Promise<void> {
   return ready;
 }
 
+/** Closes the shared consumer connection opened by ensureKafkaConsumerReady,
+ * if one was ever opened — called once from an AfterAll hook so it doesn't
+ * linger past the last scenario that needs it. Without this, Playwright's
+ * own worker-teardown implicitly cleans up the dangling connection instead,
+ * which playwright-bdd's Cucumber report has no way to attribute to a real
+ * hook and ends up pinning to an arbitrary scenario as an unlabeled "After"
+ * step. */
+export async function disconnectKafkaConsumer(): Promise<void> {
+  if (!ready) return;
+  await ready;
+  await consumer.disconnect();
+}
+
 /** Polls the in-memory buffer for a message matching `predicate`, throwing
  * if none arrives within `timeoutMs`. */
 export async function waitForKafkaMessage(

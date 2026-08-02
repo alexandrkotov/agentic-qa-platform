@@ -8,7 +8,7 @@ const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:3000';
 
 let ctx: Record<string, any> = {};
 
-Before({ tags: '@customers' }, async () => {
+Before({ name: 'Reset test context', tags: '@customers' }, async () => {
   ctx = {};
 });
 
@@ -32,8 +32,15 @@ When('I click the Add Customer button', async ({ page }) => {
 });
 
 Then('the new customer should appear in the customers table', async ({ page }) => {
-  await expect(page.getByRole('cell', { name: ctx.uniqueEmail })).toBeVisible();
-  await expect(page.getByRole('cell', { name: ctx.customerName })).toBeVisible();
+  // ctx.customerName is a hardcoded literal (e.g. "Test Customer") reused
+  // across every run of this scenario — with an unclean DB, the table can
+  // hold several rows sharing that exact name, so matching on the name
+  // cell alone (even with exact: true) is ambiguous. ctx.uniqueEmail is
+  // genuinely unique, so scope to the one <tr> containing it first, then
+  // assert its name cell within that same row.
+  const row = page.locator('tr', { hasText: ctx.uniqueEmail });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(ctx.customerName);
 });
 
 Then('the customer should exist in the Customer database table', async () => {
@@ -91,10 +98,6 @@ Then('the duplicate customer creation should be rejected', async ({ page }) => {
   const result = await db.query('SELECT * FROM "Customer" WHERE email = $1', [ctx.existingEmail]);
   expect(result.rows.length).toBe(1);
   expect(result.rows[0].id).toBe(ctx.existingCustomerId);
-});
-
-Before({ tags: '@customers' }, async () => {
-  ctx = {};
 });
 
 Given('a customer exists with email {string} and name {string}', async ({ request }, email: string, name: string) => {

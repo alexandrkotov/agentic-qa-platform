@@ -8,7 +8,7 @@ const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:3000';
 
 let ctx: Record<string, any> = {};
 
-Before({ tags: '@products' }, async () => {
+Before({ name: 'Reset test context', tags: '@products' }, async () => {
   ctx = {};
 });
 
@@ -52,7 +52,10 @@ Then('the product should exist in the database with the generated name and price
 
 Then('the product should appear in the products list with the generated name', async ({ page }) => {
   await page.goto('/products');
-  await expect(page.getByRole('cell', { name: ctx.generatedProductName })).toBeVisible();
+  // exact: true — see customers.steps.ts's identical fix for why (getByRole
+  // name matching is substring by default, and the DB accumulates many
+  // products across runs whose names could otherwise collide).
+  await expect(page.getByRole('cell', { name: ctx.generatedProductName, exact: true })).toBeVisible();
 });
 
 When('I create a product named {string} with price {float}', async ({ request }, name: string, price: number) => {
