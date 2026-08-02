@@ -60,6 +60,11 @@ interface ImportInfo {
   defaultName: string | null;
 }
 
+// playwright-bdd's createBdd() destructure — the hook functions a piece
+// might call at its own top level, each tagged to that piece's own
+// pre-rename key (e.g. Before({ tags: '@customers-1' }, ...)).
+const HOOK_NAMES = new Set(['Before', 'After', 'BeforeAll', 'AfterAll']);
+
 function mergeStepsContents(pieces: GeneratedGroup[], sourceKey: string): string {
   const imports = new Map<string, ImportInfo>(); // moduleSpecifier -> info, insertion order preserved
   let createBddText = '';
@@ -69,11 +74,22 @@ function mergeStepsContents(pieces: GeneratedGroup[], sourceKey: string): string
   // wins, since re-declaring the same block-scoped binding twice in one
   // merged file is a real TS error, not just noise.
   const namedConsts = new Map<string, string>();
+  // Every piece independently writes its own Before({ tags: '@<its own
+  // key>' }, ...) since it has no visibility into its siblings — once all
+  // pieces' tags get renamed to the shared sourceKey tag below, those
+  // become IDENTICAL hook registrations (same tag, usually the same
+  // "ctx = {}" body too), and playwright-bdd runs every one of them before
+  // each matching scenario — not a TS error like a re-declared const, but a
+  // real duplicate at *runtime* (Before ran 2-3x per scenario). Dedupe by
+  // hook name + its (already-renamed) tag argument text, first occurrence
+  // wins, same policy as namedConsts.
+  const hooks = new Map<string, string>();
   const bodyParts: string[] = [];
 
   for (const piece of pieces) {
     const sourceFile = ts.createSourceFile(`${piece.key}.steps.ts`, piece.stepsContent, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const bodyStatements: string[] = [];
+    const renameTag = (text: string) => (piece.key !== sourceKey ? text.split(`'@${piece.key}'`).join(`'@${sourceKey}'`) : text);
 
     for (const stmt of sourceFile.statements) {
       if (ts.isImportDeclaration(stmt) && ts.isStringLiteral(stmt.moduleSpecifier)) {
@@ -101,11 +117,23 @@ function mergeStepsContents(pieces: GeneratedGroup[], sourceKey: string): string
           continue;
         }
       }
+      if (
+        ts.isExpressionStatement(stmt) &&
+        ts.isCallExpression(stmt.expression) &&
+        ts.isIdentifier(stmt.expression.expression) &&
+        HOOK_NAMES.has(stmt.expression.expression.text)
+      ) {
+        const hookName = stmt.expression.expression.text;
+        const firstArg = stmt.expression.arguments[0];
+        const tagKey = renameTag(firstArg ? firstArg.getText(sourceFile) : '');
+        const dedupeKey = `${hookName}:${tagKey}`;
+        if (!hooks.has(dedupeKey)) hooks.set(dedupeKey, renameTag(stmt.getText(sourceFile)));
+        continue;
+      }
       bodyStatements.push(stmt.getFullText(sourceFile));
     }
 
-    let body = bodyStatements.join('').trim();
-    if (piece.key !== sourceKey) body = body.split(`'@${piece.key}'`).join(`'@${sourceKey}'`);
+    const body = renameTag(bodyStatements.join('').trim());
     bodyParts.push(body);
   }
 
@@ -117,7 +145,8 @@ function mergeStepsContents(pieces: GeneratedGroup[], sourceKey: string): string
   });
 
   const constLines = [...namedConsts.values()].join('\n\n');
-  return `${importLines.join('\n')}\n\n${createBddText}\n\n${constLines}\n\n${bodyParts.join('\n\n')}\n`;
+  const hookLines = [...hooks.values()].join('\n\n');
+  return `${importLines.join('\n')}\n\n${createBddText}\n\n${constLines}\n\n${hookLines}\n\n${bodyParts.join('\n\n')}\n`;
 }
 
 /** Clusters `groups` by `sourceKey`, merging every cluster with more than one member into a single GeneratedGroup; singleton clusters (never split by budget.ts) pass through unchanged. */
