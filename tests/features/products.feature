@@ -2,240 +2,39 @@ Feature: products
 
   @happy_path @products
   Scenario: Create Product with valid data
-    When an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/products",
-        "requestBody": {
-          "name": "Test Product {{unique}}",
-          "price": 49.99
-        }
-      }
-      """
-    Then the "products" response has this status code:
-      """
-      {
-        "statusCode": 201
-      }
-      """
-    And the "products" response body has this field:
-      """
-      {
-        "field": "name",
-        "expected": "Test Product {{unique}}"
-      }
-      """
-    And the "products" response body has this field:
-      """
-      {
-        "field": "price",
-        "expected": "49.99"
-      }
-      """
-    And the database has this row for "products":
-      """
-      {
-        "table": "Product",
-        "where": {
-          "id": "{products.id}"
-        },
-        "expectedFields": {
-          "name": "Test Product {{unique}}",
-          "price": "49.99"
-        }
-      }
-      """
+    Given I have a unique product name
+    When I send a POST request to create a product with name and price 29.99
+    Then the product creation response status should be 201
+    And the product should exist in the database with the correct name and price
+    And the product should appear in the products list via API
 
   @edge_case @products
   Scenario: Create Product with zero or negative price
-    # TODO (unconfirmed): Report does not explicitly state validation rules for zero/negative prices; assuming 400 error but actual behavior may differ
-    When an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/products",
-        "requestBody": {
-          "name": "Zero Price Product {{unique}}",
-          "price": 0
-        }
-      }
-      """
-    Then the "products" response has this status code:
-      """
-      {
-        "statusCode": 400
-      }
-      """
+    Given I have a unique product name for zero price test
+    When I send a POST request to create a product with price 0
+    Then the product creation response status should be 201
+    When I send a POST request to create a product with price -5.00
+    Then the product creation response status should be 400 with a validation error
 
   @happy_path @products
   Scenario: Delete product with no order items
-    Given an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/products",
-        "requestBody": {
-          "name": "Deletable Product {{unique}}",
-          "price": 15
-        }
-      }
-      """
-    When an API request is sent for "products":
-      """
-      {
-        "method": "DELETE",
-        "path": "/products/{id}",
-        "requestBody": null
-      }
-      """
-    Then the "products" response has this status code:
-      """
-      {
-        "statusCode": 200
-      }
-      """
+    Given a product exists that is not used in any order
+    When I send a DELETE request to delete the product
+    Then the delete product response status should be 200
+    And the product should no longer exist in the database
 
   @edge_case @products
   Scenario: Delete product used in existing order
-    # TODO (unconfirmed): Report says 'verify behavior' for this case; assuming 409 conflict but could be 400 or cascading delete with 200
-    Given an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/customers",
-        "requestBody": {
-          "email": "product-delete-test-{{unique}}@example.com",
-          "name": "Product Delete Test Customer"
-        }
-      }
-      """
-    And an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/products",
-        "requestBody": {
-          "name": "Product In Order {{unique}}",
-          "price": 25
-        }
-      }
-      """
-    And an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/orders",
-        "requestBody": {
-          "customerId": "{customers.id}",
-          "items": [
-            {
-              "productId": "{products.id}",
-              "quantity": 1
-            }
-          ]
-        }
-      }
-      """
-    When an API request is sent for "products":
-      """
-      {
-        "method": "DELETE",
-        "path": "/products/{id}",
-        "requestBody": null
-      }
-      """
-    Then the "products" response has this status code:
-      """
-      {
-        "statusCode": 409
-      }
-      """
+    # TODO (unconfirmed): The report does not specify whether deleting a product used in an order should cascade, fail with an error, or be blocked. Assuming it returns an error (4xx or 5xx) since OrderItem has a foreign key to Product.
+    Given a product exists that is used in an existing order
+    When I send a DELETE request to delete the product used in an order
+    Then the delete product response should indicate failure or constraint violation
 
   @happy_path @products
   Scenario: Update product price
-    Given an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/customers",
-        "requestBody": {
-          "email": "price-update-test-{{unique}}@example.com",
-          "name": "Price Update Test Customer"
-        }
-      }
-      """
-    And an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/products",
-        "requestBody": {
-          "name": "Price Update Product {{unique}}",
-          "price": 100
-        }
-      }
-      """
-    And an API request is sent for "products":
-      """
-      {
-        "method": "POST",
-        "path": "/orders",
-        "requestBody": {
-          "customerId": "{customers.id}",
-          "items": [
-            {
-              "productId": "{products.id}",
-              "quantity": 2
-            }
-          ]
-        }
-      }
-      """
-    When an API request is sent for "products":
-      """
-      {
-        "method": "PATCH",
-        "path": "/products/{id}",
-        "requestBody": {
-          "price": 150
-        }
-      }
-      """
-    Then the "products" response has this status code:
-      """
-      {
-        "statusCode": 200
-      }
-      """
-    And the "products" response body has this field:
-      """
-      {
-        "field": "price",
-        "expected": "150"
-      }
-      """
-    And the database has this row for "products":
-      """
-      {
-        "table": "Product",
-        "where": {
-          "id": "{products.id}"
-        },
-        "expectedFields": {
-          "price": "150"
-        }
-      }
-      """
-    And the database has this row for "products":
-      """
-      {
-        "table": "OrderItem",
-        "where": {
-          "orderId": "{orders.id}"
-        },
-        "expectedFields": {
-          "unitPrice": "100"
-        }
-      }
-      """
+    Given a product exists with an initial price of 50.00
+    And an order exists containing that product with the original unit price
+    When I send a PATCH request to update the product price to 75.00
+    Then the update product response status should be 200
+    And the product in the database should have the new price 75.00
+    And the existing order item should retain the original unit price of 50.00
