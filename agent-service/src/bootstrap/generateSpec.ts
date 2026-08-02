@@ -1,20 +1,29 @@
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { ApprovedGroupingSchema } from '../agents/generate/contract.ts';
 import { splitByBudget, DEFAULT_MAX_SCENARIOS_PER_GROUP } from '../agents/generate/budget.ts';
-import { generateSpec } from '../agents/generate/spec.ts';
+import { generateGeneration } from '../agents/generate/spec.ts';
 import { loadCorrections } from '../agents/generate/corrections.ts';
 import { config } from '../config.ts';
 
 // ---------------------------------------------------------------------------
-// CLI entry point for Stage 2 (structured spec) of the Generate pipeline —
-// same role generateGroup.ts plays for Stage 1. Reads an approved grouping,
-// makes one LLM call per render group, and writes a
-// generate-spec-proposed-*.json for review (admin UI, or hand-edit + write
-// an generate-spec-approved-*.json yourself) before running generate-render.
+// CLI entry point for Stage 2 (generate real .feature/.steps.ts content) of
+// the Generate pipeline — same role generateGroup.ts plays for Stage 1.
+// Reads an approved grouping, makes one LLM call per render group, and
+// writes a generate-spec-proposed-*.json for review (admin UI, or hand-edit
+// + write a generate-spec-approved-*.json yourself) before running
+// generate-render.
+//
+// Same repo-layout assumption generateRender.ts already makes:
+// <repo>/agent-service/reports/ <- config.reportsDir, <repo>/tests/steps/
+// <- where already-generated step definitions live, seeded into the
+// cross-group step-pattern-collision check (see verify.ts).
 // ---------------------------------------------------------------------------
+
+const REPO_ROOT = resolve(config.reportsDir, '..', '..');
+const TESTS_STEPS_DIR = join(REPO_ROOT, 'tests', 'steps');
 
 async function findLatestApprovedGrouping(): Promise<string> {
   const files = await readdir(config.reportsDir);
@@ -35,14 +44,14 @@ export async function runGenerateSpec(
   maxScenariosPerGroup?: number,
   groupFilter?: string[],
 ): Promise<void> {
-  console.log('\n=== Generate Stage 2: Spec proposal ===\n');
+  console.log('\n=== Generate Stage 2: Generate feature & steps ===\n');
 
   const resolvedGroupingPath = groupingPath ?? (await findLatestApprovedGrouping());
   console.log(`Using approved grouping: ${resolvedGroupingPath}`);
   const grouping = ApprovedGroupingSchema.parse(JSON.parse(await readFile(resolvedGroupingPath, 'utf-8')));
 
   const reportRaw = JSON.parse(await readFile(grouping.sourceReportPath, 'utf-8'));
-  const report = parseDiscoveryReport(reportRaw);
+  parseDiscoveryReport(reportRaw); // validate shape before spending money on a Claude call
   const reportJson = JSON.stringify(reportRaw, null, 2);
 
   const corrections = descriptorPath ? await loadCorrections(descriptorPath) : {};
@@ -56,18 +65,23 @@ export async function runGenerateSpec(
   }
   console.log(`Render groups: ${renderGroups.map((g) => `${g.key}(${g.scenarioNames.length})`).join(', ')}`);
 
-  const { spec, failures } = await generateSpec(provider, renderGroups, report, reportJson, corrections, resolvedGroupingPath);
+  const { generation, failures } = await generateGeneration(
+    provider,
+    renderGroups,
+    reportJson,
+    corrections,
+    resolvedGroupingPath,
+    TESTS_STEPS_DIR,
+  );
 
   await mkdir(config.reportsDir, { recursive: true });
-  const timestamp = spec.generatedAt.replace(/[:.]/g, '-');
+  const timestamp = generation.generatedAt.replace(/[:.]/g, '-');
   const outPath = join(config.reportsDir, `generate-spec-proposed-${timestamp}.json`);
-  await writeFile(outPath, JSON.stringify(spec, null, 2), 'utf-8');
+  await writeFile(outPath, JSON.stringify(generation, null, 2), 'utf-8');
 
-  console.log(
-    `\n=== Generated specs for ${spec.scenarios.length} scenario(s) across ${renderGroups.length - failures.length}/${renderGroups.length} render group(s) ===`,
-  );
-  for (const s of spec.scenarios) {
-    console.log(`  - [${s.group}] "${s.scenarioName}" (${s.type})${s.unconfirmed ? ' [UNCONFIRMED]' : ''}`);
+  console.log(`\n=== Generated ${generation.groups.length}/${renderGroups.length} render group(s) ===`);
+  for (const g of generation.groups) {
+    console.log(`  - ${g.key} (${g.scenarioNames.length} scenario(s)): ${g.scenarioNames.join(', ')}`);
   }
   if (failures.length > 0) {
     console.log(`\nFailed render group(s) (retry with --group ${failures.join(',')}): ${failures.join(', ')}`);

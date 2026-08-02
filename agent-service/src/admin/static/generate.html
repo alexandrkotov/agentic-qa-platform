@@ -38,13 +38,38 @@
   }
   .app-nav a:hover { background: var(--surface-2); color: var(--text); }
   .app-nav a.active { color: var(--accent); background: var(--accent-bg); }
-  main { max-width: 920px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
-  .page-head { margin-bottom: 1.5rem; }
+  /* Wider than a typical admin form — Stage 2's Feature/Steps review below
+     needs the room; the other three stages read fine at this measure too,
+     just with more breathing room. Was 920px before Stage 2 started showing
+     full real files instead of compact JSON snippets. */
+  main { max-width: 1150px; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 3rem) 4rem; }
+  .page-head { margin-bottom: 1.25rem; }
   .page-head h1 { font-size: 0.95rem; margin: 0; }
   .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
 
+  /* Stepper/tab navigation between the 4 stages — replaces stacking every
+     stage's section top to bottom. Exactly one .stage-section is visible
+     (via its `hidden` attribute) at a time; showStage() below drives both. */
+  .stage-nav { display: flex; gap: 0.4rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .stage-tab {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.5rem 0.95rem; font-size: 0.83rem; font-weight: 600; font-family: inherit;
+    color: var(--text-mute); cursor: pointer;
+  }
+  .stage-tab:hover { background: var(--surface-2); color: var(--text); }
+  .stage-tab.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+  /* Not a hard lock — "Generate" is still reachable with nothing to do yet
+     rather than genuinely unclickable, so a gating bug can never strand
+     someone on a tab they can't leave. Just a visual "not much here yet". */
+  .stage-tab.dim { opacity: 0.55; }
+  .stage-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1.5px solid var(--text-mute); flex: none; }
+  .stage-tab.active .stage-dot { border-color: var(--accent); }
+  .stage-dot.filled { background: var(--accent); border-color: var(--accent); }
+
   section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
   section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
+  section > .stage-note { font-size: 0.78rem; color: var(--text-mute); margin: -0.6rem 0 1rem; }
 
   .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
   .row label { font-size: 0.78rem; color: var(--text-mute); }
@@ -91,6 +116,10 @@
   button.ghost:disabled { opacity: 0.5; cursor: not-allowed; }
   button.ghost:hover { background: var(--surface-2); }
   button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.76rem; padding: 0.1rem 0.3rem; }
+  /* Same bare-link look as button.link, but for a purely informational
+     cross-reference (Generate tab -> Corrections tab), not a destructive
+     action — var(--danger) there would misread as a warning. */
+  button.link.accent { color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0; }
   .cost-badge { color: #2f8f5b; font-weight: 800; margin-right: 0.35rem; }
 
   .confirm-modal-overlay {
@@ -114,6 +143,33 @@
   .scenario-row { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0; font-size: 0.85rem; }
   .scenario-row .name { flex: 1; }
   .scenario-row select { font-size: 0.78rem; }
+
+  /* One <details> per Stage 2 render-group — collapsible with no JS needed
+     for the expand/collapse mechanic itself, keeping this file dependency-
+     free. First group open by default (see renderSpec()), the rest closed,
+     since a full suite's worth of real generated files is a lot to render
+     open all at once. */
+  .gen-group-details { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
+  .gen-group-details > summary {
+    cursor: pointer; padding: 0.7rem 1rem; font-weight: 600; list-style: none;
+    display: flex; align-items: center; gap: 0.6rem; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .gen-group-details > summary::-webkit-details-marker { display: none; }
+  .gen-group-details > summary::before { content: '▸'; font-family: inherit; color: var(--text-mute); transition: transform 0.1s; }
+  .gen-group-details[open] > summary::before { transform: rotate(90deg); }
+  .gen-meta { color: var(--text-mute); font-size: 0.76rem; font-weight: 400; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .gen-badge-unconfirmed {
+    background: var(--warn-bg); color: var(--warn); border-radius: 999px; padding: 0.12rem 0.6rem;
+    font-size: 0.7rem; font-weight: 700; font-family: ui-sans-serif, system-ui, sans-serif; margin-left: auto;
+  }
+  .gen-group-body { padding: 0 1rem 1rem; }
+  .gen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 760px) { .gen-grid { grid-template-columns: 1fr; } }
+  .gen-col label {
+    display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--text-mute); margin-bottom: 0.3rem;
+  }
+  .gen-col textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.78rem; overflow-y: auto; }
 
   /* One shared rule for every status span setStatus() ever touches — these
      used to be defined per-ID for just #status/#corr-status, so the two
@@ -147,8 +203,15 @@
     <div class="subtitle">Turns an approved discovery report into a reviewed BDD test suite, one approved stage at a time</div>
   </div>
 
-  <section>
-    <h2>Stage 1: Grouping</h2>
+  <nav class="stage-nav">
+    <button class="stage-tab active" id="tab-grouping"><span class="stage-dot" id="dot-grouping"></span>① Grouping</button>
+    <button class="stage-tab" id="tab-generate"><span class="stage-dot" id="dot-generate"></span>② Generate</button>
+    <button class="stage-tab" id="tab-corrections"><span class="stage-dot" id="dot-corrections"></span>③ Corrections</button>
+    <button class="stage-tab" id="tab-render"><span class="stage-dot" id="dot-render"></span>④ Render &amp; Run</button>
+  </nav>
+
+  <section id="stage-grouping">
+    <h2>Grouping</h2>
     <div class="row">
       <span class="field-pair">
         <label>Report</label>
@@ -168,8 +231,8 @@
     </div>
   </section>
 
-  <section>
-    <h2>Stage 2: Structured spec <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
+  <section id="stage-generate" hidden>
+    <h2>Generate feature &amp; steps <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
       <label>Approved grouping</label>
       <select id="spec-grouping-select"></select>
@@ -188,31 +251,36 @@
       <label title="Same Stage 1 group names shown above — checking a group includes it whole, batched however many Claude calls it internally needs. Leave all unchecked to generate every group.">Limit to groups (optional) ⓘ</label>
       <span id="spec-groups-filter" class="checkbox-list"></span>
     </div>
+    <div class="row" id="corrections-link-row" style="display:none"></div>
     <div class="row">
-      <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate spec</button>
-      <button class="primary" id="show-approved-spec-btn" style="display:none">Show last approved spec</button>
+      <button class="primary" id="spec-generate-btn"><span class="cost-badge">$</span>Generate tests</button>
+      <button class="primary" id="show-approved-spec-btn" style="display:none">Show last approved generation</button>
       <span id="spec-gen-status"></span>
+    </div>
+    <div class="row" id="gen-expand-controls" style="display:none">
+      <button class="ghost" id="expand-all-btn">Expand all</button>
+      <button class="ghost" id="collapse-all-btn">Collapse all</button>
     </div>
     <div id="spec-body"></div>
     <div class="row">
-      <button class="primary" id="spec-approve-btn" disabled style="display:none">Approve spec</button>
+      <button class="primary" id="spec-approve-btn" disabled style="display:none">Approve generation</button>
       <span id="spec-status"></span>
     </div>
   </section>
 
-  <section>
-    <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the spec tied to Stage 2's selected grouping)</span></h2>
+  <section id="stage-corrections" hidden>
+    <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the generation tied to Generate's selected grouping)</span></h2>
     <div class="row">
       <span class="field-pair">
-        <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
-        <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Stage 2's own Descriptor above may briefly differ until a grouping is approved for the new report.">
+        <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
+        <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">
       </span>
       <button class="primary" id="load-corr-btn">Load</button>
       <button class="primary" id="add-corr-btn">+ Add correction</button>
     </div>
     <div class="corr-header">
-      <span title="Must exactly match a scenario's name as it appears in Stage 1/Stage 2 — this is the lookup key used to find and apply the correction below when a spec is generated.">Scenario name ⓘ</span>
-      <span title="Plain-language instructions on what's actually true for this scenario — applied OVER the discovery report's own text when Stage 2 generates its spec.">Correction ⓘ</span>
+      <span title="Must exactly match a scenario's name as it appears in Stage 1/Generate — this is the lookup key used to find and apply the correction below when tests are generated.">Scenario name ⓘ</span>
+      <span title="Plain-language instructions on what's actually true for this scenario — applied OVER the discovery report's own text when Generate writes its tests.">Correction ⓘ</span>
     </div>
     <div id="corr-body"></div>
     <div class="row">
@@ -221,8 +289,9 @@
     </div>
   </section>
 
-  <section>
-    <h2>Stage 3: Render tests</h2>
+  <section id="stage-render" hidden>
+    <h2>Render &amp; Run</h2>
+    <div class="stage-note">Render writes the last <em>approved</em> generation's files to tests/. Run tests always runs whatever's currently on disk, whether or not a new generation is pending review.</div>
     <div class="row">
       <button class="primary" id="render-btn" style="display:none">Generate render</button>
       <span id="render-status"></span>
@@ -248,6 +317,35 @@
 </div>
 
 <script>
+// --- Stage navigation --------------------------------------------------
+
+const STAGE_NAMES = ['grouping', 'generate', 'corrections', 'render'];
+function showStage(name) {
+  for (const s of STAGE_NAMES) {
+    document.getElementById('stage-' + s).hidden = s !== name;
+    document.getElementById('tab-' + s).classList.toggle('active', s === name);
+  }
+}
+for (const s of STAGE_NAMES) {
+  document.getElementById('tab-' + s).onclick = () => showStage(s);
+}
+
+// Small at-a-glance status per tab, reusing state this page already tracks
+// (no new API calls). Dots are purely informational — "dim" on the Generate
+// tab is a visual nudge, never an actual click-block, so a gating bug here
+// can never strand someone on a tab they can't leave.
+function updateStageDots() {
+  document.getElementById('dot-grouping').classList.toggle('filled', !!state.grouping);
+  document.getElementById('dot-generate').classList.toggle('filled', !!(generationState || existingApprovedGeneration));
+  document.getElementById('dot-corrections').classList.toggle('filled', Object.keys(corrections).length > 0);
+  document.getElementById('dot-render').classList.toggle('filled', !!existingApprovedGeneration);
+
+  const hasApprovedGrouping = document.getElementById('spec-grouping-select').options.length > 0;
+  const generateTab = document.getElementById('tab-generate');
+  generateTab.classList.toggle('dim', !hasApprovedGrouping);
+  generateTab.title = hasApprovedGrouping ? '' : 'Approve a grouping in Stage 1 first.';
+}
+
 // Any button that calls Claude for real must be confirmed first — resolves
 // true only if the human clicks "Yes, proceed"; Cancel, Escape, or clicking
 // the backdrop all resolve false without touching the network.
@@ -324,19 +422,19 @@ async function loadReportList() {
 //    grouping exists for it yet. Corrections isn't gated on a grouping
 //    existing at all, so there's no reason its Descriptor should wait for
 //    one — the report alone already answers "which system."
-//  - Stage 2's "Approved grouping" dropdown — reloaded scoped to this same
+//  - Generate's "Approved grouping" dropdown — reloaded scoped to this same
 //    descriptor, so it only ever lists groupings for the system Stage 1 is
 //    currently showing, not every approved grouping across every descriptor
 //    mixed together.
 //  - Within that scoped list, the grouping matching this EXACT report (not
-//    just the same descriptor) gets auto-selected when one exists — Stage
-//    2's own Descriptor (see onGroupingChanged, still the only correct
-//    source for THAT field) follows from there. If no grouping exists yet
-//    for the new report at all (even a same-descriptor one), Stage 2 is
-//    left on whatever the descriptor-scoped list's own default picked;
-//    it can legitimately show a different descriptor than Corrections only
-//    in the rarer case where NO grouping exists yet for this descriptor at
-//    all — accurate, not a bug, and resolves itself once one is approved.
+//    just the same descriptor) gets auto-selected when one exists — Generate's
+//    own Descriptor (see onGroupingChanged, still the only correct source for
+//    THAT field) follows from there. If no grouping exists yet for the new
+//    report at all (even a same-descriptor one), Generate is left on
+//    whatever the descriptor-scoped list's own default picked; it can
+//    legitimately show a different descriptor than Corrections only in the
+//    rarer case where NO grouping exists yet for this descriptor at all —
+//    accurate, not a bug, and resolves itself once one is approved.
 async function onReportChanged() {
   const btn = document.getElementById('show-approved-grouping-btn');
   btn.style.display = 'none';
@@ -440,7 +538,7 @@ function renderGrouping() {
   const approveBtn = document.getElementById('approve-btn');
   approveBtn.style.display = state.grouping ? '' : 'none';
   approveBtn.disabled = !state.grouping;
-  if (!state.grouping) return;
+  if (!state.grouping) { updateStageDots(); return; }
   const g = state.grouping;
 
   // Recomputed live from the current ungrouped/grouped arrays rather than
@@ -492,6 +590,7 @@ function renderGrouping() {
     for (const name of g.ungrouped) card.appendChild(renderScenarioRow(name, '__ungrouped__'));
     body.appendChild(card);
   }
+  updateStageDots();
 }
 
 document.getElementById('recompute-btn').onclick = async () => {
@@ -523,14 +622,14 @@ document.getElementById('approve-btn').onclick = async () => {
       body: JSON.stringify(state.grouping),
     });
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
-    // Stage 2's dropdown was only ever populated once at page load — without
+    // Generate's dropdown was only ever populated once at page load — without
     // this, a freshly-approved grouping exists on disk but stays invisible
     // there until a full page reload. Setting .value via JS doesn't fire
-    // "change" either, so also re-check for an approved spec explicitly —
-    // otherwise "Show last approved spec" could stay stuck showing/hiding
-    // stale state left over from whatever grouping was selected before.
-    // Scoped to the current descriptor, same as everywhere else the
-    // dropdown gets (re)loaded — the grouping just approved is for
+    // "change" either, so also re-check for an approved generation explicitly
+    // — otherwise "Show last approved generation" could stay stuck
+    // showing/hiding stale state left over from whatever grouping was
+    // selected before. Scoped to the current descriptor, same as everywhere
+    // else the dropdown gets (re)loaded — the grouping just approved is for
     // whichever report is currently selected in Stage 1.
     await loadGroupingList(document.getElementById('descriptor-name').value || undefined);
     await onGroupingChanged();
@@ -539,13 +638,13 @@ document.getElementById('approve-btn').onclick = async () => {
   }
 };
 
-// --- Stage 2: spec ----------------------------------------------------------
+// --- Generate: freeform .feature/.steps.ts -----------------------------
 
-let specState = null; // { generatedAt, sourceGroupingPath, scenarios: [...] }
-let existingApprovedSpec = null;
+let generationState = null; // { generatedAt, sourceGroupingPath, groups: [{ key, scenarioNames, featureContent, stepsContent }] }
+let existingApprovedGeneration = null;
 
 // descriptor is optional — pass it to scope the dropdown to groupings for
-// that one system only (Stage 2 used to list every approved grouping across
+// that one system only (this used to list every approved grouping across
 // every descriptor mixed together, easy to pick the wrong one once more
 // than one system is in play). Omit it for the unfiltered list, e.g. the
 // very first load before Stage 1 has resolved a report yet.
@@ -555,16 +654,17 @@ async function loadGroupingList(descriptor) {
   const select = document.getElementById('spec-grouping-select');
   select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (names.length > 0) select.value = names[names.length - 1];
+  updateStageDots();
 }
 
 // Same "Show/Hide last approved ..." idea as Stage 1's grouping button — lets
-// reselecting a grouping that already has an approved spec reveal it for
-// free, instead of forcing a fresh (paid) Generate spec call just to see it.
-// Also derives Stage 2's Descriptor field from *this grouping's own* source
-// report — deliberately not from Stage 1's report-select, which the user is
-// free to flip to a different report while an older grouping stays selected
-// here; deriving from that would silently point corrections lookups at the
-// wrong system.
+// reselecting a grouping that already has an approved generation reveal it
+// for free, instead of forcing a fresh (paid) Generate tests call just to
+// see it. Also derives Generate's Descriptor field from *this grouping's
+// own* source report — deliberately not from Stage 1's report-select, which
+// the user is free to flip to a different report while an older grouping
+// stays selected here; deriving from that would silently point corrections
+// lookups at the wrong system.
 // Renders one checkbox per group key from a grouping's own content — pass
 // null to clear (no grouping selected, or its content failed to load).
 // Deliberately built from the SELECTED GROUPING's own groups, same source as
@@ -591,14 +691,14 @@ function renderGroupsFilterCheckboxes(groupingDetails) {
 
 // Nothing to work with anywhere below Stage 1 when there's no grouping to
 // act on — either because the (descriptor-scoped) dropdown is genuinely
-// empty, or because a real Generate spec call is already in flight against
+// empty, or because a real Generate call is already in flight against
 // whichever grouping IS selected (a second click, or editing corrections
-// out from under a spec that's about to use them, would both be premature).
-// Covers Generate spec (would fail server-side on a missing "grouping" if
-// forced) and Load/+ Add correction/Save corrections (corrections
-// themselves don't need a grouping to exist, but there is nothing yet
-// worth reviewing them against, or the in-flight call already read
-// whatever was on disk a moment ago).
+// out from under a generation that's about to use them, would both be
+// premature). Covers Generate tests (would fail server-side on a missing
+// "grouping" if forced) and Load/+ Add correction/Save corrections
+// (corrections themselves don't need a grouping to exist, but there is
+// nothing yet worth reviewing them against, or the in-flight call already
+// read whatever was on disk a moment ago).
 function setStage2GatedButtonsDisabled(disabled) {
   document.getElementById('spec-generate-btn').disabled = disabled;
   document.getElementById('save-corr-btn').disabled = disabled;
@@ -612,9 +712,9 @@ function setStage2GatedButtonsDisabled(disabled) {
 async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
-  btn.textContent = 'Show last approved spec';
+  btn.textContent = 'Show last approved generation';
   document.getElementById('render-btn').style.display = 'none';
-  existingApprovedSpec = null;
+  existingApprovedGeneration = null;
   const grouping = document.getElementById('spec-grouping-select').value;
   const specDescriptorInput = document.getElementById('spec-descriptor');
   specDescriptorInput.value = '';
@@ -622,12 +722,13 @@ async function onGroupingChanged() {
   setStage2GatedButtonsDisabled(!grouping);
   if (!grouping) {
     renderCorrections(); // clears any stale highlighting from a prior grouping
+    updateStageDots();
     return;
   }
   try {
     const groupingDetails = await api('/api/generate/groupings/' + encodeURIComponent(grouping));
     const reportName = groupingDetails.sourceReportPath.split('/').pop();
-    // Stage 2's Descriptor only — NOT Scenario corrections' (see
+    // Generate's Descriptor only — NOT Scenario corrections' (see
     // onReportChanged, which owns that one unconditionally from Stage 1's
     // report). This field feeds a real paid /api/generate/spec call, so it
     // must always match whichever grouping is actually selected here, even
@@ -641,19 +742,22 @@ async function onGroupingChanged() {
   try {
     const existing = await api('/api/generate/spec-for-grouping?grouping=' + encodeURIComponent(grouping));
     if (!existing) return;
-    existingApprovedSpec = existing;
+    existingApprovedGeneration = existing;
     btn.style.display = '';
-    // Stage 3 only makes sense once there's an approved spec to render —
-    // same gating as "Show last approved spec" right above, same source.
+    // Render & Run only makes sense once there's an approved generation to
+    // render — same gating as "Show last approved generation" right above,
+    // same source.
     document.getElementById('render-btn').style.display = '';
   } catch (e) {
-    setStatus(document.getElementById('spec-gen-status'), 'Failed to check for an existing approved spec: ' + e.message, 'err');
+    setStatus(document.getElementById('spec-gen-status'), 'Failed to check for an existing approved generation: ' + e.message, 'err');
   } finally {
-    // Recompute highlighting either way — existingApprovedSpec may have
-    // just been set (or cleared, on a grouping with no approved spec),
-    // and relevantCorrectionNames() reads it directly without requiring
-    // the spec to actually be displayed via "Show last approved spec".
+    // Recompute highlighting either way — existingApprovedGeneration may
+    // have just been set (or cleared, on a grouping with no approved
+    // generation), and relevantCorrectionNames() reads it directly without
+    // requiring the generation to actually be displayed via "Show last
+    // approved generation".
     renderCorrections();
+    updateStageDots();
   }
 }
 // Both "change" and "click" — see report-select's onReportChanged comment
@@ -663,64 +767,105 @@ document.getElementById('spec-grouping-select').addEventListener('click', onGrou
 
 document.getElementById('show-approved-spec-btn').onclick = () => {
   const btn = document.getElementById('show-approved-spec-btn');
-  if (btn.textContent === 'Hide last approved spec') {
-    specState = null;
+  if (btn.textContent === 'Hide last approved generation') {
+    generationState = null;
     renderSpec();
     renderCorrections();
-    btn.textContent = 'Show last approved spec';
+    btn.textContent = 'Show last approved generation';
     setStatus(document.getElementById('spec-gen-status'), '');
     return;
   }
-  if (!existingApprovedSpec) return;
-  specState = existingApprovedSpec.approved;
+  if (!existingApprovedGeneration) return;
+  generationState = existingApprovedGeneration.approved;
   renderSpec();
   renderCorrections();
-  btn.textContent = 'Hide last approved spec';
-  setStatus(document.getElementById('spec-gen-status'), 'Loaded approved spec from ' + existingApprovedSpec.path, 'ok');
+  btn.textContent = 'Hide last approved generation';
+  setStatus(document.getElementById('spec-gen-status'), 'Loaded approved generation from ' + existingApprovedGeneration.path, 'ok');
 };
 
+// One collapsible <details> per render-group, each with a two-column
+// Feature/Steps grid of real file text — replaces the old per-scenario
+// structured-JSON textarea list now that Stage 2 emits real files instead.
 function renderSpec() {
   const body = document.getElementById('spec-body');
   body.innerHTML = '';
   const approveBtn = document.getElementById('spec-approve-btn');
-  approveBtn.style.display = specState ? '' : 'none';
-  approveBtn.disabled = !specState || specState.scenarios.length === 0;
-  if (!specState) return;
+  const expandControls = document.getElementById('gen-expand-controls');
+  approveBtn.style.display = generationState ? '' : 'none';
+  approveBtn.disabled = !generationState || generationState.groups.length === 0;
+  expandControls.style.display = generationState && generationState.groups.length > 0 ? '' : 'none';
+  if (!generationState) { updateStageDots(); return; }
 
-  for (const scenario of specState.scenarios) {
-    const card = document.createElement('div');
-    card.className = 'group-card';
-    const head = document.createElement('div');
-    head.className = 'head';
-    head.innerHTML = `<strong>${scenario.scenarioName}</strong>`;
+  generationState.groups.forEach((group, i) => {
+    const details = document.createElement('details');
+    details.className = 'gen-group-details';
+    details.open = i === 0;
+
+    const summary = document.createElement('summary');
+    const keySpan = document.createElement('span');
+    keySpan.textContent = group.key;
+    summary.appendChild(keySpan);
     const meta = document.createElement('span');
-    meta.style.color = 'var(--text-mute)'; meta.style.fontSize = '0.78rem';
-    meta.textContent = `[${scenario.group}] ${scenario.type}`;
-    head.appendChild(meta);
-    card.appendChild(head);
+    meta.className = 'gen-meta';
+    // sourceKey differs from key only when budget.ts split this Stage 1
+    // group across multiple Claude calls to stay under its token budget —
+    // render.ts merges those sibling render-groups back into one
+    // <sourceKey>.feature/.steps.ts pair, so flag that here rather than
+    // leaving the merge invisible until after Render is clicked.
+    const mergeNote = group.sourceKey && group.sourceKey !== group.key ? ` (will merge into ${group.sourceKey}.feature)` : '';
+    meta.textContent = `${group.scenarioNames.length} scenario(s): ${group.scenarioNames.join(', ')}${mergeNote}`;
+    summary.appendChild(meta);
+    const unconfirmedCount = (group.featureContent.match(/# TODO \(unconfirmed\):/g) || []).length;
+    if (unconfirmedCount > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'gen-badge-unconfirmed';
+      badge.textContent = `${unconfirmedCount} unconfirmed`;
+      summary.appendChild(badge);
+    }
+    details.appendChild(summary);
 
-    const ta = document.createElement('textarea');
-    ta.rows = 10;
-    ta.style.width = '100%';
-    ta.style.fontFamily = 'ui-monospace, "SF Mono", Consolas, monospace';
-    ta.style.fontSize = '0.78rem';
-    ta.value = JSON.stringify({ given: scenario.given, when: scenario.when, then: scenario.then, unconfirmed: scenario.unconfirmed ?? null }, null, 2);
-    const err = document.createElement('div');
-    err.style.color = 'var(--danger)'; err.style.fontSize = '0.76rem'; err.style.marginTop = '0.2rem';
-    ta.oninput = () => {
-      try {
-        const parsed = JSON.parse(ta.value);
-        Object.assign(scenario, parsed);
-        err.textContent = '';
-      } catch (e) {
-        err.textContent = 'Invalid JSON — edit not applied yet: ' + e.message;
-      }
-    };
-    card.appendChild(ta);
-    card.appendChild(err);
-    body.appendChild(card);
-  }
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'gen-group-body';
+    const grid = document.createElement('div');
+    grid.className = 'gen-grid';
+
+    const featureCol = document.createElement('div');
+    featureCol.className = 'gen-col';
+    const featureLabel = document.createElement('label');
+    featureLabel.textContent = 'Feature';
+    const featureTa = document.createElement('textarea');
+    featureTa.rows = 18;
+    featureTa.value = group.featureContent;
+    featureTa.oninput = () => { group.featureContent = featureTa.value; };
+    featureCol.appendChild(featureLabel);
+    featureCol.appendChild(featureTa);
+
+    const stepsCol = document.createElement('div');
+    stepsCol.className = 'gen-col';
+    const stepsLabel = document.createElement('label');
+    stepsLabel.textContent = 'Steps';
+    const stepsTa = document.createElement('textarea');
+    stepsTa.rows = 18;
+    stepsTa.value = group.stepsContent;
+    stepsTa.oninput = () => { group.stepsContent = stepsTa.value; };
+    stepsCol.appendChild(stepsLabel);
+    stepsCol.appendChild(stepsTa);
+
+    grid.appendChild(featureCol);
+    grid.appendChild(stepsCol);
+    bodyDiv.appendChild(grid);
+    details.appendChild(bodyDiv);
+    body.appendChild(details);
+  });
+  updateStageDots();
 }
+
+document.getElementById('expand-all-btn').onclick = () => {
+  document.querySelectorAll('#spec-body details').forEach((d) => { d.open = true; });
+};
+document.getElementById('collapse-all-btn').onclick = () => {
+  document.querySelectorAll('#spec-body details').forEach((d) => { d.open = false; });
+};
 
 document.getElementById('spec-generate-btn').onclick = async () => {
   const grouping = document.getElementById('spec-grouping-select').value;
@@ -729,10 +874,10 @@ document.getElementById('spec-generate-btn').onclick = async () => {
   const groupsChecked = Array.from(document.querySelectorAll('#spec-groups-filter input:checked')).map((cb) => cb.value);
   const groups = groupsChecked.length ? groupsChecked : undefined;
   const statusEl = document.getElementById('spec-gen-status');
-  if (!(await confirmPaidAction(`Generate a structured spec from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
+  if (!(await confirmPaidAction(`Generate real .feature/.steps.ts tests from grouping "${grouping}"? This calls Claude and costs real money.`))) return;
   // Also gates Scenario corrections' three buttons for the same duration —
   // editing/saving corrections out from under a call that already read
-  // whatever was on disk a moment ago, or clicking Generate spec again
+  // whatever was on disk a moment ago, or clicking Generate tests again
   // before the first call even returned, are both premature here.
   setStage2GatedButtonsDisabled(true);
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
@@ -742,12 +887,12 @@ document.getElementById('spec-generate-btn').onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ grouping, descriptor, maxScenarios, groups }),
     });
-    specState = result.spec;
+    generationState = result.generation;
     renderSpec();
     renderCorrections();
     // What's on screen is now a fresh (unapproved) generation, not the
     // approved snapshot the toggle button may have been showing.
-    document.getElementById('show-approved-spec-btn').textContent = 'Show last approved spec';
+    document.getElementById('show-approved-spec-btn').textContent = 'Show last approved generation';
     setStatus(statusEl, result.failures.length ? `Done, but failed: ${result.failures.join(', ')}` : 'Done.', result.failures.length ? 'err' : 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
@@ -766,21 +911,22 @@ document.getElementById('spec-approve-btn').onclick = async () => {
     const result = await api('/api/generate/spec/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(specState),
+      body: JSON.stringify(generationState),
     });
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+    updateStageDots();
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
 };
 
-// --- Stage 3: render + run --------------------------------------------------
+// --- Render & Run --------------------------------------------------------
 
 document.getElementById('render-btn').onclick = async () => {
-  if (!existingApprovedSpec) return;
+  if (!existingApprovedGeneration) return;
   const btn = document.getElementById('render-btn');
   const statusEl = document.getElementById('render-status');
-  const specName = existingApprovedSpec.path.split('/').pop();
+  const specName = existingApprovedGeneration.path.split('/').pop();
   btn.disabled = true;
   setStatus(statusEl, 'Rendering .feature/.steps.ts files…');
   try {
@@ -882,20 +1028,39 @@ async function checkCorrectionsLoadRisk(descriptor) {
 }
 
 // Corrections are stored per-descriptor (all groups mixed together — see
-// corrections.ts), so Load pulls in far more than whatever group Stage 2
+// corrections.ts), so Load pulls in far more than whatever group Generate
 // currently shows. Highlighting narrows that down visually: a row matches
-// when its scenario name appears in the spec tied to Stage 2's *selected
-// grouping* — i.e. the ones that would actually be sent to Claude if
-// Generate spec ran again right now. Falls back to existingApprovedSpec
-// (set by onGroupingChanged whenever the selected grouping already has an
-// approved spec) so this works as soon as a grouping is picked, without
-// requiring the extra step of clicking "Show last approved spec" to
-// actually display it — specState (a freshly generated or explicitly
-// shown spec) still takes priority when present, since that's the more
-// specific, up-to-date answer to "what's in the spec right now."
+// when its scenario name appears in the generation tied to Generate's
+// *selected grouping* — i.e. the ones that would actually be sent to Claude
+// if Generate tests ran again right now. Falls back to
+// existingApprovedGeneration (set by onGroupingChanged whenever the selected
+// grouping already has an approved generation) so this works as soon as a
+// grouping is picked, without requiring the extra step of clicking "Show
+// last approved generation" to actually display it — generationState (a
+// freshly generated or explicitly shown generation) still takes priority
+// when present, since that's the more specific, up-to-date answer to
+// "what's in the generation right now."
 function relevantCorrectionNames() {
-  const spec = specState || existingApprovedSpec?.approved;
-  return spec ? new Set(spec.scenarios.map((s) => s.scenarioName)) : new Set();
+  const generation = generationState || existingApprovedGeneration?.approved;
+  return generation ? new Set(generation.groups.flatMap((g) => g.scenarioNames)) : new Set();
+}
+
+// Small cross-link shown on the Generate tab itself — "highlighted rows"
+// used to be the only signal that corrections matter here, but that's
+// invisible unless you're already scrolled to (now: switched to) the
+// Corrections tab. Surfaces the count right where Generate tests is clicked.
+function renderCorrectionsLink() {
+  const row = document.getElementById('corrections-link-row');
+  const relevant = relevantCorrectionNames();
+  const count = Object.keys(corrections).filter((n) => relevant.has(n)).length;
+  row.innerHTML = '';
+  if (count === 0) { row.style.display = 'none'; return; }
+  row.style.display = '';
+  const link = document.createElement('button');
+  link.className = 'link accent';
+  link.textContent = `${count} correction(s) relevant to this grouping →`;
+  link.onclick = () => showStage('corrections');
+  row.appendChild(link);
 }
 
 function renderCorrections() {
@@ -926,6 +1091,8 @@ function renderCorrections() {
     row.appendChild(removeBtn);
     body.appendChild(row);
   }
+  renderCorrectionsLink();
+  updateStageDots();
 }
 
 document.getElementById('load-corr-btn').onclick = async () => {

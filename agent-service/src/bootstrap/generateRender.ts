@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { ApprovedSpecSchema } from '../agents/generate/contract.ts';
-import { renderSpec, writeRenderedFiles } from '../agents/generate/render.ts';
+import { ApprovedGenerationSchema } from '../agents/generate/contract.ts';
+import { renderGeneration, writeRenderedFiles } from '../agents/generate/render.ts';
 import { config } from '../config.ts';
 
 // ---------------------------------------------------------------------------
@@ -33,9 +33,9 @@ export async function runGenerateRender(specPath?: string): Promise<void> {
 
   const resolvedSpecPath = specPath ?? (await findLatestApprovedSpec());
   console.log(`Using approved spec: ${resolvedSpecPath}`);
-  const spec = ApprovedSpecSchema.parse(JSON.parse(await readFile(resolvedSpecPath, 'utf-8')));
+  const generation = ApprovedGenerationSchema.parse(JSON.parse(await readFile(resolvedSpecPath, 'utf-8')));
 
-  const files = renderSpec(spec);
+  const files = renderGeneration(generation);
   const written = await writeRenderedFiles(files, REPO_ROOT);
 
   console.log(`\n=== Wrote ${written.length} file(s) ===`);

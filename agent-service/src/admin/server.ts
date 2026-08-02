@@ -11,13 +11,14 @@ import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
-import { generateSpec } from '../agents/generate/spec.ts';
-import { renderSpec, writeRenderedFiles } from '../agents/generate/render.ts';
+import { generateGeneration } from '../agents/generate/spec.ts';
+import { renderGeneration, writeRenderedFiles } from '../agents/generate/render.ts';
+import { compileAndVerify, collectExistingStepPatterns } from '../agents/generate/verify.ts';
 import {
   ProposedGroupingSchema,
   ApprovedGroupingSchema,
-  ProposedSpecSchema,
-  ApprovedSpecSchema,
+  ProposedGenerationSchema,
+  ApprovedGenerationSchema,
   CorrectionsSchema,
 } from '../agents/generate/contract.ts';
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
@@ -775,7 +776,7 @@ app.get('/api/generate/spec-for-grouping', async (req, res) => {
       const candidatePath = join(config.reportsDir, candidates[i]);
       const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
       if (raw.sourceGroupingPath !== targetPath) continue;
-      const approved = ApprovedSpecSchema.parse(raw);
+      const approved = ApprovedGenerationSchema.parse(raw);
       res.json({ path: candidatePath, approved });
       return;
     }
@@ -784,6 +785,21 @@ app.get('/api/generate/spec-for-grouping', async (req, res) => {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
+
+// ---------------------------------------------------------------------------
+// APP_ROOT/TESTS_ROOT — needed by both /api/generate/spec below (to seed the
+// step-pattern-collision registry from whatever's already in tests/steps/)
+// and Stage 3's render/"Run tests" endpoints further down. Deliberately NOT
+// using bootstrap/generateRender.ts's own derivation
+// (resolve(config.reportsDir, '..', '..')), correct for the *host* layout
+// (<repo>/agent-service/reports -> two levels up is <repo>) — this container
+// has no such nesting, reportsDir sits directly at /usr/src/app/reports, so
+// going up two levels lands outside the container entirely (/usr/src).
+// ---------------------------------------------------------------------------
+
+const APP_ROOT = resolve(config.reportsDir, '..');
+const TESTS_ROOT = join(APP_ROOT, 'tests');
+const TESTS_STEPS_DIR = join(APP_ROOT, 'tests', 'steps');
 
 app.post('/api/generate/spec', async (req, res) => {
   try {
@@ -801,7 +817,7 @@ app.post('/api/generate/spec', async (req, res) => {
     const approvedGrouping = ApprovedGroupingSchema.parse(JSON.parse(await readFile(groupingPath, 'utf-8')));
 
     const reportRaw = JSON.parse(await readFile(approvedGrouping.sourceReportPath, 'utf-8'));
-    const report = parseDiscoveryReport(reportRaw);
+    parseDiscoveryReport(reportRaw); // validate shape before spending money on a Claude call
     const reportJson = JSON.stringify(reportRaw, null, 2);
     const corrections = descriptor ? await loadCorrections(descriptorPath(descriptor)) : {};
 
@@ -827,8 +843,8 @@ app.post('/api/generate/spec', async (req, res) => {
     }
 
     const provider = new ClaudeProvider();
-    const { spec, failures } = await generateSpec(provider, renderGroups, report, reportJson, corrections, groupingPath);
-    res.json({ spec, failures });
+    const { generation, failures } = await generateGeneration(provider, renderGroups, reportJson, corrections, groupingPath, TESTS_STEPS_DIR);
+    res.json({ generation, failures });
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
@@ -840,8 +856,22 @@ app.post('/api/generate/spec', async (req, res) => {
 
 app.post('/api/generate/spec/approve', async (req, res) => {
   try {
-    const proposed = ProposedSpecSchema.parse(req.body);
-    const approved = ApprovedSpecSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
+    const proposed = ProposedGenerationSchema.parse(req.body);
+
+    // The admin UI lets a human hand-edit featureContent/stepsContent before
+    // approving — an edit could reintroduce a step-text/pattern mismatch the
+    // generation-time check wouldn't have seen. Re-verify every group here
+    // too, before persisting, not just at generation time.
+    const patternRegistry = await collectExistingStepPatterns(
+      TESTS_STEPS_DIR,
+      [...new Set(proposed.groups.map((g) => g.sourceKey))],
+    );
+    for (const group of proposed.groups) {
+      const ownPatterns = compileAndVerify(group, patternRegistry);
+      for (const [pattern, owner] of ownPatterns) patternRegistry.set(pattern, owner);
+    }
+
+    const approved = ApprovedGenerationSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
     await mkdir(config.reportsDir, { recursive: true });
     const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
     const outPath = join(config.reportsDir, `generate-spec-approved-${timestamp}.json`);
@@ -858,17 +888,8 @@ app.post('/api/generate/spec/approve', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Generate pipeline — Stage 3 (render) and "Run tests". Both mechanical, no
-// LLM. Deliberately NOT calling bootstrap/generateRender.ts's
-// runGenerateRender(): that CLI wrapper derives its output root as
-// resolve(config.reportsDir, '..', '..'), correct for the *host* layout
-// (<repo>/agent-service/reports -> two levels up is <repo>). This container
-// has no such nesting — reportsDir sits directly at /usr/src/app/reports —
-// so going up two levels lands outside the container entirely (/usr/src).
-// APP_ROOT below is the equivalent derivation for *this* flatter layout.
+// LLM.
 // ---------------------------------------------------------------------------
-
-const APP_ROOT = resolve(config.reportsDir, '..');
-const TESTS_ROOT = join(APP_ROOT, 'tests');
 
 app.post('/api/generate/render', async (req, res) => {
   try {
@@ -877,8 +898,8 @@ app.post('/api/generate/render', async (req, res) => {
       res.status(400).json({ error: '"spec" is required' });
       return;
     }
-    const spec = ApprovedSpecSchema.parse(JSON.parse(await readFile(specFilePath(specName), 'utf-8')));
-    const files = renderSpec(spec);
+    const generation = ApprovedGenerationSchema.parse(JSON.parse(await readFile(specFilePath(specName), 'utf-8')));
+    const files = renderGeneration(generation);
     const written = await writeRenderedFiles(files, APP_ROOT);
     res.json({ written });
   } catch (err) {

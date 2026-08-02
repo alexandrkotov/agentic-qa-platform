@@ -44,10 +44,10 @@ export function splitByBudget(
   for (const group of grouping.groups) {
     const chunks = chunk(group.scenarioNames, maxScenariosPerGroup);
     if (chunks.length === 1) {
-      renderGroups.push({ key: group.key, scenarioNames: chunks[0] });
+      renderGroups.push({ key: group.key, sourceKey: group.key, scenarioNames: chunks[0] });
     } else {
       chunks.forEach((scenarioNames, i) => {
-        renderGroups.push({ key: `${group.key}-${i + 1}`, scenarioNames });
+        renderGroups.push({ key: `${group.key}-${i + 1}`, sourceKey: group.key, scenarioNames });
       });
     }
   }
@@ -60,7 +60,7 @@ export function splitByBudget(
     const chunks = chunk(grouping.ungrouped, maxScenariosPerGroup);
     chunks.forEach((scenarioNames, i) => {
       const key = chunks.length === 1 ? 'ungrouped' : `ungrouped-${i + 1}`;
-      renderGroups.push({ key, scenarioNames });
+      renderGroups.push({ key, sourceKey: 'ungrouped', scenarioNames });
     });
   }
 

@@ -36,92 +36,42 @@ export type ApprovedGrouping = z.infer<typeof ApprovedGroupingSchema>;
 
 export const RenderGroupSchema = z.object({
   key: z.string(),
+  /** The Stage 1 group's own key this render-group was split from (equal to `key` when the group wasn't split) — lets Stage 3 merge sibling render-groups back into one file per Stage 1 group, see merge.ts. */
+  sourceKey: z.string(),
   scenarioNames: z.array(z.string()).min(1),
 });
 export type RenderGroup = z.infer<typeof RenderGroupSchema>;
 
 // ---------------------------------------------------------------------------
-// Stage 2 — structured scenario spec (LLM, spec.ts)
+// Stage 2 — freeform generation (LLM, spec.ts). One LLM call per render-group
+// writes the real .feature and .steps.ts content directly — no structured
+// Action/Assertion DSL, no deterministic template renderer downstream (see
+// verify.ts for the deterministic safety net that replaces that guarantee,
+// and render.ts for how these two strings become real files on disk).
 // ---------------------------------------------------------------------------
 
-const ApiActionSchema = z.object({
-  kind: z.literal('api'),
-  method: z.string(),
-  path: z.string(),
-  requestBody: z.record(z.string(), z.unknown()).nullable().optional(),
+export const GeneratedGroupSchema = z.object({
+  key: z.string(),
+  /** Copied straight from the RenderGroup that produced this — see RenderGroupSchema. */
+  sourceKey: z.string(),
+  /** Must match this render-group's own scenarioNames exactly — verified against Scenario: lines actually present in featureContent, see verify.ts. */
+  scenarioNames: z.array(z.string()).min(1),
+  featureContent: z.string().min(1),
+  stepsContent: z.string().min(1),
 });
+export type GeneratedGroup = z.infer<typeof GeneratedGroupSchema>;
 
-const UiActionSchema = z.object({
-  kind: z.literal('ui'),
-  /** Accessibility role, e.g. "textbox", "button", "combobox" — matches Playwright's getByRole. */
-  role: z.string(),
-  /** Accessible name / label text — matches Playwright's getByLabel or getByRole's name option. */
-  label: z.string(),
-  route: z.string().optional(),
-  value: z.string().optional(),
-  /** Distinguishing visible text of the specific row/card to act within, when the page shows more than one (e.g. an order id) — omit on pages with only one instance of the target. */
-  scope: z.string().optional(),
-});
-
-const ActionSchema = z.discriminatedUnion('kind', [ApiActionSchema, UiActionSchema]);
-export type Action = z.infer<typeof ActionSchema>;
-
-const AssertionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('status_code'), statusCode: z.number() }),
-  z.object({ kind: z.literal('body_field'), field: z.string(), expected: z.unknown() }),
-  z.object({ kind: z.literal('error_message'), matches: z.string() }),
-  z.object({
-    kind: z.literal('db_row'),
-    table: z.string(),
-    where: z.record(z.string(), z.unknown()),
-    expectedFields: z.record(z.string(), z.unknown()),
-  }),
-  z.object({
-    kind: z.literal('ui_text'),
-    role: z.string(),
-    label: z.string(),
-    expectedText: z.string(),
-    scope: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('ui_visible'),
-    role: z.string(),
-    label: z.string(),
-    visible: z.boolean(),
-    scope: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('kafka_message'),
-    topic: z.string(),
-    expectedFields: z.record(z.string(), z.unknown()),
-  }),
-]);
-export type Assertion = z.infer<typeof AssertionSchema>;
-
-export const ScenarioSpecSchema = z.object({
-  /** Must match a testScenarios[].name from the source report verbatim — this is how corrections.ts and templates key back to it. */
-  scenarioName: z.string(),
-  group: z.string(),
-  type: z.string(),
-  given: z.array(ActionSchema),
-  when: ActionSchema,
-  then: z.array(AssertionSchema).min(1),
-  /** Set instead of a guessed assertion when the report itself is genuinely uncertain about the expected behavior — mirrors today's generate.ts rule 5. */
-  unconfirmed: z.string().nullable().optional(),
-});
-export type ScenarioSpec = z.infer<typeof ScenarioSpecSchema>;
-
-export const ProposedSpecSchema = z.object({
+export const ProposedGenerationSchema = z.object({
   generatedAt: z.string(),
   sourceGroupingPath: z.string(),
-  scenarios: z.array(ScenarioSpecSchema).min(1),
+  groups: z.array(GeneratedGroupSchema).min(1),
 });
-export type ProposedSpec = z.infer<typeof ProposedSpecSchema>;
+export type ProposedGeneration = z.infer<typeof ProposedGenerationSchema>;
 
-export const ApprovedSpecSchema = ProposedSpecSchema.extend({
+export const ApprovedGenerationSchema = ProposedGenerationSchema.extend({
   approvedAt: z.string(),
 });
-export type ApprovedSpec = z.infer<typeof ApprovedSpecSchema>;
+export type ApprovedGeneration = z.infer<typeof ApprovedGenerationSchema>;
 
 // ---------------------------------------------------------------------------
 // Manual scenario corrections (corrections.ts) — keyed by scenario name,
