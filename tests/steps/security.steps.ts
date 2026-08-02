@@ -10,103 +10,144 @@ let ctx: Record<string, any> = {};
 
 Before({ tags: '@security' }, async () => {
   ctx = {};
-  await ensureDbConnected();
 });
 
-When(
-  'I send a POST request to create a customer with email {string} and name {string}',
-  async ({ request }, email: string, name: string) => {
-    ctx.sqlInjectionEmail = email;
-    ctx.sqlInjectionName = name;
-    ctx.response = await request.post(`${BACKEND_URL}/customers`, {
-      data: { email, name },
-    });
-  }
-);
+// SQL Injection in customer email
 
-Then(
-  'the customer creation response should indicate success or validation error',
-  async () => {
-    const status = ctx.response.status();
-    // Should either succeed (201) or fail with validation (400) - not a 500 server error from injection
-    expect([200, 201, 400]).toContain(status);
-  }
-);
+Given('I attempt to create a customer with SQL injection in the email field', async ({ request }) => {
+  await ensureDbConnected();
+  
+  // Store initial customer count to verify no unintended data manipulation
+  const initialCountResult = await db.query('SELECT COUNT(*) as count FROM "Customer"');
+  ctx.initialCustomerCount = parseInt(initialCountResult.rows[0].count, 10);
+  
+  // Classic SQL injection payload attempting to drop table or manipulate data
+  ctx.sqlInjectionEmail = `test${Date.now()}@example.com'; DROP TABLE "Customer"; --`;
+  ctx.customerName = `SQLi Test ${Date.now()}`;
+  
+  ctx.requestPayload = {
+    email: ctx.sqlInjectionEmail,
+    name: ctx.customerName
+  };
+});
 
-Then('the Customer table should still exist in the database', async () => {
-  const result = await db.query(
-    `SELECT EXISTS (
+When('I submit the customer creation request', async ({ request }) => {
+  ctx.response = await request.post(BACKEND_URL + '/customers', {
+    data: ctx.requestPayload
+  });
+  ctx.responseStatus = ctx.response.status();
+  try {
+    ctx.responseBody = await ctx.response.json();
+  } catch {
+    ctx.responseBody = null;
+  }
+});
+
+Then('the customer creation should not execute arbitrary SQL', async () => {
+  await ensureDbConnected();
+  
+  // Verify the Customer table still exists and wasn't dropped
+  const tableCheck = await db.query(`
+    SELECT EXISTS (
       SELECT FROM information_schema.tables 
       WHERE table_name = 'Customer'
-    ) AS table_exists`
-  );
-  expect(result.rows[0].table_exists).toBe(true);
+    ) as exists
+  `);
+  expect(tableCheck.rows[0].exists).toBe(true);
+  
+  // Verify no unexpected data manipulation occurred
+  const currentCountResult = await db.query('SELECT COUNT(*) as count FROM "Customer"');
+  const currentCount = parseInt(currentCountResult.rows[0].count, 10);
+  
+  // Count should either be the same (if rejected) or increased by exactly 1 (if sanitized and inserted)
+  const countDiff = currentCount - ctx.initialCustomerCount;
+  expect(countDiff).toBeGreaterThanOrEqual(0);
+  expect(countDiff).toBeLessThanOrEqual(1);
 });
 
-Then(
-  'no SQL injection should have affected the database integrity',
-  async () => {
-    // Verify we can still query the Customer table normally
-    const result = await db.query('SELECT COUNT(*) as count FROM "Customer"');
-    expect(Number(result.rows[0].count)).toBeGreaterThanOrEqual(0);
+Then('the request should either fail validation or create a customer with the literal injection string', async () => {
+  await ensureDbConnected();
+  
+  if (ctx.responseStatus >= 200 && ctx.responseStatus < 300) {
+    // If the request succeeded, verify the injection string was stored literally (sanitized)
+    const result = await db.query(
+      'SELECT email FROM "Customer" WHERE name = $1',
+      [ctx.customerName]
+    );
+    expect(result.rows.length).toBe(1);
+    // The email should contain the literal injection characters, stored as data not executed as SQL
+    expect(result.rows[0].email).toContain("'");
+    expect(result.rows[0].email).toContain('DROP');
+  } else {
+    // If rejected, that's also acceptable security behavior
+    expect(ctx.responseStatus).toBeGreaterThanOrEqual(400);
+  }
+});
 
-    // If the customer was created, verify the email was stored as a literal string, not executed
-    if (ctx.response.status() === 201 || ctx.response.status() === 200) {
-      const responseBody = await ctx.response.json();
-      if (responseBody.id) {
-        const customerResult = await db.query(
-          'SELECT email FROM "Customer" WHERE id = $1',
-          [responseBody.id]
-        );
-        if (customerResult.rows.length > 0) {
-          // The malicious string should be stored literally, not executed
-          expect(customerResult.rows[0].email).toBe(ctx.sqlInjectionEmail);
-        }
-      }
+// XSS in product name
+
+Given('I create a product with XSS payload in the name field', async ({ request }) => {
+  ctx.xssPayload = `<script>window.xssExecuted=true;</script>Product${Date.now()}`;
+  ctx.productPrice = 19.99;
+  
+  const response = await request.post(BACKEND_URL + '/products', {
+    data: {
+      name: ctx.xssPayload,
+      price: ctx.productPrice
     }
-  }
-);
-
-When(
-  'I send a POST request to create a product named {string} with price {float}',
-  async ({ request }, name: string, price: number) => {
-    ctx.xssProductName = name;
-    ctx.response = await request.post(`${BACKEND_URL}/products`, {
-      data: { name, price },
-    });
-  }
-);
-
-Then('the product creation response should indicate success', async () => {
-  const status = ctx.response.status();
-  expect([200, 201]).toContain(status);
-  const responseBody = await ctx.response.json();
-  ctx.productId = responseBody.id;
+  });
+  
+  expect(response.status()).toBe(201);
+  const body = await response.json();
+  ctx.productId = body.id;
 });
 
-When('I navigate to the products page', async ({ page }) => {
+When('I view the products page in the browser', async ({ page }) => {
+  // Set up a flag to detect if any script executes
+  await page.addInitScript(() => {
+    (window as any).xssExecuted = false;
+  });
+  
   await page.goto('/products');
+  
+  // Wait for the product table to load
+  await page.waitForSelector('table');
+  
+  // Store page content for assertion
+  ctx.pageContent = await page.content();
 });
 
-Then(
-  'the product name should be properly escaped in the UI and not execute script',
-  async ({ page }) => {
-    // Check that the XSS payload is displayed as text, not executed
-    // The script tag should be visible as text content, not rendered as an actual script
-    const productNameCell = page.locator('table').getByText(ctx.xssProductName);
-    await expect(productNameCell).toBeVisible();
+Then('the XSS payload should be escaped and displayed as text', async ({ page }) => {
+  // The XSS payload should be visible as text, not interpreted as HTML
+  const productNameCell = page.locator('table').getByText(ctx.xssPayload.replace(/<[^>]*>/g, ''));
+  
+  // Check that the script tags are escaped/displayed as text or stripped
+  // The actual product name text should be visible
+  const pageText = await page.textContent('body');
+  
+  // Either the script tags are escaped (shown as text) or stripped out
+  // In either case, the non-script part of the name should be visible
+  const productIdentifier = `Product${ctx.xssPayload.match(/Product(\d+)/)?.[1] || ''}`;
+  expect(pageText).toContain('Product');
+  
+  // Verify that <script> is not present as actual HTML tags in the DOM
+  // by checking if the raw HTML contains escaped versions or the text is stripped
+  const hasUnescapedScript = ctx.pageContent.includes('<script>window.xssExecuted');
+  const hasEscapedScript = ctx.pageContent.includes('&lt;script&gt;') || ctx.pageContent.includes('&lt;script');
+  const hasStrippedContent = !ctx.pageContent.includes('<script>window.xssExecuted');
+  
+  // Either the script is escaped or stripped - both are valid XSS protections
+  expect(hasEscapedScript || hasStrippedContent).toBe(true);
+});
 
-    // Verify the raw HTML doesn't contain an unescaped script tag
-    const cellHtml = await productNameCell.innerHTML();
-    // The script should be HTML-escaped (showing &lt;script&gt; or similar) or displayed as text
-    // It should NOT contain an actual executable <script> tag in the DOM
-    expect(cellHtml).not.toMatch(/<script[^>]*>alert\('XSS'\)<\/script>/i);
-
-    // Verify no alert dialog appeared (Playwright would throw if an unexpected dialog appeared)
-    // Also verify the content is present as escaped text
-    const pageContent = await page.content();
-    // The text should be present in some escaped form
-    expect(pageContent).toContain('script');
-    expect(pageContent).toContain('alert');
-  }
-);
+Then('no script should execute on the page', async ({ page }) => {
+  // Check that our XSS payload did not execute
+  const xssExecuted = await page.evaluate(() => (window as any).xssExecuted);
+  expect(xssExecuted).toBe(false);
+  
+  // Additional check: try to find if there are any script execution side effects
+  const alertTriggered = await page.evaluate(() => {
+    return (window as any).alertTriggered === true;
+  });
+  expect(alertTriggered).toBe(false);
+});

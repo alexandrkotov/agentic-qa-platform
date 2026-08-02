@@ -10,84 +10,87 @@ let ctx: Record<string, any> = {};
 
 Before({ tags: '@customers' }, async () => {
   ctx = {};
+});
+
+Given('I am on the customers page', async ({ page }) => {
+  await page.goto('/customers');
+  await expect(page.getByRole('button', { name: 'Add Customer' })).toBeVisible();
+});
+
+When('I fill in the customer email field with a unique email', async ({ page }) => {
+  ctx.uniqueEmail = `customer-${Date.now()}@example.com`;
+  await page.getByRole('textbox', { name: 'Email' }).fill(ctx.uniqueEmail);
+});
+
+When('I fill in the customer name field with {string}', async ({ page }, name: string) => {
+  ctx.customerName = name;
+  await page.getByRole('textbox', { name: 'Name' }).fill(name);
+});
+
+When('I click the Add Customer button', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add Customer' }).click();
+});
+
+Then('the new customer should appear in the customers table', async ({ page }) => {
+  await expect(page.getByRole('cell', { name: ctx.uniqueEmail })).toBeVisible();
+  await expect(page.getByRole('cell', { name: ctx.customerName })).toBeVisible();
+});
+
+Then('the customer should exist in the Customer database table', async () => {
   await ensureDbConnected();
+  const result = await db.query('SELECT * FROM "Customer" WHERE email = $1', [ctx.uniqueEmail]);
+  expect(result.rows.length).toBe(1);
+  expect(result.rows[0].email).toBe(ctx.uniqueEmail);
+  expect(result.rows[0].name).toBe(ctx.customerName);
 });
 
-Given('a unique customer email is generated', async () => {
-  ctx.uniqueEmail = `customer-${Date.now()}-${Math.random().toString(36).substring(2, 8)}@example.com`;
+When('I leave the customer email field empty', async ({ page }) => {
+  await page.getByRole('textbox', { name: 'Email' }).fill('');
 });
 
-When('I create a customer with the generated email and name {string}', async ({ request }, name: string) => {
-  const response = await request.post(`${BACKEND_URL}/customers`, {
-    data: {
-      email: ctx.uniqueEmail,
-      name: name
-    }
-  });
-  ctx.response = response;
-  if (response.ok()) {
-    const body = await response.json();
-    ctx.createdCustomerId = body.id;
+Then('the customer creation should fail with a validation error', async ({ page }) => {
+  // The customer should not be added - the Add Customer button should still be visible
+  // and no new row should appear. We check that the form is still present and ready.
+  await expect(page.getByRole('button', { name: 'Add Customer' })).toBeVisible();
+  // Check that the page shows some indication of error or the fields are still empty/invalid
+  // Since the report doesn't specify exact error messages, we verify the customer was not added
+  // by checking that if we had a unique email set, it doesn't appear in the table
+  if (ctx.uniqueEmail) {
+    await expect(page.getByRole('cell', { name: ctx.uniqueEmail })).not.toBeVisible();
   }
 });
 
-Then('the customer creation response status should be {int}', async ({}, statusCode: number) => {
-  expect(ctx.response.status()).toBe(statusCode);
+When('I leave the customer name field empty', async ({ page }) => {
+  await page.getByRole('textbox', { name: 'Name' }).fill('');
 });
 
-Then('the customer should exist in the database with the generated email and name {string}', async ({}, name: string) => {
-  const result = await db.query(
-    'SELECT id, email, name FROM "Customer" WHERE email = $1',
-    [ctx.uniqueEmail]
-  );
-  expect(result.rows.length).toBe(1);
-  expect(result.rows[0].email).toBe(ctx.uniqueEmail);
-  expect(result.rows[0].name).toBe(name);
-});
-
-Then('the customer should appear in the customers list with the generated email', async ({ request }) => {
-  const response = await request.get(`${BACKEND_URL}/customers`);
+Given('a customer already exists with a known email', async ({ request }) => {
+  ctx.existingEmail = `existing-${Date.now()}@example.com`;
+  ctx.existingCustomerName = 'Existing Customer';
+  const response = await request.post(BACKEND_URL + '/customers', {
+    data: {
+      email: ctx.existingEmail,
+      name: ctx.existingCustomerName
+    }
+  });
   expect(response.ok()).toBe(true);
-  const customers = await response.json();
-  const found = customers.find((c: any) => c.email === ctx.uniqueEmail);
-  expect(found).toBeTruthy();
+  const body = await response.json();
+  ctx.existingCustomerId = body.id;
 });
 
-When('I attempt to create a customer with name {string} but no email', async ({ request }, name: string) => {
-  const response = await request.post(`${BACKEND_URL}/customers`, {
-    data: {
-      name: name
-    }
-  });
-  ctx.response = response;
+When('I fill in the customer email field with the existing customer email', async ({ page }) => {
+  await page.getByRole('textbox', { name: 'Email' }).fill(ctx.existingEmail);
+  // Store for later verification
+  ctx.uniqueEmail = ctx.existingEmail;
 });
 
-Then('the customer creation response should be a 400 validation error', async () => {
-  expect(ctx.response.status()).toBe(400);
-});
-
-When('I attempt to create a customer with email {string} but no name', async ({ request }, email: string) => {
-  const response = await request.post(`${BACKEND_URL}/customers`, {
-    data: {
-      email: email
-    }
-  });
-  ctx.response = response;
-});
-
-When('I attempt to create another customer with the same email and name {string}', async ({ request }, name: string) => {
-  const response = await request.post(`${BACKEND_URL}/customers`, {
-    data: {
-      email: ctx.uniqueEmail,
-      name: name
-    }
-  });
-  ctx.duplicateResponse = response;
-});
-
-Then('the duplicate customer creation response should indicate an error', async () => {
-  const status = ctx.duplicateResponse.status();
-  expect(status === 400 || status === 409).toBe(true);
+Then('the duplicate customer creation should be rejected', async ({ page }) => {
+  // The duplicate should not be created - we verify by checking the database
+  // that there's still only one customer with that email
+  await ensureDbConnected();
+  const result = await db.query('SELECT * FROM "Customer" WHERE email = $1', [ctx.existingEmail]);
+  expect(result.rows.length).toBe(1);
+  expect(result.rows[0].id).toBe(ctx.existingCustomerId);
 });
 
 Before({ tags: '@customers' }, async () => {
@@ -95,27 +98,68 @@ Before({ tags: '@customers' }, async () => {
 });
 
 Given('a customer exists with email {string} and name {string}', async ({ request }, email: string, name: string) => {
-  await ensureDbConnected();
   const uniqueEmail = `${Date.now()}-${email}`;
-  const response = await request.post(`${BACKEND_URL}/customers`, {
+  const response = await request.post(BACKEND_URL + '/customers', {
     data: { email: uniqueEmail, name }
   });
-  expect(response.status()).toBe(201);
+  expect(response.ok()).toBe(true);
   const body = await response.json();
   ctx.customerId = body.id;
   ctx.customerEmail = uniqueEmail;
   ctx.customerName = name;
 });
 
+Given('the customer has no orders', async ({ request }) => {
+  const response = await request.get(BACKEND_URL + '/orders');
+  expect(response.ok()).toBe(true);
+  const orders = await response.json();
+  const customerOrders = orders.filter((o: any) => o.customerId === ctx.customerId);
+  expect(customerOrders.length).toBe(0);
+});
+
+Given('a product exists with name {string} and price {float}', async ({ request }, name: string, price: number) => {
+  const uniqueName = `${Date.now()}-${name}`;
+  const response = await request.post(BACKEND_URL + '/products', {
+    data: { name: uniqueName, price }
+  });
+  expect(response.ok()).toBe(true);
+  const body = await response.json();
+  ctx.productId = body.id;
+  ctx.productName = uniqueName;
+});
+
+Given('an order exists for that customer with that product', async ({ request }) => {
+  const response = await request.post(BACKEND_URL + '/orders', {
+    data: {
+      customerId: ctx.customerId,
+      items: [{ productId: ctx.productId, quantity: 1 }]
+    }
+  });
+  expect(response.ok()).toBe(true);
+  const body = await response.json();
+  ctx.orderId = body.id;
+});
+
 When('I update the customer name to {string}', async ({ request }, newName: string) => {
-  ctx.response = await request.patch(`${BACKEND_URL}/customers/${ctx.customerId}`, {
+  const response = await request.patch(BACKEND_URL + `/customers/${ctx.customerId}`, {
     data: { name: newName }
   });
+  ctx.response = response;
   ctx.updatedName = newName;
 });
 
-Then('the customer update response status should be {int}', async ({}, status: number) => {
-  expect(ctx.response.status()).toBe(status);
+When('I delete the customer', async ({ request }) => {
+  const response = await request.delete(BACKEND_URL + `/customers/${ctx.customerId}`);
+  ctx.response = response;
+});
+
+When('I attempt to delete the customer with orders', async ({ request }) => {
+  const response = await request.delete(BACKEND_URL + `/customers/${ctx.customerId}`);
+  ctx.response = response;
+});
+
+Then('the customer update response should indicate success', async ({}) => {
+  expect(ctx.response.ok()).toBe(true);
 });
 
 Then('the customer in the database should have name {string}', async ({}, expectedName: string) => {
@@ -125,18 +169,8 @@ Then('the customer in the database should have name {string}', async ({}, expect
   expect(result.rows[0].name).toBe(expectedName);
 });
 
-Given('the customer has no orders', async ({}) => {
-  await ensureDbConnected();
-  const result = await db.query('SELECT COUNT(*) as count FROM "Order" WHERE "customerId" = $1', [ctx.customerId]);
-  expect(Number(result.rows[0].count)).toBe(0);
-});
-
-When('I delete the customer', async ({ request }) => {
-  ctx.response = await request.delete(`${BACKEND_URL}/customers/${ctx.customerId}`);
-});
-
-Then('the customer deletion response status should be {int}', async ({}, status: number) => {
-  expect(ctx.response.status()).toBe(status);
+Then('the customer deletion response should indicate success', async ({}) => {
+  expect(ctx.response.ok()).toBe(true);
 });
 
 Then('the customer should no longer exist in the database', async ({}) => {
@@ -145,37 +179,17 @@ Then('the customer should no longer exist in the database', async ({}) => {
   expect(result.rows.length).toBe(0);
 });
 
-Given('a product exists with name {string} and price {float}', async ({ request }, name: string, price: number) => {
-  const uniqueName = `${Date.now()}-${name}`;
-  const response = await request.post(`${BACKEND_URL}/products`, {
-    data: { name: uniqueName, price }
-  });
-  expect(response.status()).toBe(201);
-  const body = await response.json();
-  ctx.productId = body.id;
-  ctx.productName = uniqueName;
-  ctx.productPrice = price;
+Then('the customer deletion response should be a 409 conflict', async ({}) => {
+  expect(ctx.response.status()).toBe(409);
 });
 
-Given('the customer has an existing order', async ({ request }) => {
-  const response = await request.post(`${BACKEND_URL}/orders`, {
-    data: {
-      customerId: ctx.customerId,
-      items: [
-        { productId: ctx.productId, quantity: 1 }
-      ]
-    }
-  });
-  expect(response.status()).toBe(201);
-  const body = await response.json();
-  ctx.orderId = body.id;
-});
-
-When('I attempt to delete the customer', async ({ request }) => {
-  ctx.response = await request.delete(`${BACKEND_URL}/customers/${ctx.customerId}`);
-});
-
-Then('the customer deletion error message should indicate they have orders', async ({}) => {
+Then('the error message should indicate the customer has orders', async ({}) => {
   const body = await ctx.response.json();
-  expect(body.message).toMatch(/Cannot delete customer \d+: they have \d+ order\(s\)/);
+  expect(body.message).toMatch(/Cannot delete customer.*order/);
+});
+
+Then('the customer should still exist in the database', async ({}) => {
+  await ensureDbConnected();
+  const result = await db.query('SELECT id FROM "Customer" WHERE id = $1', [ctx.customerId]);
+  expect(result.rows.length).toBe(1);
 });

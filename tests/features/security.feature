@@ -2,14 +2,14 @@ Feature: security
 
   @security @security
   Scenario: SQL Injection in customer email
-    When I send a POST request to create a customer with email "'; DROP TABLE Customer; --" and name "SQL Injection Test"
-    Then the customer creation response should indicate success or validation error
-    And the Customer table should still exist in the database
-    And no SQL injection should have affected the database integrity
+    Given I attempt to create a customer with SQL injection in the email field
+    When I submit the customer creation request
+    Then the customer creation should not execute arbitrary SQL
+    And the request should either fail validation or create a customer with the literal injection string
 
   @security @security
   Scenario: XSS in product name
-    When I send a POST request to create a product named "<script>alert('XSS')</script>" with price 19.99
-    Then the product creation response should indicate success
-    When I navigate to the products page
-    Then the product name should be properly escaped in the UI and not execute script
+    Given I create a product with XSS payload in the name field
+    When I view the products page in the browser
+    Then the XSS payload should be escaped and displayed as text
+    And no script should execute on the page

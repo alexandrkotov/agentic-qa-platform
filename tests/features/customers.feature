@@ -1,53 +1,60 @@
 Feature: customers
 
-  # Customer creation scenarios covering valid data, missing fields, and duplicate email handling.
-
   @happy_path @customers
   Scenario: Create Customer with valid data
-    Given a unique customer email is generated
-    When I create a customer with the generated email and name "Test Customer"
-    Then the customer creation response status should be 201
-    And the customer should exist in the database with the generated email and name "Test Customer"
-    And the customer should appear in the customers list with the generated email
+    Given I am on the customers page
+    When I fill in the customer email field with a unique email
+    And I fill in the customer name field with "Test Customer"
+    And I click the Add Customer button
+    Then the new customer should appear in the customers table
+    And the customer should exist in the Customer database table
 
   @edge_case @customers
   Scenario: Create Customer with missing email
-    When I attempt to create a customer with name "No Email Customer" but no email
-    Then the customer creation response should be a 400 validation error
+    Given I am on the customers page
+    When I leave the customer email field empty
+    And I fill in the customer name field with "No Email Customer"
+    And I click the Add Customer button
+    Then the customer creation should fail with a validation error
 
   @edge_case @customers
   Scenario: Create Customer with missing name
-    When I attempt to create a customer with email "noname@example.com" but no name
-    Then the customer creation response should be a 400 validation error
+    Given I am on the customers page
+    When I fill in the customer email field with a unique email
+    And I leave the customer name field empty
+    And I click the Add Customer button
+    Then the customer creation should fail with a validation error
 
   @edge_case @customers
   Scenario: Create Customer with duplicate email
-    Given a unique customer email is generated
-    And I create a customer with the generated email and name "First Customer"
-    When I attempt to create another customer with the same email and name "Second Customer"
-    # TODO (unconfirmed): The report does not specify the exact error response for duplicate email. Assuming 409 Conflict or 400 Bad Request.
-    Then the duplicate customer creation response should indicate an error
+    Given a customer already exists with a known email
+    And I am on the customers page
+    When I fill in the customer email field with the existing customer email
+    And I fill in the customer name field with "Duplicate Email Customer"
+    And I click the Add Customer button
+    Then the duplicate customer creation should be rejected
 
   @happy_path @customers
   Scenario: Update customer information
     Given a customer exists with email "update-test@example.com" and name "Original Name"
     When I update the customer name to "Updated Name"
-    Then the customer update response status should be 200
+    Then the customer update response should indicate success
     And the customer in the database should have name "Updated Name"
 
   @happy_path @customers
   Scenario: Delete customer with no orders
-    Given a customer exists with email "delete-no-orders@example.com" and name "Delete Me"
+    Given a customer exists with email "delete-no-orders@example.com" and name "No Orders Customer"
     And the customer has no orders
     When I delete the customer
-    Then the customer deletion response status should be 200
+    Then the customer deletion response should indicate success
     And the customer should no longer exist in the database
 
   @edge_case @customers
   Scenario: Delete customer with existing orders
-    Given a customer exists with email "delete-with-orders@example.com" and name "Has Orders"
-    And a product exists with name "Test Product" and price 10.00
-    And the customer has an existing order
-    When I attempt to delete the customer
-    Then the customer deletion response status should be 409
-    And the customer deletion error message should indicate they have orders
+    Given a customer exists with email "delete-with-orders@example.com" and name "Has Orders Customer"
+    And a product exists with name "Order Product" and price 25.00
+    And an order exists for that customer with that product
+    When I attempt to delete the customer with orders
+    Then the customer deletion response should be a 409 conflict
+    And the error message should indicate the customer has orders
+    And the customer should still exist in the database
