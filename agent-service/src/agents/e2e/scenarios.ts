@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export interface E2EScenarioConfig {
@@ -10,22 +10,28 @@ export interface E2EScenarioConfig {
   tags: string[]; // e.g. ['@happy_path', '@customers'] — used by resolveScenarioSelectors()
 }
 
-/** Maps a `.feature` file's basename (no extension) to the step-definition
- *  file(s) that implement its steps. NOT derivable from the .feature file
- *  alone: orders-items/orders-status/orders-validation all rely on shared
- *  `Given` steps extracted into orders-common.steps.ts, and there is no
- *  orders-common.feature to infer that relationship from. Keep this map in
- *  sync by hand whenever a domain or a shared steps file is added/removed —
- *  a missing entry only drops that domain's scenarios (see discoverScenarios
- *  below), it does not fail the whole run. */
-const DOMAIN_STEPS_FILES: Record<string, string[]> = {
-  customers: ['steps/customers.steps.ts'],
-  products: ['steps/products.steps.ts'],
-  security: ['steps/security.steps.ts'],
-  'orders-items': ['steps/orders-items.steps.ts', 'steps/orders-common.steps.ts'],
-  'orders-status': ['steps/orders-status.steps.ts', 'steps/orders-common.steps.ts'],
-  'orders-validation': ['steps/orders-validation.steps.ts', 'steps/orders-common.steps.ts'],
-};
+/** Overrides for domains where a `.feature` file's steps DON'T live in the
+ *  single matching `steps/<domain>.steps.ts` — not derivable from the
+ *  .feature file alone, so this has to be hand-maintained for exactly the
+ *  domains where it's true. Empty today: the current suite is always the
+ *  simple 1:1 case (one .feature, one matching .steps.ts) — but earlier
+ *  suite layouts split large domains across several .feature files sharing
+ *  one common steps file (e.g. orders-items/orders-status/orders-validation
+ *  all reading from orders-common.steps.ts, before the Generate Agent
+ *  redesign merged everything back into single per-domain files), and the
+ *  Generate Agent's own budget-splitting could in principle produce that
+ *  shape again. Add an entry here if/when it does — discoverScenarios below
+ *  falls back to the 1:1 default otherwise. */
+const DOMAIN_STEPS_FILES_OVERRIDES: Record<string, string[]> = {};
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Verified empirically against all 35 real scenario titles: zero collisions.
  *  Used as-is to derive `id` from `title` — do not change without re-checking
@@ -104,9 +110,10 @@ function parseFeatureContent(content: string, featurePath: string): ParsedFeatur
 
 /**
  * Discovers every scenario by parsing the .feature files under
- * `<testsRoot>/features/` directly — no hand-maintained list. Called fresh
- * on every invocation (cheap: 6 small text files), so it can never go stale
- * relative to the actual suite.
+ * `<testsRoot>/features/` directly, and defaults each one's steps file to
+ * the matching `steps/<domain>.steps.ts` — no hand-maintained list for the
+ * common case. Called fresh on every invocation (cheap: a handful of small
+ * text files), so it can never go stale relative to the actual suite.
  */
 export async function discoverScenarios(testsRoot: string): Promise<E2EScenarioConfig[]> {
   const featuresDir = join(testsRoot, 'features');
@@ -123,10 +130,12 @@ export async function discoverScenarios(testsRoot: string): Promise<E2EScenarioC
     const parsed = parseFeatureContent(content, featurePath);
     if (!parsed) continue;
 
-    const stepsPaths = DOMAIN_STEPS_FILES[domain];
-    if (!stepsPaths) {
+    const defaultStepsPath = `steps/${domain}.steps.ts`;
+    const override = DOMAIN_STEPS_FILES_OVERRIDES[domain];
+    const stepsPaths = override ?? [defaultStepsPath];
+    if (!override && !(await fileExists(join(testsRoot, defaultStepsPath)))) {
       console.warn(
-        `[discoverScenarios] ${featurePath}: no entry in DOMAIN_STEPS_FILES for domain "${domain}" — skipping its ${parsed.scenarios.length} scenario(s). Add an entry to DOMAIN_STEPS_FILES to include them.`,
+        `[discoverScenarios] ${featurePath}: no "${defaultStepsPath}" and no entry in DOMAIN_STEPS_FILES_OVERRIDES for domain "${domain}" — skipping its ${parsed.scenarios.length} scenario(s). Add an override if this domain's steps live somewhere else.`,
       );
       continue;
     }
@@ -145,7 +154,7 @@ export async function discoverScenarios(testsRoot: string): Promise<E2EScenarioC
 
   if (scenarios.length === 0) {
     throw new Error(
-      `[discoverScenarios] discovered 0 scenarios under ${featuresDir} — check testsRoot is correct and DOMAIN_STEPS_FILES isn't missing every domain.`,
+      `[discoverScenarios] discovered 0 scenarios under ${featuresDir} — check testsRoot is correct and every domain's steps.ts file actually exists.`,
     );
   }
 
