@@ -33,12 +33,39 @@ function sanitize(value) {
   return value;
 }
 
+// playwright-bdd's JSON formatter marks every Before/After hook step
+// `hidden: true` and never sets its own `name` field at all (the hook's
+// registered `name:` option, if any, only reaches a *different* Cucumber
+// Messages type this JSON formatter doesn't emit) — the HTML report always
+// rendered a bare, unlabeled "Before"/"After" regardless of what the hook
+// actually does. The report template does render `step.name` right next to
+// `step.keyword` for every step generically, so injecting one here works;
+// there's just nothing upstream to inject automatically. Hardcoded because
+// today there's exactly one hook per keyword across the whole suite (every
+// `Before` resets `ctx`; the only `After` is orders.steps.ts's Kafka
+// consumer disconnect) — extend this map if that ever stops being true.
+const HIDDEN_HOOK_NAMES = { Before: 'Reset test context', After: 'Close Kafka consumer connection' };
+
+function labelHiddenHooks(report) {
+  for (const feature of report) {
+    for (const element of feature.elements ?? []) {
+      for (const step of element.steps ?? []) {
+        if (step.hidden && HIDDEN_HOOK_NAMES[step.keyword]) {
+          step.name = HIDDEN_HOOK_NAMES[step.keyword];
+        }
+      }
+    }
+  }
+  return report;
+}
+
 await rm(SANITIZED_JSON_DIR, { recursive: true, force: true });
 await mkdir(SANITIZED_JSON_DIR, { recursive: true });
 for (const file of await readdir(RAW_JSON_DIR)) {
   if (!file.endsWith('.json')) continue;
   const raw = JSON.parse(await readFile(join(RAW_JSON_DIR, file), 'utf-8'));
-  await writeFile(join(SANITIZED_JSON_DIR, file), JSON.stringify(sanitize(raw)));
+  const labeled = labelHiddenHooks(raw);
+  await writeFile(join(SANITIZED_JSON_DIR, file), JSON.stringify(sanitize(labeled)));
 }
 
 // Reads the Cucumber-format JSON written by playwright-bdd's cucumberReporter('json', ...)
