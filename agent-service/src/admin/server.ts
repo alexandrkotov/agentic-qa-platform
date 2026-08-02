@@ -187,6 +187,24 @@ app.post('/api/descriptors', async (req, res) => {
   }
 });
 
+app.delete('/api/descriptors/:name', async (req, res) => {
+  try {
+    await unlink(descriptorPath(req.params.name));
+    // Best-effort — a corrections sidecar (see corrections.ts) only exists
+    // once Generate has run against this descriptor at least once, and
+    // leaving it behind would silently reattach to a same-named descriptor
+    // created later.
+    await unlink(resolveDescriptorFile(req.params.name, '.corrections.json')).catch(() => {});
+    res.status(204).end();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No descriptor named "${req.params.name}"` });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Discovery — runs the same agent `pnpm discovery` does, from a descriptor
 // already sitting in descriptors/. A real, costed, long-running Claude call
