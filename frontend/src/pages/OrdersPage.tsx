@@ -156,8 +156,9 @@ export function OrdersPage() {
                 <h2 className="font-semibold text-slate-300">New Order</h2>
 
                 <div>
-                    <label className="text-sm text-slate-400 block mb-1">Customer</label>
+                    <label htmlFor="new-order-customer" className="text-sm text-slate-400 block mb-1">Customer</label>
                     <select
+                        id="new-order-customer"
                         value={customerId}
                         onChange={(e) => setCustomerId(e.target.value)}
                         required
@@ -177,6 +178,7 @@ export function OrdersPage() {
                     {items.map((item, i) => (
                         <div key={i} className="flex gap-2">
                             <select
+                                aria-label="Product"
                                 value={item.productId}
                                 onChange={(e) => updateItem(i, 'productId', e.target.value)}
                                 required
@@ -192,6 +194,7 @@ export function OrdersPage() {
                             <input
                                 type="number"
                                 min="1"
+                                aria-label="Quantity"
                                 value={item.quantity}
                                 onChange={(e) => updateItem(i, 'quantity', e.target.value)}
                                 required

@@ -14,6 +14,25 @@ services:
       DATABASE_URL: postgres://user:pass@db:5432/testdb
       KAFKA_BROKERS: kafka:9092
       KAFKAJS_NO_PARTITIONER_WARNING: "1"
+    # Extra DNS name for this same container, alongside "app" — "app" is
+    # also a real, Google-owned top-level domain with mandatory HTTPS
+    # (HSTS-preloaded at the registry level), and Chrome silently applies
+    # that same enforcement to a bare hostname "app" even though it's just
+    # this compose network's internal service name, not a real internet
+    # domain. Confirmed live: the headless browser the Playwright suite
+    # drives (frontend/src/api/client.ts's own fetch calls, made from
+    # INSIDE that browser) got net::ERR_SSL_PROTOCOL_ERROR trying to reach
+    # "http://app:3000" — Chrome attempted a silent HTTPS upgrade with no
+    # fallback, purely because of the hostname string, and the exact same
+    # thing reproduced for "dev" (also a real Google gTLD) but never for
+    # any other name. Node-side HTTP clients (Playwright's own `request`
+    # fixture, curl, etc.) are unaffected — this is a browser-only quirk —
+    # so BACKEND_URL for those stays "http://app:3000" unchanged; only the
+    # browser-executed frontend code needs the alias.
+    networks:
+      default:
+        aliases:
+          - backend
 
   frontend:
     build: ./frontend
