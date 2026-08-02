@@ -99,10 +99,29 @@ export function extractStepDefinitionPatterns(stepsContent: string): StepPattern
   return patterns;
 }
 
+// A regex StepPattern's own `pattern` field is stored as "<source> <flags>"
+// (see extractStepDefinitionPatterns) — flags are always the last
+// whitespace-free token, but the source itself routinely contains spaces
+// (e.g. "I send a request"), so splitting on the FIRST space rather than the
+// LAST one silently truncated the source to its first word and mangled the
+// flags. Affects both actually compiling the regex and describing it in an
+// error message, so both go through this one correct split.
+function splitRegexPattern(pattern: string): { source: string; flags: string } {
+  const idx = pattern.lastIndexOf(' ');
+  return idx === -1 ? { source: pattern, flags: '' } : { source: pattern.slice(0, idx), flags: pattern.slice(idx + 1) };
+}
+
+/** Full, readable text of a step pattern for error messages — never truncate to just its first word (a prior version's `.split(' ')[0]` made every message show "I"/"a"/"the" instead of the actual pattern, useless for diagnosing a real failure). */
+function describePattern(p: StepPattern): string {
+  if (!p.isRegex) return p.pattern;
+  const { source, flags } = splitRegexPattern(p.pattern);
+  return `/${source}/${flags}`;
+}
+
 function compilePattern(p: StepPattern, registry: ParameterTypeRegistry, groupKey: string) {
   try {
     if (p.isRegex) {
-      const [source, flags] = p.pattern.split(' ');
+      const { source, flags } = splitRegexPattern(p.pattern);
       return new RegularExpression(new RegExp(source, flags), registry);
     }
     return new CucumberExpression(p.pattern, registry);
@@ -156,7 +175,7 @@ export function compileAndVerify(group: GroupToVerify, priorPatterns: Map<string
     const owner = priorPatterns.get(p.pattern);
     if (owner && owner !== group.key) {
       throw new Error(
-        `[${group.key}] Step pattern at steps.ts:${p.line} ("${p.pattern.split(' ')[0]}") collides with an identical ` +
+        `[${group.key}] Step pattern at steps.ts:${p.line} ("${describePattern(p)}") collides with an identical ` +
           `step already defined in group "${owner}" — step text is global across every .steps.ts file, not scoped per ` +
           `group, so identical wording in two groups would shadow/collide at runtime. Rephrase using this group's own ` +
           `entity vocabulary.`,
@@ -172,14 +191,14 @@ export function compileAndVerify(group: GroupToVerify, priorPatterns: Map<string
       .filter((m): m is { p: StepPattern; args: readonly Argument[] } => m.args !== null);
 
     if (matches.length === 0) {
-      const registered = defPatterns.map((p) => `"${p.pattern.split(' ')[0]}"`).join(', ');
+      const registered = defPatterns.map((p) => `"${describePattern(p)}"`).join(', ');
       throw new Error(
         `[${group.key}] Gherkin step at feature.feature:${step.line} ("${step.text}") does not match any step ` +
           `definition in the generated .steps.ts. Registered patterns: ${registered}`,
       );
     }
     if (matches.length > 1) {
-      const culprits = matches.map((m) => `"${m.p.pattern.split(' ')[0]}" (steps.ts:${m.p.line})`).join(' AND ');
+      const culprits = matches.map((m) => `"${describePattern(m.p)}" (steps.ts:${m.p.line})`).join(' AND ');
       throw new Error(
         `[${group.key}] Gherkin step at feature.feature:${step.line} ("${step.text}") matches MULTIPLE step ` +
           `definitions — ${culprits}. This is usually two step definitions with the same wording but different ` +
@@ -190,7 +209,7 @@ export function compileAndVerify(group: GroupToVerify, priorPatterns: Map<string
     const [{ p, args }] = matches;
     if (args.length !== p.declaredParamCount) {
       throw new Error(
-        `[${group.key}] Step definition at steps.ts:${p.line} ("${p.pattern.split(' ')[0]}") declares ` +
+        `[${group.key}] Step definition at steps.ts:${p.line} ("${describePattern(p)}") declares ` +
           `${p.declaredParamCount} captured parameter(s) in its handler function, but the pattern actually captures ` +
           `${args.length} for step "${step.text}" (feature.feature:${step.line}). Fix the handler's parameter list to match.`,
       );

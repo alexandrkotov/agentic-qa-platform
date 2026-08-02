@@ -4,11 +4,15 @@ import type { ApprovedGeneration } from './contract.ts';
 import { mergeGroups } from './merge.ts';
 
 // ---------------------------------------------------------------------------
-// Stage 3 — no LLM call, no templating. Stage 2 already produced the real
-// .feature and .steps.ts content per render-group (verified by verify.ts
-// before it was ever accepted); this merges any render-groups budget.ts
-// split off the same Stage 1 group back into one pair (see merge.ts) and
-// writes the result to disk, with paths derived from each merged group's
+// Stage 3 — no LLM call, no templating. Stage 2 (spec.ts's generateGeneration)
+// already merges any render-groups budget.ts split off the same Stage 1
+// group back into one real .feature/.steps.ts pair and re-verifies the
+// merged result before a human ever reviews it, so generation.groups here is
+// normally already one entry per final file. The mergeGroups() call below is
+// just a defensive no-op for that common case (every group is its own
+// singleton cluster) — real protection for a hand-assembled ApprovedGeneration
+// that skipped Stage 2's own merge (e.g. built by hand or by an older tool).
+// Writes each group's content to disk unchanged, with paths derived from its
 // key (= its sourceKey) by convention.
 // ---------------------------------------------------------------------------
 

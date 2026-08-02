@@ -79,7 +79,12 @@ export async function runGenerateSpec(
   const outPath = join(config.reportsDir, `generate-spec-proposed-${timestamp}.json`);
   await writeFile(outPath, JSON.stringify(generation, null, 2), 'utf-8');
 
-  console.log(`\n=== Generated ${generation.groups.length}/${renderGroups.length} render group(s) ===`);
+  // generation.groups is now already merged (one entry per final .feature/
+  // .steps.ts file, budget.ts-split pieces collapsed back to their sourceKey
+  // — see spec.ts's generateGeneration), so compare against the number of
+  // distinct source groups, not the (possibly larger) render-group count.
+  const totalSourceKeys = new Set(renderGroups.map((g) => g.sourceKey)).size;
+  console.log(`\n=== Generated ${generation.groups.length}/${totalSourceKeys} file(s) ===`);
   for (const g of generation.groups) {
     console.log(`  - ${g.key} (${g.scenarioNames.length} scenario(s)): ${g.scenarioNames.join(', ')}`);
   }
