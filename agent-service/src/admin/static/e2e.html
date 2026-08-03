@@ -386,7 +386,7 @@ document.getElementById('run-selected-btn').onclick = async () => {
   const btn = document.getElementById('run-selected-btn');
   const statusEl = document.getElementById('run-status');
   btn.disabled = true;
-  setStatus(statusEl, 'Running…');
+  setStatus(statusEl, `Running 0 of ${count}…`);
   const logEl = document.getElementById('run-log');
   logEl.textContent = '';
   logEl.style.display = '';
@@ -394,6 +394,7 @@ document.getElementById('run-selected-btn').onclick = async () => {
   try {
     let doneEvent = null;
     let errorMessage = null;
+    let started = 0;
     await streamNdjson(
       '/api/e2e/run',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenarioIds: ids }) },
@@ -402,6 +403,8 @@ document.getElementById('run-selected-btn').onclick = async () => {
           logEl.textContent += evt.message + '\n';
           logEl.scrollTop = logEl.scrollHeight;
         } else if (evt.type === 'scenario-start') {
+          started += 1;
+          setStatus(statusEl, `Running ${started} of ${count}…`);
           logEl.textContent += `\n>>> ${evt.scenarioTitle}\n`;
           logEl.scrollTop = logEl.scrollHeight;
         } else if (evt.type === 'scenario-done') {
