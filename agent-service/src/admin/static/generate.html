@@ -249,6 +249,7 @@
     </div>
     <div id="grouping-body"></div>
     <div class="row">
+      <button class="ghost" id="add-group-btn" style="display:none">+ Add group</button>
       <button class="primary" id="approve-btn" disabled style="display:none">Approve grouping</button>
       <span id="status"></span>
     </div>
@@ -583,6 +584,29 @@ function allGroupKeys() {
   return state.grouping ? state.grouping.groups.map((g) => g.key) : [];
 }
 
+// Picks "new-group", or "new-group-2"/"-3"/... if that's already taken —
+// same idea as any "Copy" button avoiding a name collision. The reviewer is
+// expected to retype this inline via the group card's own key <input>
+// (already there for every group, heuristic-proposed or not), so this only
+// has to be unique, not meaningful.
+function uniqueGroupKey() {
+  const taken = new Set([...allGroupKeys(), 'ungrouped']);
+  if (!taken.has('new-group')) return 'new-group';
+  let n = 2;
+  while (taken.has(`new-group-${n}`)) n++;
+  return `new-group-${n}`;
+}
+
+document.getElementById('add-group-btn').onclick = () => {
+  if (!state.grouping) return;
+  // Empty on purpose — GroupSchema requires at least one scenario, so an
+  // empty group can't be approved as-is (see the approve-btn handler's own
+  // check below). Move scenarios into it via their existing row dropdown,
+  // the same way you'd move one into any heuristic-proposed group.
+  state.grouping.groups.push({ key: uniqueGroupKey(), scenarioNames: [], rationale: 'Added manually by reviewer' });
+  renderGrouping();
+};
+
 function moveScenario(name, fromKey, toKey) {
   const g = state.grouping;
   if (fromKey === '__ungrouped__') g.ungrouped = g.ungrouped.filter((n) => n !== name);
@@ -630,6 +654,7 @@ function renderGrouping() {
   const approveBtn = document.getElementById('approve-btn');
   approveBtn.style.display = state.grouping ? '' : 'none';
   approveBtn.disabled = !state.grouping;
+  document.getElementById('add-group-btn').style.display = state.grouping ? '' : 'none';
   if (!state.grouping) { updateStageGating(); return; }
   const g = state.grouping;
 
@@ -707,6 +732,15 @@ document.getElementById('recompute-btn').onclick = async () => {
 
 document.getElementById('approve-btn').onclick = async () => {
   const statusEl = document.getElementById('status');
+  // Checked client-side, with a message naming the actual group, rather than
+  // letting this reach the server — GroupSchema's own min(1) would reject it
+  // there too, but only as a generic "Validation failed", not naming which
+  // group is still empty (most commonly one just added via "+ Add group").
+  const emptyGroup = state.grouping.groups.find((gr) => gr.scenarioNames.length === 0);
+  if (emptyGroup) {
+    setStatus(statusEl, `Group "${emptyGroup.key}" has no scenarios — move at least one into it before approving.`, 'err');
+    return;
+  }
   try {
     const result = await api('/api/generate/group/approve', {
       method: 'POST',
