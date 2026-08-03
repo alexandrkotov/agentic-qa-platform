@@ -173,6 +173,13 @@
   .confirm-modal-icon.money { color: #2f8f5b; }
   .confirm-modal-icon.time { color: var(--accent); }
   .confirm-modal-icon.danger { color: var(--danger); }
+  /* Running scenarios is both slow (real bddgen + Playwright) AND
+     conditionally costs money (a diagnosis call per failure) — the only
+     modal on this page that needs both signals at once, so it gets its own
+     kind rendering the money SVG plus the hourglass side by side instead of
+     picking just one. */
+  .confirm-modal-icon.money-time { color: #2f8f5b; display: flex; align-items: center; gap: 0.3rem; }
+  .confirm-modal-icon.money-time .hourglass { font-size: 1.7rem; }
   .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
@@ -251,7 +258,12 @@ const TRASH_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" 
   <line x1="10" y1="11" x2="10" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
   <line x1="14" y1="11" x2="14" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
 </svg>`;
-const MODAL_ICONS = { money: MONEY_ICON_SVG, time: '⏳', danger: TRASH_ICON_SVG };
+const MODAL_ICONS = {
+  money: MONEY_ICON_SVG,
+  time: '⏳',
+  danger: TRASH_ICON_SVG,
+  'money-time': MONEY_ICON_SVG + '<span class="hourglass">⏳</span>',
+};
 
 // kind picks the big icon: 'money' for actions that call Claude and cost
 // real money, 'time' for actions that are free but slow and/or mutate real
@@ -405,8 +417,8 @@ document.getElementById('run-selected-btn').onclick = async () => {
   const ids = [...state.selected];
   if (ids.length === 0) return;
   const count = ids.length;
-  const msg = `Run ${count} scenario${count === 1 ? '' : 's'}? Each spawns a real bddgen + Playwright run against the live app (mutates real data) and, on any failure, one Claude diagnosis call. This can take a while.`;
-  if (!(await confirmModal(msg, 'time'))) return;
+  const msg = `Run ${count} scenario${count === 1 ? '' : 's'}? Each spawns a real bddgen + Playwright run against the live app (mutates real data) and can take a while. Any scenario that FAILS also triggers one paid Claude diagnosis call — this may cost money, depending on how many fail.`;
+  if (!(await confirmModal(msg, 'money-time'))) return;
 
   const btn = document.getElementById('run-selected-btn');
   const statusEl = document.getElementById('run-status');
