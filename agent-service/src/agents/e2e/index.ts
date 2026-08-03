@@ -10,25 +10,53 @@ import type { E2ERunReport } from './contract.ts';
 
 const TESTS_ROOT = resolve(config.reportsDir, '..', '..', 'tests');
 
-async function runOne(
+export interface RunOneScenarioOpts {
+  /** Overrides the child processes' environment (e.g. container-network
+   *  service hosts) — undefined inherits the caller's own process.env,
+   *  matching runScenario()/runProcess()'s own default. */
+  env?: NodeJS.ProcessEnv;
+  /** Fired at the same points this function already console.logs, so a
+   *  caller (e.g. the admin server, streaming NDJSON to a browser) can
+   *  mirror that feedback live instead of only seeing it after the fact. */
+  onProgress?: (message: string) => void;
+}
+
+/**
+ * Runs Suggest mode for exactly one scenario: real Playwright/Cucumber run,
+ * then (only on failure) one Claude diagnosis call. Writes the report to
+ * disk and returns it. Parameterized by `testsRoot` (and optionally `env`)
+ * rather than a module-level constant so callers outside this CLI's own
+ * layout — the admin server runs inside a container with a different
+ * tests/ path and needs container-network env overrides — can reuse it
+ * without duplicating this logic.
+ */
+export async function runOneScenario(
   provider: AgentProvider,
   providerName: string,
   scenario: E2EScenarioConfig,
-): Promise<E2ERunReport> {
-  console.log(`\n--- Scenario: ${scenario.title} (${scenario.id}) ---\n`);
+  testsRoot: string,
+  opts: RunOneScenarioOpts = {},
+): Promise<{ report: E2ERunReport; reportPath: string }> {
+  const { env, onProgress } = opts;
+  const progress = (message: string) => {
+    console.log(message);
+    onProgress?.(message);
+  };
+
+  progress(`--- Scenario: ${scenario.title} (${scenario.id}) ---`);
 
   const startedAt = new Date();
-  const { passed, result } = await runScenario(TESTS_ROOT, scenario.title);
+  const { passed, result } = await runScenario(testsRoot, scenario.title, { env });
   const finishedAt = new Date();
 
-  const evidence = await collectEvidence(TESTS_ROOT, scenario, result);
+  const evidence = await collectEvidence(testsRoot, scenario, result);
 
   let diagnosis = null;
   if (!passed) {
-    console.log('\nScenario failed — running diagnosis (1 model call)\n');
-    diagnosis = await diagnoseFailure(provider, TESTS_ROOT, scenario, evidence);
+    progress('Scenario failed — running diagnosis (1 model call)');
+    diagnosis = await diagnoseFailure(provider, testsRoot, scenario, evidence);
   } else {
-    console.log('\nScenario passed — skipping diagnosis (no model call, no cost)\n');
+    progress('Scenario passed — skipping diagnosis (no model call, no cost)');
   }
 
   const report: E2ERunReport = {
@@ -48,14 +76,14 @@ async function runOne(
   const reportPath = join(config.reportsDir, `e2e-${scenario.id}-${timestamp}.json`);
   await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf-8');
 
-  console.log(`=== [${scenario.id}] ${report.status.toUpperCase()} — report saved: ${reportPath} ===`);
+  progress(`=== [${scenario.id}] ${report.status.toUpperCase()} — report saved: ${reportPath} ===`);
   if (diagnosis) {
     console.log(`Classification: ${diagnosis.classification} (confidence: ${diagnosis.confidence})`);
     console.log(`Reasoning: ${diagnosis.reasoning}`);
     console.log(diagnosis.proposedPatch ? `\nProposed patch:\n${diagnosis.proposedPatch}` : 'No patch proposed.');
   }
 
-  return report;
+  return { report, reportPath };
 }
 
 /**
@@ -93,7 +121,8 @@ export async function runE2EAgent(
 
   const reports: E2ERunReport[] = [];
   for (const scenario of scenariosToRun) {
-    reports.push(await runOne(provider, providerName, scenario));
+    const { report } = await runOneScenario(provider, providerName, scenario, TESTS_ROOT);
+    reports.push(report);
   }
 
   const passedCount = reports.filter((r) => r.status === 'passed').length;

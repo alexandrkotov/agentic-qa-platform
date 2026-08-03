@@ -42,6 +42,9 @@ import {
   ApprovedSequenceFlowSchema,
 } from '../agents/workflow/contract.ts';
 import { ClaudeProvider } from '../providers/ClaudeProvider.ts';
+import { discoverScenarios, resolveScenarioSelectors } from '../agents/e2e/scenarios.ts';
+import { runOneScenario } from '../agents/e2e/index.ts';
+import { loadApplyPreview, performApply } from '../agents/e2e/applyCore.ts';
 import { config } from '../config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -894,17 +897,41 @@ app.get('/api/generate/specs', async (req, res) => {
 // ---------------------------------------------------------------------------
 // APP_ROOT/TESTS_ROOT — needed by both /api/generate/spec below (to seed the
 // step-pattern-collision registry from whatever's already in tests/steps/)
-// and Stage 3's render/"Run tests" endpoints further down. Deliberately NOT
-// using bootstrap/generateRender.ts's own derivation
-// (resolve(config.reportsDir, '..', '..')), correct for the *host* layout
-// (<repo>/agent-service/reports -> two levels up is <repo>) — this container
-// has no such nesting, reportsDir sits directly at /usr/src/app/reports, so
-// going up two levels lands outside the container entirely (/usr/src).
+// and Stage 3's render/"Run tests" endpoints further down, as well as the
+// E2E routes further down still. Deliberately NOT using
+// bootstrap/generateRender.ts's own derivation (resolve(config.reportsDir,
+// '..', '..')), correct for the *host* layout (<repo>/agent-service/reports
+// -> two levels up is <repo>) — this container has no such nesting,
+// reportsDir sits directly at /usr/src/app/reports, so going up two levels
+// lands outside the container entirely (/usr/src). Same reasoning is why
+// agent-service/src/agents/e2e/index.ts's own module-level TESTS_ROOT
+// (correct for the CLI's host layout) can't be reused here either — the E2E
+// routes below pass this TESTS_ROOT explicitly into runOneScenario/
+// loadApplyPreview/performApply instead of relying on that module constant.
 // ---------------------------------------------------------------------------
 
 const APP_ROOT = resolve(config.reportsDir, '..');
 const TESTS_ROOT = join(APP_ROOT, 'tests');
 const TESTS_STEPS_DIR = join(APP_ROOT, 'tests', 'steps');
+
+/**
+ * tests/.env (and the currently-committed steps.ts files' own hardcoded
+ * fallback) is written for a host run (localhost:3000/5173/5432/9094) — the
+ * processes this server spawns run inside the workbench container instead,
+ * so they need this compose network's own service names. Values match
+ * app/db/kafka's own docker-compose.yml definitions exactly (db's
+ * user/pass/db name, kafka's internal PLAINTEXT listener). Shared by
+ * /api/tests/run and every /api/e2e/* route that spawns bddgen/playwright —
+ * confirmed live (see /api/tests/run's original comment) that every
+ * scenario fails with ECONNREFUSED ::1:3000 without this override.
+ */
+const TEST_RUN_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  BACKEND_URL: 'http://app:3000',
+  FRONTEND_URL: 'http://frontend:5173',
+  DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
+  KAFKA_BROKERS: 'kafka:9092',
+};
 
 app.post('/api/generate/spec', async (req, res) => {
   try {
@@ -1096,26 +1123,7 @@ function runCommand(cmd: string, args: string[], cwd: string, env: NodeJS.Proces
 
 app.post('/api/tests/run', async (req, res) => {
   try {
-    const testEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      // tests/.env (and the currently-committed steps.ts files' own
-      // hardcoded fallback) is written for a host run (localhost:3000/5173/
-      // 5432/9094) — this process runs inside the workbench container
-      // instead, so it needs this compose network's own service names, same
-      // reasoning as the discovery route's descriptor URL rewriting
-      // elsewhere in this file. Values match app/db/kafka's own
-      // docker-compose.yml definitions exactly (db's user/pass/db name,
-      // kafka's internal PLAINTEXT listener). BACKEND_URL specifically:
-      // confirmed live that every single scenario failed with
-      // ECONNREFUSED ::1:3000 until the committed steps.ts files were
-      // changed to read `process.env.BACKEND_URL ?? 'http://localhost:3000'`
-      // instead of a hardcoded literal — this override is what that fallback
-      // now actually uses.
-      BACKEND_URL: 'http://app:3000',
-      FRONTEND_URL: 'http://frontend:5173',
-      DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
-      KAFKA_BROKERS: 'kafka:9092',
-    };
+    const testEnv = TEST_RUN_ENV;
     // bddgen + the real Playwright/Cucumber suite can run for minutes with
     // nothing but a static "running…" status otherwise — stream NDJSON
     // progress (one line of real command output per event), the same
@@ -1146,6 +1154,181 @@ app.post('/api/tests/run', async (req, res) => {
     res.end();
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// E2E Agent — Suggest mode (run a real scenario, diagnose on failure) and
+// Execute-with-approval (apply a proposed fix, typecheck, re-run), both
+// already fully working as a CLI (`pnpm e2e`, `pnpm apply-fix`,
+// agent-service/src/agents/e2e/). These routes are thin wrappers around
+// that same code — runOneScenario/loadApplyPreview/performApply — just
+// parameterized with this container's TESTS_ROOT/TEST_RUN_ENV instead of
+// the CLI's host-layout constants.
+// ---------------------------------------------------------------------------
+
+const E2E_REPORT_NAME_PATTERN = /^e2e-[A-Za-z0-9:_.-]+\.json$/;
+function e2eReportFilePath(name: string): string {
+  if (!E2E_REPORT_NAME_PATTERN.test(name)) {
+    throw Object.assign(new Error('Report name must be an exact "e2e-*.json" filename'), { status: 400 });
+  }
+  return join(config.reportsDir, name);
+}
+
+app.get('/api/e2e/scenarios', async (_req, res) => {
+  try {
+    res.json(await discoverScenarios(TESTS_ROOT));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/e2e/run', async (req, res) => {
+  try {
+    const { scenarioIds } = req.body as { scenarioIds?: string[] };
+    const allScenarios = await discoverScenarios(TESTS_ROOT);
+
+    let scenariosToRun;
+    try {
+      scenariosToRun = Array.isArray(scenarioIds) && scenarioIds.length ? resolveScenarioSelectors(allScenarios, scenarioIds) : allScenarios;
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+
+    // Each scenario spawns its own bddgen + Playwright + cleanup cycle and,
+    // on failure, one real Claude diagnosis call — can run for minutes with
+    // nothing but a static "running…" status otherwise. Same NDJSON
+    // streaming pattern as /api/tests/run and /api/generate/spec above.
+    // Headers are only sent once scenario selection has already succeeded
+    // (validated above), so a bad selector still gets a real 400.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    const provider = new ClaudeProvider();
+    try {
+      const reports = [];
+      for (const scenario of scenariosToRun) {
+        send({ type: 'scenario-start', scenarioId: scenario.id, scenarioTitle: scenario.title });
+        const { report, reportPath } = await runOneScenario(provider, 'claude', scenario, TESTS_ROOT, {
+          env: TEST_RUN_ENV,
+          onProgress: (message) => send({ type: 'progress', message }),
+        });
+        reports.push(report);
+        // reportName (not the full path) is what /api/e2e/apply/preview and
+        // /api/e2e/apply/confirm take — lets the UI offer "Apply fix"
+        // directly off a just-finished run without a separate lookup.
+        send({ type: 'scenario-done', report, reportName: reportPath.split('/').pop() });
+      }
+      send({ type: 'done', reports });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/** Lightweight summaries only (not full report bodies, which include a full
+ *  Claude diagnosis + evidence dump) — covers both plain run reports
+ *  (`e2e-<id>-<ts>.json`, has a `status`) and applied-fix reports
+ *  (`e2e-<id>-applied-<ts>.json`, has an `outcome` instead), newest first. */
+app.get('/api/e2e/reports', async (_req, res) => {
+  const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+  const candidates = files.filter((f) => E2E_REPORT_NAME_PATTERN.test(f)).sort().reverse();
+
+  const summaries: { name: string; scenarioId: string; scenarioTitle: string; kind: 'run' | 'applied'; status: string; startedAt: string }[] = [];
+  for (const name of candidates) {
+    try {
+      const raw = JSON.parse(await readFile(join(config.reportsDir, name), 'utf-8'));
+      const kind: 'run' | 'applied' = typeof raw.outcome === 'string' ? 'applied' : 'run';
+      summaries.push({
+        name,
+        scenarioId: raw.scenarioId,
+        scenarioTitle: raw.scenarioTitle,
+        kind,
+        status: kind === 'applied' ? raw.outcome : raw.status,
+        startedAt: raw.startedAt,
+      });
+    } catch {
+      // Not a usable report — omit it, same as /api/generate/reports's own philosophy.
+    }
+  }
+  res.json(summaries);
+});
+
+app.get('/api/e2e/reports/:name', async (req, res) => {
+  try {
+    const raw = await readFile(e2eReportFilePath(req.params.name), 'utf-8');
+    res.json(JSON.parse(raw));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No report named "${req.params.name}"` });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/e2e/apply/preview', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const result = await loadApplyPreview(e2eReportFilePath(reportName), TESTS_ROOT);
+    // "Not applicable" (already applied, application_bug, no structuredFix,
+    // etc.) is a normal, expected result to show the user inline — not a
+    // server error. Same "expected failure is data, not a 500" philosophy
+    // documented on runCommand() above for /api/tests/run.
+    if (!result.ok) {
+      res.json({ applicable: false, outcome: result.outcome, reason: result.reason });
+      return;
+    }
+    res.json({ applicable: true, scenario: result.preview.scenario, diagnosis: result.preview.diagnosis, fix: result.preview.fix });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/e2e/apply/confirm', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const reportPath = e2eReportFilePath(reportName);
+
+    // Re-validate right before touching disk — never trust a client-held
+    // preview from an earlier /apply/preview call: the report or the target
+    // file could have changed, or this exact fix could already have been
+    // applied, since that preview was fetched.
+    const result = await loadApplyPreview(reportPath, TESTS_ROOT);
+    if (!result.ok) {
+      res.status(409).json({ error: result.reason });
+      return;
+    }
+
+    // Writes a real source file, typechecks, and re-runs the scenario — can
+    // take a while, same NDJSON streaming pattern as /api/e2e/run above.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+    try {
+      const startedAt = new Date().toISOString();
+      const report = await performApply(reportPath, TESTS_ROOT, result.preview, startedAt, {
+        env: TEST_RUN_ENV,
+        onProgress: (message) => send({ type: 'progress', message }),
+      });
+      send({ type: 'done', report });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
 

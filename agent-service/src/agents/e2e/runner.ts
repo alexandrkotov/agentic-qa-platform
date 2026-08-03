@@ -12,7 +12,13 @@ export interface RunnerResult {
 const TAIL_CHARS = 4000;
 const tail = (s: string, n = TAIL_CHARS) => (s.length > n ? s.slice(-n) : s);
 
-export async function runProcess(command: string, args: string[], cwd: string, timeoutMs: number): Promise<RunnerResult> {
+export async function runProcess(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+  env?: NodeJS.ProcessEnv,
+): Promise<RunnerResult> {
   return new Promise((resolvePromise) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -20,7 +26,7 @@ export async function runProcess(command: string, args: string[], cwd: string, t
     let stderr = '';
     let timedOut = false;
 
-    const child = spawn(command, args, { cwd, signal: controller.signal });
+    const child = spawn(command, args, { cwd, signal: controller.signal, env });
     child.stdout.on('data', (d) => {
       stdout += d.toString();
       process.stdout.write(d);
@@ -43,24 +49,26 @@ export async function runProcess(command: string, args: string[], cwd: string, t
 export async function runScenario(
   testsRoot: string,
   scenarioTitle: string,
-  opts: { bddgenTimeoutMs?: number; playwrightTimeoutMs?: number; cleanupTimeoutMs?: number } = {},
+  opts: { bddgenTimeoutMs?: number; playwrightTimeoutMs?: number; cleanupTimeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ passed: boolean; result: RunnerResult }> {
   const bddgenTimeoutMs = opts.bddgenTimeoutMs ?? 60_000;
   const playwrightTimeoutMs = opts.playwrightTimeoutMs ?? 4 * 60_000;
   const cleanupTimeoutMs = opts.cleanupTimeoutMs ?? 30_000;
+  const { env } = opts;
 
   // Delete any stale report FIRST — its absence after the run is how we tell
   // "bddgen/playwright crashed before the reporter ran" from "stale leftover".
   await rm(join(testsRoot, 'reports', 'cucumber-json', 'report.json'), { force: true });
 
   // Pre-sweep: clear leftover synthetic rows from any previous crashed run.
-  await runProcess('node', ['support/cleanup.mjs'], testsRoot, cleanupTimeoutMs);
+  await runProcess('node', ['support/cleanup.mjs'], testsRoot, cleanupTimeoutMs, env);
 
   const bddgenResult = await runProcess(
     join(testsRoot, 'node_modules', '.bin', 'bddgen'),
     [],
     testsRoot,
     bddgenTimeoutMs,
+    env,
   );
 
   const result =
@@ -71,10 +79,11 @@ export async function runScenario(
           ['test', '--grep', scenarioTitle],
           testsRoot,
           playwrightTimeoutMs,
+          env,
         );
 
   // Post-sweep always runs, even on failure, so a failed run doesn't poison the next one.
-  await runProcess('node', ['support/cleanup.mjs'], testsRoot, cleanupTimeoutMs);
+  await runProcess('node', ['support/cleanup.mjs'], testsRoot, cleanupTimeoutMs, env);
 
   return { passed: result.exitCode === 0 && !result.timedOut, result };
 }

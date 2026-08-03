@@ -12,6 +12,8 @@
     --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
     --accent: #3a63d8; --accent-bg: #e8edfc;
     --danger: #b3261e; --danger-bg: #fbe9e7;
+    --warn: #9a6700; --warn-bg: #fff3d6;
+    --ok: #2f8f5b; --ok-bg: #e5f5ec;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -19,6 +21,8 @@
       --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
       --accent: #7c9bef; --accent-bg: #232c47;
       --danger: #f0847c; --danger-bg: #3a1f1e;
+      --warn: #e0b04d; --warn-bg: #332a10;
+      --ok: #6fce9a; --ok-bg: #163526;
     }
   }
   * { box-sizing: border-box; }
@@ -44,10 +48,129 @@
   .page-head h1 { font-size: 0.95rem; margin: 0; }
   .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
 
-  main { max-width: 640px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 3rem) 4rem; text-align: center; }
-  .empty-state { margin-top: 3rem; color: var(--text-mute); }
-  .empty-state h2 { color: var(--text); font-size: 1.05rem; margin: 0 0 0.5rem; }
-  .empty-state p { font-size: 0.88rem; line-height: 1.5; margin: 0; }
+  main { max-width: 900px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 3rem) 4rem; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
+  section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
+  .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .empty-note { color: var(--text-mute); font-size: 0.83rem; }
+
+  .primary {
+    display: inline-block; text-decoration: none;
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 0.95rem; font-size: 0.83rem; font-weight: 600; cursor: pointer;
+  }
+  .primary:hover { filter: brightness(1.08); color: #fff; }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: none; border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+  }
+  button.ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost:hover { background: var(--surface-2); }
+
+  .status-text { font-size: 0.83rem; }
+  .status-text.ok { color: var(--ok); }
+  .status-text.err { color: var(--danger); }
+
+  /* Scenario picker — a plain checklist, scrollable once the suite grows
+     past a screenful, same visual language (border/line/padding) as the
+     rest of this app's cards without literally reusing generate.html's own
+     .scenario-row (that one's shaped around a group-card's role-select
+     layout, not a plain pick list). */
+  .e2e-scenario-list { max-height: 18rem; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 0 0.9rem; margin-bottom: 1rem; }
+  .e2e-scenario-row { display: flex; gap: 0.65rem; align-items: flex-start; padding: 0.55rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .e2e-scenario-row:last-child { border-bottom: none; }
+  .e2e-scenario-row input { margin-top: 0.2rem; }
+  .e2e-scenario-title { font-size: 0.85rem; }
+  .e2e-scenario-meta { font-size: 0.72rem; color: var(--text-mute); margin-top: 0.1rem; }
+
+  /* Live progress feed for a run/apply call — NDJSON "progress" lines
+     streamed while real bddgen/Playwright/Claude calls happen, so there's
+     something to watch besides a static "running…" status. Same class name
+     as generate.html's own log panel, copied verbatim (no shared JS/CSS
+     module exists between static pages in this project). */
+  .gen-log {
+    width: 100%; margin: 0; padding: 0.6rem 0.8rem; max-height: 11rem; overflow-y: auto;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.74rem;
+    color: var(--text-mute); white-space: pre-wrap; line-height: 1.5;
+  }
+
+  .group-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
+  .e2e-card-head { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
+  .e2e-card-head .title { font-weight: 600; font-size: 0.88rem; flex: 1; min-width: 0; }
+  .e2e-card-meta { font-size: 0.74rem; color: var(--text-mute); margin: -0.3rem 0 0.6rem; }
+
+  .badge {
+    display: inline-block; border-radius: 999px; padding: 0.15rem 0.65rem;
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .badge-ok { background: var(--ok-bg); color: var(--ok); }
+  .badge-err { background: var(--danger-bg); color: var(--danger); }
+  .badge-mute { background: var(--surface-2); color: var(--text-mute); }
+
+  .e2e-reasoning { font-size: 0.83rem; line-height: 1.5; margin: 0.4rem 0 0.6rem; }
+
+  /* One <details> per result card's step-by-step evidence (or a history
+     entry) — collapsible with no JS needed for the mechanic itself, same
+     pattern as generate.html's per-group Feature/Steps panels. */
+  .gen-group-details { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 0.6rem; overflow: hidden; }
+  .gen-group-details > summary {
+    cursor: pointer; padding: 0.55rem 0.85rem; font-weight: 600; list-style: none;
+    display: flex; align-items: center; gap: 0.6rem; font-size: 0.8rem;
+  }
+  .gen-group-details > summary::-webkit-details-marker { display: none; }
+  .gen-group-details > summary::before { content: '▸'; color: var(--text-mute); transition: transform 0.1s; }
+  .gen-group-details[open] > summary::before { transform: rotate(90deg); }
+  .gen-group-body { padding: 0 0.85rem 0.7rem; }
+  .e2e-step-row { display: flex; gap: 0.5rem; padding: 0.2rem 0; font-size: 0.78rem; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .e2e-step-row .status { flex: 0 0 5.5rem; font-weight: 700; text-transform: uppercase; font-size: 0.68rem; }
+  .e2e-step-row.status-passed .status { color: var(--ok); }
+  .e2e-step-row.status-failed .status { color: var(--danger); }
+  .e2e-step-error { color: var(--danger); font-size: 0.74rem; margin: 0.15rem 0 0.4rem 5.5rem; white-space: pre-wrap; }
+
+  .e2e-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.6rem 0; }
+  @media (max-width: 640px) { .e2e-diff { grid-template-columns: 1fr; } }
+  .e2e-diff-col label {
+    display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--text-mute); margin-bottom: 0.3rem;
+  }
+  .e2e-diff-col pre {
+    margin: 0; padding: 0.55rem 0.7rem; max-height: 12rem; overflow: auto;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.74rem; white-space: pre-wrap;
+  }
+  .e2e-apply { margin-top: 0.5rem; }
+  .e2e-apply-file { font-size: 0.76rem; color: var(--text-mute); margin: 0 0 0.5rem; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .e2e-apply-log { margin-top: 0.5rem; }
+
+  .e2e-history-row {
+    display: flex; gap: 0.6rem; align-items: center; padding: 0.5rem 0.1rem;
+    border-bottom: 1px solid var(--line); cursor: pointer; font-size: 0.82rem;
+  }
+  .e2e-history-row:last-child { border-bottom: none; }
+  .e2e-history-row .name { flex: 1; color: var(--text-mute); font-size: 0.74rem; }
+  .e2e-history-detail { margin-top: 0.5rem; }
+
+  .confirm-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .confirm-modal-overlay.open { display: flex; }
+  .confirm-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem; max-width: 26rem;
+    display: flex; gap: 1rem; align-items: flex-start;
+  }
+  .confirm-modal-icon { font-size: 2.1rem; line-height: 1; flex-shrink: 0; }
+  .confirm-modal-icon svg { display: block; }
+  .confirm-modal-icon.money { color: #2f8f5b; }
+  .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-icon.danger { color: var(--danger); }
+  .confirm-modal-body { min-width: 0; }
+  .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
+  .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 </style>
 </head>
 <body>
@@ -59,13 +182,567 @@
 </header>
 <div class="page-head">
   <h1>E2E</h1>
-  <div class="subtitle">Diagnoses and repairs failing end-to-end scenarios — this tab isn't built yet</div>
+  <div class="subtitle">Runs real scenarios against the live app, diagnoses failures with Claude, and applies fixes only after your approval</div>
 </div>
 <main>
-  <div class="empty-state">
-    <h2>Coming soon</h2>
-    <p>This tab will host the UI for the E2E maintenance agent — nothing is wired up here yet.</p>
-  </div>
+
+  <section id="scenarios-section">
+    <h2>Scenarios</h2>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.83rem"><input type="checkbox" id="select-all-checkbox"> Select all</label>
+      <button class="primary" id="run-selected-btn" disabled>Run selected</button>
+      <span id="run-status" class="status-text"></span>
+    </div>
+    <div class="e2e-scenario-list" id="scenario-list"></div>
+    <pre class="gen-log" id="run-log" style="display:none"></pre>
+  </section>
+
+  <section id="results-section">
+    <h2>Results</h2>
+    <div class="empty-note" id="results-empty">Run a scenario above to see results here.</div>
+    <div id="results-list"></div>
+  </section>
+
+  <section id="history-section">
+    <div class="row" style="margin-bottom:0">
+      <h2 style="margin:0;flex:1">History</h2>
+      <button class="ghost" id="toggle-history-btn">Show past reports</button>
+    </div>
+    <div id="history-body" style="display:none;margin-top:1rem">
+      <div class="empty-note" id="history-empty" style="display:none">No past reports yet.</div>
+      <div id="history-list"></div>
+    </div>
+  </section>
+
 </main>
+
+<div class="confirm-modal-overlay" id="confirm-modal-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-modal-icon" id="confirm-modal-icon"></div>
+    <div class="confirm-modal-body">
+    <p id="confirm-modal-message"></p>
+    <div class="confirm-modal-actions">
+      <button class="primary" id="confirm-modal-cancel">Cancel</button>
+      <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Any button that calls Claude for real, mutates real app data, or writes a
+// real source file must be confirmed first — resolves true only if the
+// human clicks "Yes, proceed"; Cancel, Escape, or clicking the backdrop all
+// resolve false without touching the network. Copied verbatim from
+// index.html/generate.html (no shared JS module between static pages).
+const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <line x1="9.5" y1="2" x2="9.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+const TRASH_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <path d="M4 7h16M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3m4 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="10" y1="11" x2="10" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <line x1="14" y1="11" x2="14" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>`;
+const MODAL_ICONS = { money: MONEY_ICON_SVG, time: '⏳', danger: TRASH_ICON_SVG };
+
+// kind picks the big icon: 'money' for actions that call Claude and cost
+// real money, 'time' for actions that are free but slow and/or mutate real
+// state, 'danger' for actions that mutate a real source file in the repo —
+// so each reads as visually distinct at a glance.
+function confirmModal(message, kind = 'money') {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-modal-message').textContent = message;
+    const icon = document.getElementById('confirm-modal-icon');
+    icon.innerHTML = MODAL_ICONS[kind];
+    icon.className = 'confirm-modal-icon ' + kind;
+    const overlay = document.getElementById('confirm-modal-overlay');
+    overlay.classList.add('open');
+    // Cancel, not "Yes, proceed", is the default — focusing it means Enter
+    // does the safe thing on a modal that exists specifically to warn about
+    // a consequential action.
+    document.getElementById('confirm-modal-cancel').focus();
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
+    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const e = new Error(body?.error || res.statusText);
+    e.issues = body?.issues;
+    throw e;
+  }
+  return body;
+}
+
+/**
+ * Reads an NDJSON-streamed response (one `{"type": ...}` JSON object per
+ * line) as it arrives, calling `onEvent` for each. Same helper as
+ * generate.html/index.html's own copy.
+ */
+async function streamNdjson(path, opts, onEvent) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex;
+    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line.trim()) onEvent(JSON.parse(line));
+    }
+  }
+}
+
+function setStatus(el, text, kind) {
+  el.textContent = text;
+  el.className = 'status-text' + (kind ? ' ' + kind : '');
+}
+
+const state = { scenarios: [], selected: new Set() };
+
+// --- Scenario picker --------------------------------------------------------
+
+async function loadScenarios() {
+  state.scenarios = await api('/api/e2e/scenarios');
+  renderScenarioList();
+}
+
+function renderScenarioList() {
+  const root = document.getElementById('scenario-list');
+  root.innerHTML = '';
+  if (state.scenarios.length === 0) {
+    root.innerHTML = '<div class="empty-note" style="padding:0.75rem 0">No scenarios discovered under tests/features/.</div>';
+    return;
+  }
+  for (const sc of state.scenarios) {
+    const row = document.createElement('label');
+    row.className = 'e2e-scenario-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = state.selected.has(sc.id);
+    cb.onchange = () => {
+      if (cb.checked) state.selected.add(sc.id); else state.selected.delete(sc.id);
+      syncSelectionControls();
+    };
+    const info = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'e2e-scenario-title';
+    title.textContent = sc.title;
+    const meta = document.createElement('div');
+    meta.className = 'e2e-scenario-meta';
+    meta.textContent = sc.featureName + (sc.tags.length ? ' · ' + sc.tags.join(' ') : '');
+    info.appendChild(title);
+    info.appendChild(meta);
+    row.appendChild(cb);
+    row.appendChild(info);
+    root.appendChild(row);
+  }
+  syncSelectionControls();
+}
+
+function syncSelectionControls() {
+  const runBtn = document.getElementById('run-selected-btn');
+  runBtn.disabled = state.selected.size === 0;
+  runBtn.textContent = state.selected.size ? `Run selected (${state.selected.size})` : 'Run selected';
+  const selectAll = document.getElementById('select-all-checkbox');
+  selectAll.checked = state.scenarios.length > 0 && state.selected.size === state.scenarios.length;
+  selectAll.indeterminate = state.selected.size > 0 && state.selected.size < state.scenarios.length;
+}
+
+document.getElementById('select-all-checkbox').onchange = (e) => {
+  state.selected = new Set(e.target.checked ? state.scenarios.map((s) => s.id) : []);
+  renderScenarioList();
+};
+
+document.getElementById('run-selected-btn').onclick = async () => {
+  const ids = [...state.selected];
+  if (ids.length === 0) return;
+  const count = ids.length;
+  const msg = `Run ${count} scenario${count === 1 ? '' : 's'}? Each spawns a real bddgen + Playwright run against the live app (mutates real data) and, on any failure, one Claude diagnosis call. This can take a while.`;
+  if (!(await confirmModal(msg, 'time'))) return;
+
+  const btn = document.getElementById('run-selected-btn');
+  const statusEl = document.getElementById('run-status');
+  btn.disabled = true;
+  setStatus(statusEl, 'Running…');
+  const logEl = document.getElementById('run-log');
+  logEl.textContent = '';
+  logEl.style.display = '';
+
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson(
+      '/api/e2e/run',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenarioIds: ids }) },
+      (evt) => {
+        if (evt.type === 'progress') {
+          logEl.textContent += evt.message + '\n';
+          logEl.scrollTop = logEl.scrollHeight;
+        } else if (evt.type === 'scenario-start') {
+          logEl.textContent += `\n>>> ${evt.scenarioTitle}\n`;
+          logEl.scrollTop = logEl.scrollHeight;
+        } else if (evt.type === 'scenario-done') {
+          addResultCard(evt.report, evt.reportName);
+        } else if (evt.type === 'done') {
+          doneEvent = evt;
+        } else if (evt.type === 'error') {
+          errorMessage = evt.error;
+        }
+      },
+    );
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    const passedCount = doneEvent.reports.filter((r) => r.status === 'passed').length;
+    setStatus(statusEl, `${passedCount}/${doneEvent.reports.length} passed.`, passedCount === doneEvent.reports.length ? 'ok' : 'err');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    syncSelectionControls();
+  }
+};
+
+// --- Result cards (live results + "run" history entries share this) -------
+
+function addResultCard(report, reportName) {
+  document.getElementById('results-empty').style.display = 'none';
+  const list = document.getElementById('results-list');
+  const card = renderRunReportCard(report, reportName);
+  list.insertBefore(card, list.firstChild);
+}
+
+function renderRunReportCard(report, reportName) {
+  const card = document.createElement('div');
+  card.className = 'group-card';
+
+  const head = document.createElement('div');
+  head.className = 'e2e-card-head';
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = report.scenarioTitle;
+  const badge = document.createElement('span');
+  badge.className = 'badge ' + (report.status === 'passed' ? 'badge-ok' : 'badge-err');
+  badge.textContent = report.status;
+  head.appendChild(title);
+  head.appendChild(badge);
+  card.appendChild(head);
+
+  const meta = document.createElement('div');
+  meta.className = 'e2e-card-meta';
+  meta.textContent = `${report.scenarioId} · ${new Date(report.startedAt).toLocaleString()} · ${(report.durationMs / 1000).toFixed(1)}s`;
+  card.appendChild(meta);
+
+  const diagnosis = report.diagnosis;
+  if (diagnosis) {
+    const classHead = document.createElement('div');
+    classHead.className = 'e2e-card-head';
+    const classBadge = document.createElement('span');
+    classBadge.className = 'badge badge-mute';
+    classBadge.textContent = diagnosis.classification.replace(/_/g, ' ');
+    const confBadge = document.createElement('span');
+    confBadge.className = 'badge badge-mute';
+    confBadge.textContent = diagnosis.confidence + ' confidence';
+    classHead.appendChild(classBadge);
+    classHead.appendChild(confBadge);
+    card.appendChild(classHead);
+
+    const reasoning = document.createElement('p');
+    reasoning.className = 'e2e-reasoning';
+    reasoning.textContent = diagnosis.reasoning;
+    card.appendChild(reasoning);
+  }
+
+  const evidence = report.evidence?.scenario;
+  if (evidence && evidence.found) {
+    const details = document.createElement('details');
+    details.className = 'gen-group-details';
+    const summary = document.createElement('summary');
+    summary.textContent = `Evidence (${evidence.steps.length} step${evidence.steps.length === 1 ? '' : 's'})`;
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'gen-group-body';
+    for (const step of evidence.steps) {
+      const row = document.createElement('div');
+      row.className = 'e2e-step-row status-' + step.status;
+      const st = document.createElement('span');
+      st.className = 'status';
+      st.textContent = step.status.toUpperCase();
+      const name = document.createElement('span');
+      name.textContent = `${step.keyword}${step.name}`;
+      row.appendChild(st);
+      row.appendChild(name);
+      body.appendChild(row);
+      if (step.errorMessage) {
+        const err = document.createElement('div');
+        err.className = 'e2e-step-error';
+        err.textContent = step.errorMessage;
+        body.appendChild(err);
+      }
+    }
+    details.appendChild(body);
+    card.appendChild(details);
+  }
+
+  if (diagnosis?.structuredFix && reportName) {
+    card.appendChild(renderApplySection(reportName));
+  }
+
+  return card;
+}
+
+// --- Apply fix --------------------------------------------------------------
+
+function renderApplySection(reportName) {
+  const wrap = document.createElement('div');
+  wrap.className = 'e2e-apply';
+
+  const btn = document.createElement('button');
+  btn.className = 'ghost';
+  btn.textContent = 'Apply fix';
+  wrap.appendChild(btn);
+
+  const body = document.createElement('div');
+  body.style.display = 'none';
+  wrap.appendChild(body);
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const preview = await api('/api/e2e/apply/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report: reportName }),
+      });
+      if (!preview.applicable) {
+        body.innerHTML = '';
+        const note = document.createElement('p');
+        note.className = 'e2e-card-meta';
+        note.style.margin = '0.5rem 0 0';
+        note.textContent = 'Not applicable: ' + preview.reason;
+        body.appendChild(note);
+        body.style.display = '';
+        btn.style.display = 'none';
+        return;
+      }
+      renderApplyPreview(body, reportName, preview);
+      body.style.display = '';
+      btn.style.display = 'none';
+    } catch (e) {
+      alert('Failed to load fix preview: ' + e.message);
+      btn.disabled = false;
+    }
+  };
+
+  return wrap;
+}
+
+function renderApplyPreview(body, reportName, preview) {
+  body.innerHTML = '';
+
+  const file = document.createElement('p');
+  file.className = 'e2e-apply-file';
+  file.textContent = 'File: ' + preview.fix.filePath;
+  body.appendChild(file);
+
+  const diff = document.createElement('div');
+  diff.className = 'e2e-diff';
+  const before = document.createElement('div');
+  before.className = 'e2e-diff-col';
+  before.innerHTML = '<label>Before</label>';
+  const beforePre = document.createElement('pre');
+  beforePre.textContent = preview.fix.oldText;
+  before.appendChild(beforePre);
+  const after = document.createElement('div');
+  after.className = 'e2e-diff-col';
+  after.innerHTML = '<label>After</label>';
+  const afterPre = document.createElement('pre');
+  afterPre.textContent = preview.fix.newText;
+  after.appendChild(afterPre);
+  diff.appendChild(before);
+  diff.appendChild(after);
+  body.appendChild(diff);
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'primary';
+  confirmBtn.textContent = 'Apply & re-run';
+  body.appendChild(confirmBtn);
+
+  const statusEl = document.createElement('span');
+  statusEl.className = 'status-text';
+  statusEl.style.marginLeft = '0.6rem';
+  body.appendChild(statusEl);
+
+  const logEl = document.createElement('pre');
+  logEl.className = 'gen-log e2e-apply-log';
+  logEl.style.display = 'none';
+  body.appendChild(logEl);
+
+  confirmBtn.onclick = async () => {
+    const msg = `Write the fix to "${preview.fix.filePath}", then typecheck and re-run the scenario? This changes a real source file in the repo.`;
+    if (!(await confirmModal(msg, 'danger'))) return;
+
+    confirmBtn.disabled = true;
+    setStatus(statusEl, 'Applying…');
+    logEl.textContent = '';
+    logEl.style.display = '';
+
+    try {
+      let doneEvent = null;
+      let errorMessage = null;
+      await streamNdjson(
+        '/api/e2e/apply/confirm',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: reportName }) },
+        (evt) => {
+          if (evt.type === 'progress') {
+            logEl.textContent += evt.message + '\n';
+            logEl.scrollTop = logEl.scrollHeight;
+          } else if (evt.type === 'done') {
+            doneEvent = evt;
+          } else if (evt.type === 'error') {
+            errorMessage = evt.error;
+          }
+        },
+      );
+      if (errorMessage) throw new Error(errorMessage);
+      if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+      const outcome = doneEvent.report.outcome;
+      setStatus(statusEl, outcome.replace(/_/g, ' '), outcome === 'applied_and_passed' ? 'ok' : 'err');
+      confirmBtn.style.display = 'none';
+    } catch (e) {
+      setStatus(statusEl, 'Failed: ' + e.message, 'err');
+      confirmBtn.disabled = false;
+    }
+  };
+}
+
+// --- History -----------------------------------------------------------------
+
+let historyLoaded = false;
+
+document.getElementById('toggle-history-btn').onclick = async () => {
+  const body = document.getElementById('history-body');
+  const btn = document.getElementById('toggle-history-btn');
+  const show = body.style.display === 'none';
+  body.style.display = show ? '' : 'none';
+  btn.textContent = show ? 'Hide past reports' : 'Show past reports';
+  if (show && !historyLoaded) {
+    historyLoaded = true;
+    await loadHistory();
+  }
+};
+
+async function loadHistory() {
+  const reports = await api('/api/e2e/reports');
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  list.innerHTML = '';
+  if (reports.length === 0) {
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  for (const summary of reports) {
+    const row = document.createElement('div');
+    row.className = 'e2e-history-row';
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (summary.status === 'passed' || summary.status === 'applied_and_passed' ? 'badge-ok' : summary.status === 'failed' || summary.status.startsWith('applied_but') ? 'badge-err' : 'badge-mute');
+    badge.textContent = summary.status.replace(/_/g, ' ');
+    const title = document.createElement('span');
+    title.style.flex = '1';
+    title.textContent = `${summary.scenarioTitle} ${summary.kind === 'applied' ? '(applied fix)' : ''}`;
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = new Date(summary.startedAt).toLocaleString();
+    row.appendChild(badge);
+    row.appendChild(title);
+    row.appendChild(name);
+
+    const detail = document.createElement('div');
+    detail.className = 'e2e-history-detail';
+    detail.style.display = 'none';
+
+    row.onclick = async () => {
+      const opening = detail.style.display === 'none';
+      detail.style.display = opening ? '' : 'none';
+      if (opening && !detail.dataset.loaded) {
+        detail.dataset.loaded = '1';
+        try {
+          const full = await api('/api/e2e/reports/' + encodeURIComponent(summary.name));
+          const card = summary.kind === 'applied' ? renderAppliedReportCard(full) : renderRunReportCard(full, summary.name);
+          detail.appendChild(card);
+        } catch (e) {
+          detail.textContent = 'Failed to load: ' + e.message;
+        }
+      }
+    };
+
+    list.appendChild(row);
+    list.appendChild(detail);
+  }
+}
+
+function renderAppliedReportCard(report) {
+  const card = document.createElement('div');
+  card.className = 'group-card';
+
+  const head = document.createElement('div');
+  head.className = 'e2e-card-head';
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = report.scenarioTitle;
+  const badge = document.createElement('span');
+  badge.className = 'badge ' + (report.outcome === 'applied_and_passed' ? 'badge-ok' : 'badge-err');
+  badge.textContent = report.outcome.replace(/_/g, ' ');
+  head.appendChild(title);
+  head.appendChild(badge);
+  card.appendChild(head);
+
+  const meta = document.createElement('div');
+  meta.className = 'e2e-card-meta';
+  meta.textContent = `${report.scenarioId} · originally: ${report.originalClassification.replace(/_/g, ' ')} · ${new Date(report.startedAt).toLocaleString()}`;
+  card.appendChild(meta);
+
+  if (report.appliedFix) {
+    const file = document.createElement('p');
+    file.className = 'e2e-apply-file';
+    file.textContent = 'File: ' + report.appliedFix.filePath;
+    card.appendChild(file);
+  }
+
+  const lines = document.createElement('p');
+  lines.className = 'e2e-reasoning';
+  const bits = [];
+  if (report.typecheck) bits.push(`typecheck: ${report.typecheck.passed ? 'passed' : 'FAILED'}`);
+  if (report.rerun) bits.push(`re-run: ${report.rerun.passed ? 'passed' : 'still failing'}`);
+  lines.textContent = bits.join(' · ');
+  card.appendChild(lines);
+
+  return card;
+}
+
+loadScenarios().catch((e) => setStatus(document.getElementById('run-status'), 'Failed to load scenarios: ' + e.message, 'err'));
+</script>
 </body>
 </html>
