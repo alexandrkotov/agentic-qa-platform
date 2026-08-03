@@ -71,6 +71,11 @@
   .status-text { font-size: 0.83rem; }
   .status-text.ok { color: var(--ok); }
   .status-text.err { color: var(--danger); }
+  /* Mixed-color "N passed / M failed" summary — the two counts need their
+     own color each, so this can't just be one .status-text.ok/.err on the
+     whole element the way every other status line here works. */
+  .status-pass { color: var(--ok); font-weight: 600; }
+  .status-fail { color: var(--danger); font-weight: 600; }
 
   /* Scenario picker — a plain checklist, scrollable once the suite grows
      past a screenful, same visual language (border/line/padding) as the
@@ -320,6 +325,26 @@ function setStatus(el, text, kind) {
   el.className = 'status-text' + (kind ? ' ' + kind : '');
 }
 
+/** "N passed" in green, plus "/ M failed" in red when there's at least one
+ *  failure — a single .status-text.ok/.err (setStatus's usual job) can only
+ *  color the whole line one way, not each count separately. */
+function setPassFailStatus(el, passedCount, total) {
+  const failedCount = total - passedCount;
+  el.className = 'status-text';
+  el.innerHTML = '';
+  const passSpan = document.createElement('span');
+  passSpan.className = 'status-pass';
+  passSpan.textContent = failedCount === 0 ? `${passedCount} passed.` : `${passedCount} passed`;
+  el.appendChild(passSpan);
+  if (failedCount > 0) {
+    el.appendChild(document.createTextNode(' / '));
+    const failSpan = document.createElement('span');
+    failSpan.className = 'status-fail';
+    failSpan.textContent = `${failedCount} failed.`;
+    el.appendChild(failSpan);
+  }
+}
+
 const state = { scenarios: [], selected: new Set() };
 
 // --- Scenario picker --------------------------------------------------------
@@ -419,7 +444,7 @@ document.getElementById('run-selected-btn').onclick = async () => {
     if (errorMessage) throw new Error(errorMessage);
     if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
     const passedCount = doneEvent.reports.filter((r) => r.status === 'passed').length;
-    setStatus(statusEl, `${passedCount}/${doneEvent.reports.length} passed.`, passedCount === doneEvent.reports.length ? 'ok' : 'err');
+    setPassFailStatus(statusEl, passedCount, doneEvent.reports.length);
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {
