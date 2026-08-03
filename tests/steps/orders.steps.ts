@@ -383,6 +383,7 @@ Then('the order items update response should indicate success', async ({}) => {
 });
 
 Then('the order should have the replacement product with quantity {int} in the database', async ({}, quantity: number) => {
+  await ensureDbConnected();
   const result = await db.query(
     'SELECT "productId", quantity FROM "OrderItem" WHERE "orderId" = $1',
     [ctx.orderId]
@@ -425,6 +426,7 @@ Then('the order status update response should be a 400 validation error', async 
 });
 
 Then('the order should exist in the Order table with status {string}', async ({}, status: string) => {
+  await ensureDbConnected();
   const result = await db.query(
     'SELECT status FROM "Order" WHERE id = $1',
     [ctx.orderId]
