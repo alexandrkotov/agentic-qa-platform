@@ -402,6 +402,7 @@ Then('the order creation response should indicate success', async ({}) => {
 });
 
 Then('the order item should have quantity {int} and unit price {float} in the database', async ({}, quantity: number, unitPrice: number) => {
+  await ensureDbConnected();
   const result = await db.query(
     'SELECT quantity, "unitPrice" FROM "OrderItem" WHERE "orderId" = $1',
     [ctx.orderId]
