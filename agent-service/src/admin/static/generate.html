@@ -141,6 +141,7 @@
   .confirm-modal-icon svg { display: block; }
   .confirm-modal-icon.money { color: #2f8f5b; }
   .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-icon.warning { color: var(--warn); }
   .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
@@ -392,15 +393,27 @@ const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" 
   <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
+// Hand-drawn triangle+exclamation rather than "⚠️"/"!" — same reasoning as
+// the money icon above (see reference_svg_icons_over_font_glyphs memory):
+// text/emoji glyph shapes vary by the viewer's own font/OS, a plain SVG
+// path doesn't.
+const WARNING_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <path d="M12 3.5 21.5 20.5 2.5 20.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+  <line x1="12" y1="9.5" x2="12" y2="14.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="12" cy="17.3" r="1.05" fill="currentColor"/>
+</svg>`;
+const MODAL_ICONS = { money: MONEY_ICON_SVG, time: '⏳', warning: WARNING_ICON_SVG };
 
 // kind picks the big icon: 'money' (default) for actions that call Claude
 // and cost real money, 'time' for actions that are free but slow and/or
-// mutate real state, so the two read as visually distinct at a glance.
+// mutate real state, 'warning' for actions that can silently discard other
+// work (e.g. overwriting a file someone hand-edited elsewhere) — each reads
+// as visually distinct at a glance.
 function confirmModal(message, kind = 'money') {
   return new Promise((resolve) => {
     document.getElementById('confirm-modal-message').textContent = message;
     const icon = document.getElementById('confirm-modal-icon');
-    icon.innerHTML = kind === 'time' ? '⏳' : MONEY_ICON_SVG;
+    icon.innerHTML = MODAL_ICONS[kind];
     icon.className = 'confirm-modal-icon ' + kind;
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
@@ -1058,6 +1071,10 @@ document.getElementById('spec-approve-btn').onclick = async () => {
 document.getElementById('render-btn').onclick = async () => {
   const specName = document.getElementById('render-spec-select').value;
   if (!specName) return;
+  const msg = 'Write this spec\'s .feature/.steps.ts files to tests/? This OVERWRITES those files ' +
+    'completely — if you\'ve already applied a fix to any of them from the E2E tab, that patch ' +
+    'will be lost.';
+  if (!(await confirmModal(msg, 'warning'))) return;
   const btn = document.getElementById('render-btn');
   const statusEl = document.getElementById('render-status');
   btn.disabled = true;
