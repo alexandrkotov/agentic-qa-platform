@@ -688,7 +688,24 @@ function renderGrouping() {
     // re-render on every keystroke would fix that but steal focus out of
     // this same input mid-type; onchange re-renders only once the rename is
     // actually finished.
-    keyInput.onchange = () => { group.key = keyInput.value; renderGrouping(); };
+    keyInput.onchange = () => {
+      const newKey = keyInput.value.trim();
+      // Checked against every OTHER group's key (not this group's own
+      // still-current one, so re-confirming the same value isn't flagged)
+      // plus the "ungrouped" pseudo-key, which isn't a real group but reads
+      // identically in every dropdown. Two groups sharing one key would make
+      // allGroupKeys()/moveScenario()'s own by-key lookups pick whichever
+      // one .find() happens to hit first — silently wrong, not an error.
+      const collides = newKey !== group.key && (newKey === 'ungrouped' || allGroupKeys().includes(newKey));
+      if (!newKey || collides) {
+        keyInput.value = group.key; // revert — key input must never disagree with the actual group.key it's bound to
+        setStatus(document.getElementById('status'), !newKey ? 'Group key cannot be empty.' : `Group key "${newKey}" is already in use — pick a different name.`, 'err');
+        return;
+      }
+      group.key = newKey;
+      setStatus(document.getElementById('status'), ''); // clears a stale error from an earlier rejected attempt
+      renderGrouping();
+    };
     const count = document.createElement('span');
     count.style.color = 'var(--text-mute)'; count.style.fontSize = '0.78rem';
     count.textContent = `${group.scenarioNames.length} scenario(s)`;
