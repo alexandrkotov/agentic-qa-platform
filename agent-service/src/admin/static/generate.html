@@ -249,7 +249,7 @@
     </div>
     <div id="grouping-body"></div>
     <div class="row">
-      <button class="ghost" id="add-group-btn" style="display:none">+ Add group</button>
+      <button class="primary" id="add-group-btn" style="display:none">+ Add group</button>
       <button class="primary" id="approve-btn" disabled style="display:none">Approve grouping</button>
       <span id="status"></span>
     </div>
@@ -680,12 +680,34 @@ function renderGrouping() {
     head.className = 'head';
     const keyInput = document.createElement('input');
     keyInput.type = 'text'; keyInput.value = group.key;
-    keyInput.oninput = () => { group.key = keyInput.value; };
+    // onchange (fires on blur/tab-away), not oninput (fires per keystroke) —
+    // every scenario row's dropdown across the whole page is only rebuilt on
+    // a full re-render, so a rename that doesn't trigger one leaves every
+    // dropdown that still shows this group's OLD key pointing at a key
+    // moveScenario() can no longer find, throwing when clicked. A live
+    // re-render on every keystroke would fix that but steal focus out of
+    // this same input mid-type; onchange re-renders only once the rename is
+    // actually finished.
+    keyInput.onchange = () => { group.key = keyInput.value; renderGrouping(); };
     const count = document.createElement('span');
     count.style.color = 'var(--text-mute)'; count.style.fontSize = '0.78rem';
     count.textContent = `${group.scenarioNames.length} scenario(s)`;
     head.appendChild(keyInput);
     head.appendChild(count);
+    // Only offered for an empty group — removing one with scenarios in it
+    // would silently drop them from the grouping instead of an explicit
+    // "move them somewhere first," which the per-scenario dropdown already
+    // covers. Most often needed right after "+ Add group" for one created
+    // by mistake, or a mis-click while reassigning scenarios out of it.
+    if (group.scenarioNames.length === 0) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'link'; removeBtn.textContent = 'Remove';
+      removeBtn.onclick = () => {
+        state.grouping.groups = state.grouping.groups.filter((gr) => gr !== group);
+        renderGrouping();
+      };
+      head.appendChild(removeBtn);
+    }
     card.appendChild(head);
     if (group.rationale) {
       const rationale = document.createElement('div');
