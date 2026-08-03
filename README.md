@@ -255,8 +255,12 @@ managing the QA framework's own configuration):
   `.steps.ts` files under `tests/`, and its own "Run tests" button runs the real Playwright suite
   against the live app stack straight from the browser, live progress streamed the same way
   Discovery's run does.
-- **E2E** (`/e2e.html`) — a placeholder tab for now; the E2E Agent itself is fully working, just
-  CLI-only today (`pnpm e2e` / `pnpm apply-fix`, see below) — no browser UI for it yet.
+- **E2E** (`/e2e.html`) — the E2E Agent's two stages (below), from the browser instead of the CLI.
+  Pick one or more scenarios and run them for real, live progress streamed the same way as
+  Discovery/Test Suite; a failure shows Claude's classification, reasoning, and step-by-step
+  evidence, plus an "Apply fix" button when a patch was proposed — shows the exact before/after,
+  applies only after an explicit confirm, then type-checks and re-runs the scenario live. Every
+  run and applied-fix report stays browsable afterward under History.
 
 Runs as the `workbench` service in `docker-compose.yml` — starts with everything else, no separate
 step. Built from a dedicated [`agent-service/Dockerfile.workbench`](agent-service/Dockerfile.workbench)
@@ -300,12 +304,8 @@ Done, verified, and running:
 - E2E Agent (diagnose + guarded fix) — every guardrail and failure classification adversarially
   tested (see [docs/phase4-status.md](docs/phase4-status.md))
 - CI — verified green on a real GitHub-hosted runner
-- The Workbench (descriptors, live Discovery/Generate/Analysis runs, live test runs) and the AI
+- The Workbench (descriptors, live Discovery/Generate/Analysis/E2E runs, live test runs) and the AI
   usage/cost dashboard — both live at `docker compose up`
-
-In progress:
-- The E2E tab in the Workbench is a placeholder — the E2E Agent itself is done and fully working
-  (see above), just CLI-only for now; a browser UI for it is the next piece of work.
 
 Deliberately out of scope, not missing pieces:
 - No agent runs automatically in CI or triggers another agent — every phase is a manually-triggered,
