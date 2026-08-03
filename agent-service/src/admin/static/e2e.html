@@ -427,6 +427,12 @@ document.getElementById('run-selected-btn').onclick = async () => {
   const logEl = document.getElementById('run-log');
   logEl.textContent = '';
   logEl.style.display = '';
+  // Results reflects THIS run, not a running tally across every run this
+  // session — otherwise re-running the same batch after fixing something
+  // just piles up duplicate cards for scenarios already shown. Past runs
+  // are never lost — they're still on disk and browsable via History.
+  document.getElementById('results-list').innerHTML = '';
+  document.getElementById('results-empty').style.display = '';
 
   try {
     let doneEvent = null;
@@ -580,7 +586,13 @@ function renderApplySection(reportName) {
         const note = document.createElement('p');
         note.className = 'e2e-card-meta';
         note.style.margin = '0.5rem 0 0';
-        note.textContent = 'Not applicable: ' + preview.reason;
+        // The most common way this happens: another scenario's fix already
+        // touched the exact same shared step (steps/*.ts functions are
+        // reused across scenarios), so the text this fix was looking for is
+        // simply gone now — not an error, just already handled.
+        note.textContent = preview.reason.includes('oldText found 0 time')
+          ? 'Not applicable — the code this fix targeted is no longer there, most likely because another scenario’s fix already changed it (a shared step used by both). Re-run this scenario to confirm it now passes.'
+          : 'Not applicable: ' + preview.reason;
         body.appendChild(note);
         body.style.display = '';
         btn.style.display = 'none';
