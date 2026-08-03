@@ -143,7 +143,9 @@ services:
       context: ./agent-service
       dockerfile: Dockerfile.workbench
     ports: ["4400:4400"]
-    env_file: ./agent-service/.env
+    env_file:
+      - path: ./agent-service/.env
+        required: false
     # tests/ is a separate package with its own @playwright/test version, so
     # it needs its own browser binary — the one the Dockerfile installs at
     # build time is for agent-service's own @playwright/mcp dependency, a
