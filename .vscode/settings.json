@@ -1,3 +1,7 @@
 {
-  "js/ts.tsdk.path": "app/node_modules/typescript/lib"
+  "js/ts.tsdk.path": "app/node_modules/typescript/lib",
+  "cucumberautocomplete.steps": [
+    "tests/steps/**/*.steps.ts"
+  ],
+  "cucumberautocomplete.syncfeatures": true
 }
