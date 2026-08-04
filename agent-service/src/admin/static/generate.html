@@ -119,7 +119,8 @@
   /* Same bare-link look as button.link, but for a purely informational
      cross-reference (Generate tab -> Corrections tab), not a destructive
      action — var(--danger) there would misread as a warning. */
-  button.link.accent { color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0; }
+  button.link.accent, a.link.accent { color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0; text-decoration: none; }
+  a.link.accent:hover { text-decoration: underline; }
 
   .confirm-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
@@ -334,6 +335,9 @@
     </div>
     <div class="row" id="run-tests-log-row" style="display:none">
       <pre id="run-tests-log" class="gen-log"></pre>
+    </div>
+    <div class="row" id="run-tests-e2e-row" style="display:none">
+      <a href="/e2e.html" id="run-tests-e2e-link" class="link accent"></a>
     </div>
     <div class="row">
       <a class="primary" href="http://localhost:8080/" target="_blank" rel="noopener">Show Cucumber test report</a>
@@ -1193,6 +1197,18 @@ document.getElementById('run-tests-btn').onclick = async () => {
     if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
     const summary = doneEvent.testsPassed ? 'All tests passed.' : `Tests finished with failures (exit code ${doneEvent.testsExitCode}).`;
     setStatus(statusEl, summary + (doneEvent.reportGenerated ? ' Report updated.' : ' Report generation failed — see server logs.'), doneEvent.testsPassed ? 'ok' : 'err');
+    const e2eRow = document.getElementById('run-tests-e2e-row');
+    const e2eLink = document.getElementById('run-tests-e2e-link');
+    if (!doneEvent.testsPassed) {
+      // This tab only writes files and runs the suite once — it never diagnoses
+      // or fixes a failure itself. That's the E2E Agent's job (Suggest mode +
+      // Execute-with-approval), working directly on the files this tab just
+      // wrote. Point there explicitly rather than leaving a failure as a dead end.
+      e2eLink.textContent = 'Diagnose and fix failures in the E2E tab →';
+      e2eRow.style.display = '';
+    } else {
+      e2eRow.style.display = 'none';
+    }
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {
