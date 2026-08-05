@@ -176,7 +176,15 @@
      pane naturally takes the full width and two panes split it evenly, no
      separate single-vs-compare layout to maintain. */
   .diagram-modal-body { display: flex; gap: 1rem; flex: 1 1 auto; min-height: 0; }
-  .diagram-modal-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; gap: 0.4rem; }
+  /* flex-basis: 0, not auto — with `auto`, each pane's *content* (the SVG,
+     which renders at width: 100% of whatever it's given) sets its own
+     preferred width first, and Mermaid's zoom math (in applyZoomTo()) reads
+     that width as the diagram's own "natural" size — so a lopsided initial
+     split before content is even accounted for became a real, self-
+     reinforcing bug: unequal panes measured unequal natural widths, and the
+     same zoom percentage then scaled from two different baselines. A 0 basis
+     forces a true 50/50 split up front, independent of what's inside. */
+  .diagram-modal-pane { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; gap: 0.4rem; }
   .diagram-modal-pane-label { font-size: 0.78rem; font-weight: 600; color: var(--text-mute); flex-shrink: 0; }
   .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; cursor: grab; }
   .diagram-modal-scroll.panning { cursor: grabbing; user-select: none; }
