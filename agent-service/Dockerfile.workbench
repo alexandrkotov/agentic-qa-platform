@@ -31,5 +31,13 @@ RUN npx playwright install --with-deps chromium
 
 COPY src/ src/
 
+# Container starts as root (default), but only long enough for the
+# entrypoint to fix up docker.sock group access and drop to the built-in
+# non-root "node" user before the real process ever runs — see
+# docker-entrypoint.sh for why this can't just be a Dockerfile USER line.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 4400
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["npx", "tsx", "src/admin/server.ts"]
