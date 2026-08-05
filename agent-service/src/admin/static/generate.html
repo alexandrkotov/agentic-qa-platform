@@ -119,7 +119,8 @@
   /* Same bare-link look as button.link, but for a purely informational
      cross-reference (Generate tab -> Corrections tab), not a destructive
      action — var(--danger) there would misread as a warning. */
-  button.link.accent { color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0; }
+  button.link.accent, a.link.accent { color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 0; text-decoration: none; }
+  a.link.accent:hover { text-decoration: underline; }
 
   .confirm-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
@@ -141,6 +142,7 @@
   .confirm-modal-icon svg { display: block; }
   .confirm-modal-icon.money { color: #2f8f5b; }
   .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-icon.warning { color: var(--warn); }
   .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
@@ -248,6 +250,7 @@
     </div>
     <div id="grouping-body"></div>
     <div class="row">
+      <button class="primary" id="add-group-btn" style="display:none">+ Add group</button>
       <button class="primary" id="approve-btn" disabled style="display:none">Approve grouping</button>
       <span id="status"></span>
     </div>
@@ -333,6 +336,9 @@
     <div class="row" id="run-tests-log-row" style="display:none">
       <pre id="run-tests-log" class="gen-log"></pre>
     </div>
+    <div class="row" id="run-tests-e2e-row" style="display:none">
+      <a href="/e2e.html" id="run-tests-e2e-link" class="link accent"></a>
+    </div>
     <div class="row">
       <a class="primary" href="http://localhost:8080/" target="_blank" rel="noopener">Show Cucumber test report</a>
     </div>
@@ -392,15 +398,27 @@ const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" 
   <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
   <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
+// Hand-drawn triangle+exclamation rather than "⚠️"/"!" — same reasoning as
+// the money icon above (see reference_svg_icons_over_font_glyphs memory):
+// text/emoji glyph shapes vary by the viewer's own font/OS, a plain SVG
+// path doesn't.
+const WARNING_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <path d="M12 3.5 21.5 20.5 2.5 20.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+  <line x1="12" y1="9.5" x2="12" y2="14.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="12" cy="17.3" r="1.05" fill="currentColor"/>
+</svg>`;
+const MODAL_ICONS = { money: MONEY_ICON_SVG, time: '⏳', warning: WARNING_ICON_SVG };
 
 // kind picks the big icon: 'money' (default) for actions that call Claude
 // and cost real money, 'time' for actions that are free but slow and/or
-// mutate real state, so the two read as visually distinct at a glance.
+// mutate real state, 'warning' for actions that can silently discard other
+// work (e.g. overwriting a file someone hand-edited elsewhere) — each reads
+// as visually distinct at a glance.
 function confirmModal(message, kind = 'money') {
   return new Promise((resolve) => {
     document.getElementById('confirm-modal-message').textContent = message;
     const icon = document.getElementById('confirm-modal-icon');
-    icon.innerHTML = kind === 'time' ? '⏳' : MONEY_ICON_SVG;
+    icon.innerHTML = MODAL_ICONS[kind];
     icon.className = 'confirm-modal-icon ' + kind;
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
@@ -570,6 +588,29 @@ function allGroupKeys() {
   return state.grouping ? state.grouping.groups.map((g) => g.key) : [];
 }
 
+// Picks "new-group", or "new-group-2"/"-3"/... if that's already taken —
+// same idea as any "Copy" button avoiding a name collision. The reviewer is
+// expected to retype this inline via the group card's own key <input>
+// (already there for every group, heuristic-proposed or not), so this only
+// has to be unique, not meaningful.
+function uniqueGroupKey() {
+  const taken = new Set([...allGroupKeys(), 'ungrouped']);
+  if (!taken.has('new-group')) return 'new-group';
+  let n = 2;
+  while (taken.has(`new-group-${n}`)) n++;
+  return `new-group-${n}`;
+}
+
+document.getElementById('add-group-btn').onclick = () => {
+  if (!state.grouping) return;
+  // Empty on purpose — GroupSchema requires at least one scenario, so an
+  // empty group can't be approved as-is (see the approve-btn handler's own
+  // check below). Move scenarios into it via their existing row dropdown,
+  // the same way you'd move one into any heuristic-proposed group.
+  state.grouping.groups.push({ key: uniqueGroupKey(), scenarioNames: [], rationale: 'Added manually by reviewer' });
+  renderGrouping();
+};
+
 function moveScenario(name, fromKey, toKey) {
   const g = state.grouping;
   if (fromKey === '__ungrouped__') g.ungrouped = g.ungrouped.filter((n) => n !== name);
@@ -617,6 +658,7 @@ function renderGrouping() {
   const approveBtn = document.getElementById('approve-btn');
   approveBtn.style.display = state.grouping ? '' : 'none';
   approveBtn.disabled = !state.grouping;
+  document.getElementById('add-group-btn').style.display = state.grouping ? '' : 'none';
   if (!state.grouping) { updateStageGating(); return; }
   const g = state.grouping;
 
@@ -642,12 +684,51 @@ function renderGrouping() {
     head.className = 'head';
     const keyInput = document.createElement('input');
     keyInput.type = 'text'; keyInput.value = group.key;
-    keyInput.oninput = () => { group.key = keyInput.value; };
+    // onchange (fires on blur/tab-away), not oninput (fires per keystroke) —
+    // every scenario row's dropdown across the whole page is only rebuilt on
+    // a full re-render, so a rename that doesn't trigger one leaves every
+    // dropdown that still shows this group's OLD key pointing at a key
+    // moveScenario() can no longer find, throwing when clicked. A live
+    // re-render on every keystroke would fix that but steal focus out of
+    // this same input mid-type; onchange re-renders only once the rename is
+    // actually finished.
+    keyInput.onchange = () => {
+      const newKey = keyInput.value.trim();
+      // Checked against every OTHER group's key (not this group's own
+      // still-current one, so re-confirming the same value isn't flagged)
+      // plus the "ungrouped" pseudo-key, which isn't a real group but reads
+      // identically in every dropdown. Two groups sharing one key would make
+      // allGroupKeys()/moveScenario()'s own by-key lookups pick whichever
+      // one .find() happens to hit first — silently wrong, not an error.
+      const collides = newKey !== group.key && (newKey === 'ungrouped' || allGroupKeys().includes(newKey));
+      if (!newKey || collides) {
+        keyInput.value = group.key; // revert — key input must never disagree with the actual group.key it's bound to
+        setStatus(document.getElementById('status'), !newKey ? 'Group key cannot be empty.' : `Group key "${newKey}" is already in use — pick a different name.`, 'err');
+        return;
+      }
+      group.key = newKey;
+      setStatus(document.getElementById('status'), ''); // clears a stale error from an earlier rejected attempt
+      renderGrouping();
+    };
     const count = document.createElement('span');
     count.style.color = 'var(--text-mute)'; count.style.fontSize = '0.78rem';
     count.textContent = `${group.scenarioNames.length} scenario(s)`;
     head.appendChild(keyInput);
     head.appendChild(count);
+    // Only offered for an empty group — removing one with scenarios in it
+    // would silently drop them from the grouping instead of an explicit
+    // "move them somewhere first," which the per-scenario dropdown already
+    // covers. Most often needed right after "+ Add group" for one created
+    // by mistake, or a mis-click while reassigning scenarios out of it.
+    if (group.scenarioNames.length === 0) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'link'; removeBtn.textContent = 'Remove';
+      removeBtn.onclick = () => {
+        state.grouping.groups = state.grouping.groups.filter((gr) => gr !== group);
+        renderGrouping();
+      };
+      head.appendChild(removeBtn);
+    }
     card.appendChild(head);
     if (group.rationale) {
       const rationale = document.createElement('div');
@@ -694,6 +775,15 @@ document.getElementById('recompute-btn').onclick = async () => {
 
 document.getElementById('approve-btn').onclick = async () => {
   const statusEl = document.getElementById('status');
+  // Checked client-side, with a message naming the actual group, rather than
+  // letting this reach the server — GroupSchema's own min(1) would reject it
+  // there too, but only as a generic "Validation failed", not naming which
+  // group is still empty (most commonly one just added via "+ Add group").
+  const emptyGroup = state.grouping.groups.find((gr) => gr.scenarioNames.length === 0);
+  if (emptyGroup) {
+    setStatus(statusEl, `Group "${emptyGroup.key}" has no scenarios — move at least one into it before approving.`, 'err');
+    return;
+  }
   try {
     const result = await api('/api/generate/group/approve', {
       method: 'POST',
@@ -1058,6 +1148,10 @@ document.getElementById('spec-approve-btn').onclick = async () => {
 document.getElementById('render-btn').onclick = async () => {
   const specName = document.getElementById('render-spec-select').value;
   if (!specName) return;
+  const msg = 'Write this spec\'s .feature/.steps.ts files to tests/? This OVERWRITES those files ' +
+    'completely — if you\'ve already applied a fix to any of them from the E2E tab, that patch ' +
+    'will be lost.';
+  if (!(await confirmModal(msg, 'warning'))) return;
   const btn = document.getElementById('render-btn');
   const statusEl = document.getElementById('render-status');
   btn.disabled = true;
@@ -1103,6 +1197,18 @@ document.getElementById('run-tests-btn').onclick = async () => {
     if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
     const summary = doneEvent.testsPassed ? 'All tests passed.' : `Tests finished with failures (exit code ${doneEvent.testsExitCode}).`;
     setStatus(statusEl, summary + (doneEvent.reportGenerated ? ' Report updated.' : ' Report generation failed — see server logs.'), doneEvent.testsPassed ? 'ok' : 'err');
+    const e2eRow = document.getElementById('run-tests-e2e-row');
+    const e2eLink = document.getElementById('run-tests-e2e-link');
+    if (!doneEvent.testsPassed) {
+      // This tab only writes files and runs the suite once — it never diagnoses
+      // or fixes a failure itself. That's the E2E Agent's job (Suggest mode +
+      // Execute-with-approval), working directly on the files this tab just
+      // wrote. Point there explicitly rather than leaving a failure as a dead end.
+      e2eLink.textContent = 'Diagnose and fix failures in the E2E tab →';
+      e2eRow.style.display = '';
+    } else {
+      e2eRow.style.display = 'none';
+    }
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {

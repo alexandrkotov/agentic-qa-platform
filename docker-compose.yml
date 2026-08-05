@@ -143,7 +143,9 @@ services:
       context: ./agent-service
       dockerfile: Dockerfile.workbench
     ports: ["4400:4400"]
-    env_file: ./agent-service/.env
+    env_file:
+      - path: ./agent-service/.env
+        required: false
     # tests/ is a separate package with its own @playwright/test version, so
     # it needs its own browser binary — the one the Dockerfile installs at
     # build time is for agent-service's own @playwright/mcp dependency, a
@@ -156,15 +158,18 @@ services:
     # volume below makes that a no-op after the first successful start
     # rather than a fresh multi-hundred-MB download every restart.
     #
-    # That same volume, mounted at the default cache path, also SHADOWS the
-    # image's own build-time-installed browser (agent-service's, for
-    # Discovery) — the volume wins over whatever the image layer had baked
-    # in at that path. So this reinstalls agent-service's own chromium here
-    # too, not just tests/'s; --with-deps isn't needed again for either (the
-    # OS-level apt packages it installs live outside this cache path
-    # entirely, so the Dockerfile's build-time --with-deps already covers
-    # both — only the actual browser binary needs redownloading into the
-    # now-fresh named volume).
+    # This container runs as the non-root "node" user (docker-entrypoint.sh),
+    # whose HOME is /home/node — not /root, even though the image's own
+    # build-time playwright install (Dockerfile.workbench, run as root
+    # during build) wrote its browser to /root/.cache/ms-playwright. So that
+    # build-time browser is never reachable at runtime at all, regardless of
+    # this volume — it's dead weight, not "shadowed" the way it would be if
+    # both paths matched. This reinstall is what actually populates the
+    # browser this container uses, for both agent-service and tests/;
+    # --with-deps isn't needed again for either (the OS-level apt packages
+    # it installs live outside this cache path entirely, so the Dockerfile's
+    # build-time --with-deps already covers both — only the actual browser
+    # binary needs downloading into the volume).
     command: sh -c "npx playwright install chromium; (cd tests && npx playwright install chromium); npx tsx src/admin/server.ts"
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors
@@ -174,7 +179,9 @@ services:
       # would only touch the container's own ephemeral filesystem, never
       # the real tests/ directory this project's suite actually lives in.
       - ./tests:/usr/src/app/tests
-      - playwright-browsers:/root/.cache/ms-playwright
+      # /home/node, not /root: the container runs as the non-root "node"
+      # user (docker-entrypoint.sh), and Playwright caches to $HOME.
+      - playwright-browsers:/home/node/.cache/ms-playwright
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
