@@ -69,9 +69,20 @@
   }
   button.ghost:hover { background: var(--surface-2); }
 
-  #arch-status, #er-status, #uf-gen-status, #uf-status, #seq-gen-status, #seq-status, #wf-gen-status, #wf-status { font-size: 0.83rem; }
-  #arch-status.ok, #er-status.ok, #uf-gen-status.ok, #uf-status.ok, #seq-gen-status.ok, #seq-status.ok, #wf-gen-status.ok, #wf-status.ok { color: #2f8f5b; }
-  #arch-status.err, #er-status.err, #uf-gen-status.err, #uf-status.err, #seq-gen-status.err, #seq-status.err, #wf-gen-status.err, #wf-status.err { color: var(--danger); }
+  #arch-status, #er-status, #uf-gen-status, #uf-status, #seq-gen-status, #seq-status, #wf-gen-status, #wf-status,
+  #arch-compare-status, #er-compare-status, #uf-compare-status, #seq-compare-status, #wf-compare-status { font-size: 0.83rem; }
+  #arch-status.ok, #er-status.ok, #uf-gen-status.ok, #uf-status.ok, #seq-gen-status.ok, #seq-status.ok, #wf-gen-status.ok, #wf-status.ok,
+  #arch-compare-status.ok, #er-compare-status.ok, #uf-compare-status.ok, #seq-compare-status.ok, #wf-compare-status.ok { color: #2f8f5b; }
+  #arch-status.err, #er-status.err, #uf-gen-status.err, #uf-status.err, #seq-gen-status.err, #seq-status.err, #wf-gen-status.err, #wf-status.err,
+  #arch-compare-status.err, #er-compare-status.err, #uf-compare-status.err, #seq-compare-status.err, #wf-compare-status.err { color: var(--danger); }
+
+  /* Compare panels sit side by side with the primary diagram, not stacked —
+     each side shrinks independently and scrolls its own mermaid overflow
+     (pre.mermaid already has overflow-x: auto) rather than the pair fighting
+     over one shared scroll area. */
+  .compare-row { display: flex; gap: 1.25rem; align-items: flex-start; }
+  .compare-row > div { flex: 1; min-width: 0; }
+  .compare-panel { border-left: 1px dashed var(--line); padding-left: 1.25rem; }
 
   .diagram-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; background: var(--bg); }
   .diagram-card h3 { margin: 0 0 0.5rem; font-size: 0.88rem; }
@@ -249,18 +260,42 @@
     <h2>Architecture</h2>
     <div class="row">
       <button class="primary" id="arch-render-btn">Show</button>
+      <button class="ghost" id="arch-compare-btn">Compare with another report…</button>
       <span id="arch-status"></span>
     </div>
-    <div id="arch-diagram"></div>
+    <div class="compare-row">
+      <div id="arch-diagram"></div>
+      <div class="compare-panel" id="arch-compare-panel" style="display:none">
+        <div class="row">
+          <label>Compare with</label>
+          <select id="arch-compare-select"></select>
+          <button class="primary" id="arch-compare-render-btn">Show</button>
+          <span id="arch-compare-status"></span>
+        </div>
+        <div id="arch-compare-diagram"></div>
+      </div>
+    </div>
   </section>
 
   <section>
     <h2>Entity relationships</h2>
     <div class="row">
       <button class="primary" id="er-render-btn">Show</button>
+      <button class="ghost" id="er-compare-btn">Compare with another report…</button>
       <span id="er-status"></span>
     </div>
-    <div id="er-diagram"></div>
+    <div class="compare-row">
+      <div id="er-diagram"></div>
+      <div class="compare-panel" id="er-compare-panel" style="display:none">
+        <div class="row">
+          <label>Compare with</label>
+          <select id="er-compare-select"></select>
+          <button class="primary" id="er-compare-render-btn">Show</button>
+          <span id="er-compare-status"></span>
+        </div>
+        <div id="er-compare-diagram"></div>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -268,6 +303,7 @@
     <div class="row">
       <button class="primary" id="uf-show-btn">Show</button>
       <button class="primary" id="uf-propose-btn" style="display:none">Generate UI inventory</button>
+      <button class="ghost" id="uf-compare-btn">Compare with another report…</button>
       <span id="uf-gen-status"></span>
     </div>
     <div id="uf-body"></div>
@@ -275,7 +311,21 @@
       <button class="primary" id="uf-approve-btn" disabled style="display:none">Approve</button>
       <span id="uf-status"></span>
     </div>
-    <div id="uf-diagrams"></div>
+    <div class="compare-row">
+      <div id="uf-diagrams"></div>
+      <!-- Compare only ever loads an already-approved model for the second
+           report — no "Generate" button here, deliberately: comparing two
+           reports should never risk a second, unexpected Claude call. -->
+      <div class="compare-panel" id="uf-compare-panel" style="display:none">
+        <div class="row">
+          <label>Compare with</label>
+          <select id="uf-compare-select"></select>
+          <button class="primary" id="uf-compare-show-btn">Show</button>
+          <span id="uf-compare-status"></span>
+        </div>
+        <div id="uf-compare-diagrams"></div>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -283,6 +333,7 @@
     <div class="row">
       <button class="primary" id="seq-show-btn">Show</button>
       <button class="primary" id="seq-propose-btn" style="display:none">Generate sequence flow</button>
+      <button class="ghost" id="seq-compare-btn">Compare with another report…</button>
       <span id="seq-gen-status"></span>
     </div>
     <div id="seq-body"></div>
@@ -290,7 +341,18 @@
       <button class="primary" id="seq-approve-btn" disabled style="display:none">Approve</button>
       <span id="seq-status"></span>
     </div>
-    <div id="seq-diagrams"></div>
+    <div class="compare-row">
+      <div id="seq-diagrams"></div>
+      <div class="compare-panel" id="seq-compare-panel" style="display:none">
+        <div class="row">
+          <label>Compare with</label>
+          <select id="seq-compare-select"></select>
+          <button class="primary" id="seq-compare-show-btn">Show</button>
+          <span id="seq-compare-status"></span>
+        </div>
+        <div id="seq-compare-diagrams"></div>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -298,6 +360,7 @@
     <div class="row">
       <button class="primary" id="wf-show-btn">Show</button>
       <button class="primary" id="wf-propose-btn" style="display:none">Generate workflow model</button>
+      <button class="ghost" id="wf-compare-btn">Compare with another report…</button>
       <span id="wf-gen-status"></span>
     </div>
     <div id="wf-body"></div>
@@ -305,7 +368,18 @@
       <button class="primary" id="wf-approve-btn" disabled style="display:none">Approve</button>
       <span id="wf-status"></span>
     </div>
-    <div id="wf-diagrams"></div>
+    <div class="compare-row">
+      <div id="wf-diagrams"></div>
+      <div class="compare-panel" id="wf-compare-panel" style="display:none">
+        <div class="row">
+          <label>Compare with</label>
+          <select id="wf-compare-select"></select>
+          <button class="primary" id="wf-compare-show-btn">Show</button>
+          <span id="wf-compare-status"></span>
+        </div>
+        <div id="wf-compare-diagrams"></div>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -602,6 +676,47 @@ function onArchReportChanged() {
 document.getElementById('report-select').addEventListener('change', onArchReportChanged);
 document.getElementById('report-select').addEventListener('click', onArchReportChanged);
 
+// Compare panel is fully independent of the primary diagram above — its own
+// report select, own render call, own status. It never touches `state` and
+// is unaffected by the shared #report-select changing, since it's comparing
+// against a deliberately different report by design.
+document.getElementById('arch-compare-btn').onclick = () => {
+  const panel = document.getElementById('arch-compare-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  document.getElementById('arch-compare-btn').textContent = opening ? 'Hide comparison' : 'Compare with another report…';
+  if (!opening) {
+    document.getElementById('arch-compare-diagram').innerHTML = '';
+    setStatus(document.getElementById('arch-compare-status'), '');
+  }
+};
+loadReportOptions('arch-compare-select');
+document.getElementById('arch-compare-render-btn').onclick = async () => {
+  const report = document.getElementById('arch-compare-select').value;
+  const statusEl = document.getElementById('arch-compare-status');
+  const container = document.getElementById('arch-compare-diagram');
+  try {
+    const { mermaid: text } = await api('/api/workflow/render-architecture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    if (!text) {
+      setStatus(statusEl, "This report doesn't have enough distinct components to diagram an architecture.", 'err');
+      return;
+    }
+    container.innerHTML = '<pre class="mermaid"></pre>';
+    const pre = container.querySelector('pre');
+    pre.textContent = text;
+    pre.dataset.source = text;
+    pre.dataset.title = 'Architecture (compare)';
+    await mermaid.run({ querySelector: '#arch-compare-diagram pre.mermaid' });
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
 // --- Entity relationships ---------------------------------------------------
 
 function collapseEr() {
@@ -653,6 +768,43 @@ function onErReportChanged() {
 }
 document.getElementById('report-select').addEventListener('change', onErReportChanged);
 document.getElementById('report-select').addEventListener('click', onErReportChanged);
+
+document.getElementById('er-compare-btn').onclick = () => {
+  const panel = document.getElementById('er-compare-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  document.getElementById('er-compare-btn').textContent = opening ? 'Hide comparison' : 'Compare with another report…';
+  if (!opening) {
+    document.getElementById('er-compare-diagram').innerHTML = '';
+    setStatus(document.getElementById('er-compare-status'), '');
+  }
+};
+loadReportOptions('er-compare-select');
+document.getElementById('er-compare-render-btn').onclick = async () => {
+  const report = document.getElementById('er-compare-select').value;
+  const statusEl = document.getElementById('er-compare-status');
+  const container = document.getElementById('er-compare-diagram');
+  try {
+    const { mermaid: text } = await api('/api/workflow/render-er', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    if (!text) {
+      setStatus(statusEl, 'This report has no database structure to diagram.', 'err');
+      return;
+    }
+    container.innerHTML = '<pre class="mermaid"></pre>';
+    const pre = container.querySelector('pre');
+    pre.textContent = text;
+    pre.dataset.source = text;
+    pre.dataset.title = 'Entity relationships (compare)';
+    await mermaid.run({ querySelector: '#er-compare-diagram pre.mermaid' });
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
 
 // --- UI Inventory ---------------------------------------------------------
 
@@ -713,8 +865,8 @@ document.getElementById('uf-propose-btn').onclick = async () => {
   }
 };
 
-async function renderUiFlowDiagrams(rendered) {
-  const container = document.getElementById('uf-diagrams');
+async function renderUiFlowDiagrams(rendered, containerId = 'uf-diagrams') {
+  const container = document.getElementById(containerId);
   container.innerHTML = '';
   if (!rendered) return;
 
@@ -724,10 +876,10 @@ async function renderUiFlowDiagrams(rendered) {
   pre.className = 'mermaid';
   pre.textContent = rendered.mermaid;
   pre.dataset.source = rendered.mermaid;
-  pre.dataset.title = 'UI Inventory';
+  pre.dataset.title = containerId === 'uf-diagrams' ? 'UI Inventory' : 'UI Inventory (compare)';
   card.appendChild(pre);
   container.appendChild(card);
-  await mermaid.run({ querySelector: '#uf-diagrams pre.mermaid' });
+  await mermaid.run({ querySelector: `#${containerId} pre.mermaid` });
 }
 
 document.getElementById('uf-approve-btn').onclick = async () => {
@@ -805,6 +957,36 @@ function onUiFlowReportChanged() {
 document.getElementById('report-select').addEventListener('change', onUiFlowReportChanged);
 document.getElementById('report-select').addEventListener('click', onUiFlowReportChanged);
 
+// Compare only ever loads an already-approved model — no propose/confirm
+// flow here, deliberately, so comparing two reports can never trigger a
+// second, unexpected Claude call on top of the primary panel's own.
+document.getElementById('uf-compare-btn').onclick = () => {
+  const panel = document.getElementById('uf-compare-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  document.getElementById('uf-compare-btn').textContent = opening ? 'Hide comparison' : 'Compare with another report…';
+  if (!opening) {
+    document.getElementById('uf-compare-diagrams').innerHTML = '';
+    setStatus(document.getElementById('uf-compare-status'), '');
+  }
+};
+loadReportOptions('uf-compare-select');
+document.getElementById('uf-compare-show-btn').onclick = async () => {
+  const report = document.getElementById('uf-compare-select').value;
+  const statusEl = document.getElementById('uf-compare-status');
+  try {
+    const existing = await api('/api/workflow/ui-flow-for-report?report=' + encodeURIComponent(report));
+    if (!existing) {
+      document.getElementById('uf-compare-diagrams').innerHTML = '';
+      setStatus(statusEl, 'No approved model yet for this report — select it in the panel above and click Generate first.', 'err');
+      return;
+    }
+    await renderUiFlowDiagrams(existing.rendered, 'uf-compare-diagrams');
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
 
 // --- Sequence flow ----------------------------------------------------------
 
@@ -870,9 +1052,10 @@ document.getElementById('seq-propose-btn').onclick = async () => {
   }
 };
 
-async function renderSequenceDiagrams(rendered) {
-  const container = document.getElementById('seq-diagrams');
+async function renderSequenceDiagrams(rendered, containerId = 'seq-diagrams') {
+  const container = document.getElementById(containerId);
   container.innerHTML = '';
+  const suffix = containerId === 'seq-diagrams' ? '' : ' (compare)';
   for (const scenario of rendered) {
     const card = document.createElement('div');
     card.className = 'diagram-card';
@@ -884,12 +1067,12 @@ async function renderSequenceDiagrams(rendered) {
     pre.className = 'mermaid';
     pre.textContent = scenario.mermaid;
     pre.dataset.source = scenario.mermaid;
-    pre.dataset.title = scenario.name;
+    pre.dataset.title = scenario.name + suffix;
     card.appendChild(pre);
 
     container.appendChild(card);
   }
-  await mermaid.run({ querySelector: '#seq-diagrams pre.mermaid' });
+  await mermaid.run({ querySelector: `#${containerId} pre.mermaid` });
 }
 
 document.getElementById('seq-approve-btn').onclick = async () => {
@@ -960,6 +1143,33 @@ function onSequenceReportChanged() {
 document.getElementById('report-select').addEventListener('change', onSequenceReportChanged);
 document.getElementById('report-select').addEventListener('click', onSequenceReportChanged);
 
+document.getElementById('seq-compare-btn').onclick = () => {
+  const panel = document.getElementById('seq-compare-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  document.getElementById('seq-compare-btn').textContent = opening ? 'Hide comparison' : 'Compare with another report…';
+  if (!opening) {
+    document.getElementById('seq-compare-diagrams').innerHTML = '';
+    setStatus(document.getElementById('seq-compare-status'), '');
+  }
+};
+loadReportOptions('seq-compare-select');
+document.getElementById('seq-compare-show-btn').onclick = async () => {
+  const report = document.getElementById('seq-compare-select').value;
+  const statusEl = document.getElementById('seq-compare-status');
+  try {
+    const existing = await api('/api/workflow/sequence-for-report?report=' + encodeURIComponent(report));
+    if (!existing) {
+      document.getElementById('seq-compare-diagrams').innerHTML = '';
+      setStatus(statusEl, 'No approved model yet for this report — select it in the panel above and click Generate first.', 'err');
+      return;
+    }
+    await renderSequenceDiagrams(existing.rendered, 'seq-compare-diagrams');
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
 
 // --- Business workflow -------------------------------------------------------
 
@@ -1023,9 +1233,10 @@ document.getElementById('wf-propose-btn').onclick = async () => {
   }
 };
 
-async function renderDiagrams(rendered) {
-  const container = document.getElementById('wf-diagrams');
+async function renderDiagrams(rendered, containerId = 'wf-diagrams') {
+  const container = document.getElementById(containerId);
   container.innerHTML = '';
+  const suffix = containerId === 'wf-diagrams' ? '' : ' (compare)';
   for (const entity of rendered) {
     const card = document.createElement('div');
     card.className = 'diagram-card';
@@ -1037,7 +1248,7 @@ async function renderDiagrams(rendered) {
     pre.className = 'mermaid';
     pre.textContent = entity.mermaid;
     pre.dataset.source = entity.mermaid;
-    pre.dataset.title = entity.name;
+    pre.dataset.title = entity.name + suffix;
     card.appendChild(pre);
 
     const addList = (title, items, cls) => {
@@ -1060,7 +1271,7 @@ async function renderDiagrams(rendered) {
 
     container.appendChild(card);
   }
-  await mermaid.run({ querySelector: '#wf-diagrams pre.mermaid' });
+  await mermaid.run({ querySelector: `#${containerId} pre.mermaid` });
 }
 
 document.getElementById('wf-approve-btn').onclick = async () => {
@@ -1130,6 +1341,34 @@ function onWorkflowReportChanged() {
 }
 document.getElementById('report-select').addEventListener('change', onWorkflowReportChanged);
 document.getElementById('report-select').addEventListener('click', onWorkflowReportChanged);
+
+document.getElementById('wf-compare-btn').onclick = () => {
+  const panel = document.getElementById('wf-compare-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  document.getElementById('wf-compare-btn').textContent = opening ? 'Hide comparison' : 'Compare with another report…';
+  if (!opening) {
+    document.getElementById('wf-compare-diagrams').innerHTML = '';
+    setStatus(document.getElementById('wf-compare-status'), '');
+  }
+};
+loadReportOptions('wf-compare-select');
+document.getElementById('wf-compare-show-btn').onclick = async () => {
+  const report = document.getElementById('wf-compare-select').value;
+  const statusEl = document.getElementById('wf-compare-status');
+  try {
+    const existing = await api('/api/workflow/for-report?report=' + encodeURIComponent(report));
+    if (!existing) {
+      document.getElementById('wf-compare-diagrams').innerHTML = '';
+      setStatus(statusEl, 'No approved model yet for this report — select it in the panel above and click Generate first.', 'err');
+      return;
+    }
+    await renderDiagrams(existing.rendered, 'wf-compare-diagrams');
+    setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
 
 loadReportOptions('report-select');
 </script>
