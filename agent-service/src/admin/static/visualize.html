@@ -103,16 +103,18 @@
      variables are silently ignored by this build's erDiagram renderer (it derives its own row
      colors regardless of what's passed in), so pin the row fill directly via CSS instead — the
      renderer always emits row-rect-odd/row-rect-even classes on the row's own path. Covers the
-     primary ER container, its compare panel, AND the shared zoom modal — the modal re-renders
-     the exact same diagram source into its own #diagram-modal-scroll container (see
-     openDiagramModal()), a fresh mermaid.run() call the row-fill CSS wasn't scoped to reach
-     either, left unreadable in dark mode there too until this list included it as well. */
+     primary ER container, its compare panel, AND both panes of the shared zoom modal — the modal
+     re-renders the exact same diagram source into its own container(s) (see openDiagramModal()),
+     a fresh mermaid.run() call the row-fill CSS wasn't scoped to reach either, left unreadable in
+     dark mode there too until this list included it as well. */
   #er-diagram .row-rect-odd path:first-of-type,
   #er-compare-diagram .row-rect-odd path:first-of-type,
-  #diagram-modal-scroll .row-rect-odd path:first-of-type { fill: var(--surface) !important; }
+  #diagram-modal-scroll .row-rect-odd path:first-of-type,
+  #diagram-modal-scroll-2 .row-rect-odd path:first-of-type { fill: var(--surface) !important; }
   #er-diagram .row-rect-even path:first-of-type,
   #er-compare-diagram .row-rect-even path:first-of-type,
-  #diagram-modal-scroll .row-rect-even path:first-of-type { fill: var(--surface-2) !important; }
+  #diagram-modal-scroll .row-rect-even path:first-of-type,
+  #diagram-modal-scroll-2 .row-rect-even path:first-of-type { fill: var(--surface-2) !important; }
 
   .rule-section-label {
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
@@ -170,7 +172,13 @@
     cursor: pointer; padding: 0.1rem 0.5rem; border-radius: 6px;
   }
   .diagram-modal-close:hover { background: var(--surface-2); color: var(--text); }
-  .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; border: 1px solid var(--line); border-radius: 8px; cursor: grab; }
+  /* Body wraps one or two panes side by side — a plain flex row, so a single
+     pane naturally takes the full width and two panes split it evenly, no
+     separate single-vs-compare layout to maintain. */
+  .diagram-modal-body { display: flex; gap: 1rem; flex: 1 1 auto; min-height: 0; }
+  .diagram-modal-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; gap: 0.4rem; }
+  .diagram-modal-pane-label { font-size: 0.78rem; font-weight: 600; color: var(--text-mute); flex-shrink: 0; }
+  .diagram-modal-scroll { overflow: auto; flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; cursor: grab; }
   .diagram-modal-scroll.panning { cursor: grabbing; user-select: none; }
   /* The shared `pre.mermaid` rule sets overflow-x: auto for the small
      inline diagrams — mixing that with the default overflow-y: visible
@@ -400,7 +408,21 @@
       <h3 id="diagram-modal-title"></h3>
       <button class="diagram-modal-close" id="diagram-modal-close" aria-label="Close">&times;</button>
     </div>
-    <div class="diagram-modal-scroll" id="diagram-modal-scroll"></div>
+    <div class="diagram-modal-body" id="diagram-modal-body">
+      <div class="diagram-modal-pane">
+        <div class="diagram-modal-scroll" id="diagram-modal-scroll"></div>
+      </div>
+      <!-- Second pane only appears when the clicked diagram's block has a
+           comparison open — the primary diagram always drives (dragging or
+           scrolling it pans the second pane by the same delta); the second
+           pane stays fully free to drag on its own, so the human can line it
+           up with whatever region of the primary they actually want to
+           compare, without that alignment ever snapping back. -->
+      <div class="diagram-modal-pane" id="diagram-modal-pane-2" style="display:none">
+        <div class="diagram-modal-pane-label" id="diagram-modal-title-2"></div>
+        <div class="diagram-modal-scroll" id="diagram-modal-scroll-2"></div>
+      </div>
+    </div>
     <div class="diagram-zoom-controls">
       <button class="diagram-zoom-btn" id="diagram-zoom-out" aria-label="Zoom out">−</button>
       <span class="diagram-zoom-level" id="diagram-zoom-level">100%</span>
@@ -510,6 +532,9 @@ mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThe
 const modalOverlay = document.getElementById('diagram-modal-overlay');
 const modalTitle = document.getElementById('diagram-modal-title');
 const modalScroll = document.getElementById('diagram-modal-scroll');
+const modalPane2 = document.getElementById('diagram-modal-pane-2');
+const modalTitle2 = document.getElementById('diagram-modal-title-2');
+const modalScroll2 = document.getElementById('diagram-modal-scroll-2');
 const zoomLevelEl = document.getElementById('diagram-zoom-level');
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 4;
@@ -525,18 +550,24 @@ let zoomLevel = 1;
 // transform on an ancestor. What does work, guaranteed, is setting the
 // <svg>'s own pixel width/height directly — an explicit size on the actual
 // scrolled content is standard, unambiguous scrollable-overflow input.
-function applyZoom() {
-  const svg = modalScroll.querySelector('svg');
-  if (svg) {
-    if (!svg.dataset.naturalWidth) {
-      const rect = svg.getBoundingClientRect();
-      svg.dataset.naturalWidth = rect.width;
-      svg.dataset.naturalHeight = rect.height;
-    }
-    svg.style.maxWidth = 'none';
-    svg.style.width = parseFloat(svg.dataset.naturalWidth) * zoomLevel + 'px';
-    svg.style.height = parseFloat(svg.dataset.naturalHeight) * zoomLevel + 'px';
+function applyZoomTo(container) {
+  const svg = container.querySelector('svg');
+  if (!svg) return;
+  if (!svg.dataset.naturalWidth) {
+    const rect = svg.getBoundingClientRect();
+    svg.dataset.naturalWidth = rect.width;
+    svg.dataset.naturalHeight = rect.height;
   }
+  svg.style.maxWidth = 'none';
+  svg.style.width = parseFloat(svg.dataset.naturalWidth) * zoomLevel + 'px';
+  svg.style.height = parseFloat(svg.dataset.naturalHeight) * zoomLevel + 'px';
+}
+// One shared zoom level for both panes when comparing — increasing it grows
+// both diagrams by the same proportion, even though their own natural sizes
+// (and therefore pixel widths at any given zoom) can genuinely differ.
+function applyZoom() {
+  applyZoomTo(modalScroll);
+  applyZoomTo(modalScroll2);
   zoomLevelEl.textContent = Math.round(zoomLevel * 100) + '%';
   document.getElementById('diagram-zoom-out').disabled = zoomLevel <= ZOOM_MIN;
   document.getElementById('diagram-zoom-in').disabled = zoomLevel >= ZOOM_MAX;
@@ -550,21 +581,65 @@ document.getElementById('diagram-zoom-out').onclick = () => {
   applyZoom();
 };
 
-async function openDiagramModal(title, mermaidSource) {
+// Panning one diagram in a compare pair — the primary (left) one — carries
+// the second (right) one along by the same pixel delta, one direction only.
+// Since both panes always share one zoom level, a raw pixel delta already
+// means the same thing on both sides; no percentage-of-scroll-range math
+// needed. The right pane is never listened to here, so panning it freely is
+// completely unaffected — the human can drag it to line up with whatever
+// region of the left diagram they actually want compared, and that manual
+// alignment simply carries forward as the left continues to move it.
+let syncScrollHandler = null;
+function setupPanSync(active) {
+  if (syncScrollHandler) {
+    modalScroll.removeEventListener('scroll', syncScrollHandler);
+    syncScrollHandler = null;
+  }
+  if (!active) return;
+  let lastLeft = modalScroll.scrollLeft;
+  let lastTop = modalScroll.scrollTop;
+  syncScrollHandler = () => {
+    const dx = modalScroll.scrollLeft - lastLeft;
+    const dy = modalScroll.scrollTop - lastTop;
+    lastLeft = modalScroll.scrollLeft;
+    lastTop = modalScroll.scrollTop;
+    modalScroll2.scrollLeft += dx;
+    modalScroll2.scrollTop += dy;
+  };
+  modalScroll.addEventListener('scroll', syncScrollHandler);
+}
+
+async function openDiagramModal(title, mermaidSource, pairedTitle, pairedSource) {
   modalTitle.textContent = title;
   modalScroll.innerHTML = '<pre class="mermaid"></pre>';
   modalScroll.querySelector('pre').textContent = mermaidSource;
+
+  if (pairedSource) {
+    modalPane2.style.display = '';
+    modalTitle2.textContent = pairedTitle || 'Compare';
+    modalScroll2.innerHTML = '<pre class="mermaid"></pre>';
+    modalScroll2.querySelector('pre').textContent = pairedSource;
+  } else {
+    modalPane2.style.display = 'none';
+    modalScroll2.innerHTML = '';
+  }
+
   modalOverlay.classList.add('open');
   zoomLevel = 1;
-  applyZoom();
   mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(MODAL_FONT_SIZE) });
   await mermaid.run({ querySelector: '#diagram-modal-scroll pre.mermaid' });
+  if (pairedSource) await mermaid.run({ querySelector: '#diagram-modal-scroll-2 pre.mermaid' });
   mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: buildThemeVariables(BASE_FONT_SIZE) });
+  applyZoom();
+  setupPanSync(!!pairedSource);
 }
 
 function closeDiagramModal() {
   modalOverlay.classList.remove('open');
   modalScroll.innerHTML = '';
+  modalScroll2.innerHTML = '';
+  modalPane2.style.display = 'none';
+  setupPanSync(false);
 }
 document.getElementById('diagram-modal-close').onclick = closeDiagramModal;
 modalOverlay.addEventListener('click', (e) => {
@@ -573,38 +648,93 @@ modalOverlay.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && modalOverlay.classList.contains('open')) closeDiagramModal();
 });
+
+// Maps each primary/compare diagram-holding container to its counterpart, so
+// clicking either side of an open comparison can find the other. Values are
+// the compare-side ids specifically — used below to tell which side was
+// actually clicked, so the primary always ends up on the left/driving pane
+// regardless of which diagram the human happened to click on.
+const COMPARE_PAIR = {
+  'arch-diagram': 'arch-compare-diagram', 'arch-compare-diagram': 'arch-diagram',
+  'er-diagram': 'er-compare-diagram', 'er-compare-diagram': 'er-diagram',
+  'uf-diagrams': 'uf-compare-diagrams', 'uf-compare-diagrams': 'uf-diagrams',
+  'seq-diagrams': 'seq-compare-diagrams', 'seq-compare-diagrams': 'seq-diagrams',
+  'wf-diagrams': 'wf-compare-diagrams', 'wf-compare-diagrams': 'wf-diagrams',
+};
+const COMPARE_IDS = new Set(['arch-compare-diagram', 'er-compare-diagram', 'uf-compare-diagrams', 'seq-compare-diagrams', 'wf-compare-diagrams']);
+
+function holderIdOf(pre) {
+  const holder = pre.closest('div[id]');
+  return holder && holder.id in COMPARE_PAIR ? holder.id : null;
+}
+function stripCompareSuffix(title) {
+  return (title || '').replace(/ \(compare\)$/, '');
+}
+// Sequence flow and Business workflow can stack several diagrams (one per
+// scenario/entity) inside one container, so "the paired container" isn't
+// automatically "the paired diagram" the way it is for the other three,
+// single-diagram blocks — matched by title instead (stripped of the
+// " (compare)" suffix render*Diagrams() adds on that side).
+function findPairedPre(pre) {
+  const holderId = holderIdOf(pre);
+  if (!holderId) return null;
+  const pairedHolder = document.getElementById(COMPARE_PAIR[holderId]);
+  if (!pairedHolder || getComputedStyle(pairedHolder).display === 'none') return null;
+  const candidates = [...pairedHolder.querySelectorAll('pre.mermaid')];
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+  const wanted = stripCompareSuffix(pre.dataset.title);
+  return candidates.find((p) => stripCompareSuffix(p.dataset.title) === wanted) || null;
+}
+
 document.querySelector('main').addEventListener('click', (e) => {
   const pre = e.target.closest('pre.mermaid');
   if (!pre || !pre.dataset.source) return;
-  openDiagramModal(pre.dataset.title || 'Diagram', pre.dataset.source);
+  const pairedPre = findPairedPre(pre);
+  if (!pairedPre) {
+    openDiagramModal(pre.dataset.title || 'Diagram', pre.dataset.source);
+    return;
+  }
+  const clickedIsCompare = COMPARE_IDS.has(holderIdOf(pre));
+  const leftPre = clickedIsCompare ? pairedPre : pre;
+  const rightPre = clickedIsCompare ? pre : pairedPre;
+  openDiagramModal(
+    leftPre.dataset.title || 'Diagram', leftPre.dataset.source,
+    rightPre.dataset.title || 'Compare', rightPre.dataset.source,
+  );
 });
 
 // Click-and-drag panning, in addition to the scrollbars — mousemove/mouseup
-// listen on the whole document (not modalScroll) so a fast drag that leaves
-// the container's own bounds mid-gesture keeps panning instead of stopping
-// dead at the edge.
-let isPanning = false;
-let panStartX = 0, panStartY = 0, panScrollLeft = 0, panScrollTop = 0;
-modalScroll.addEventListener('mousedown', (e) => {
-  if (e.button !== 0) return;
-  isPanning = true;
-  panStartX = e.clientX;
-  panStartY = e.clientY;
-  panScrollLeft = modalScroll.scrollLeft;
-  panScrollTop = modalScroll.scrollTop;
-  modalScroll.classList.add('panning');
-  e.preventDefault();
-});
-document.addEventListener('mousemove', (e) => {
-  if (!isPanning) return;
-  modalScroll.scrollLeft = panScrollLeft - (e.clientX - panStartX);
-  modalScroll.scrollTop = panScrollTop - (e.clientY - panStartY);
-});
-document.addEventListener('mouseup', () => {
-  if (!isPanning) return;
-  isPanning = false;
-  modalScroll.classList.remove('panning');
-});
+// listen on the whole document (not the pane itself) so a fast drag that
+// leaves the container's own bounds mid-gesture keeps panning instead of
+// stopping dead at the edge. Attached to both panes identically; the sync
+// handler above (left → right only) is what makes them behave differently.
+function makeDraggable(container) {
+  let isPanning = false;
+  let panStartX = 0, panStartY = 0, panScrollLeft = 0, panScrollTop = 0;
+  container.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    isPanning = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panScrollLeft = container.scrollLeft;
+    panScrollTop = container.scrollTop;
+    container.classList.add('panning');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    container.scrollLeft = panScrollLeft - (e.clientX - panStartX);
+    container.scrollTop = panScrollTop - (e.clientY - panStartY);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!isPanning) return;
+    isPanning = false;
+    container.classList.remove('panning');
+  });
+}
+makeDraggable(modalScroll);
+makeDraggable(modalScroll2);
 
 const state = {
   workflow: null,
