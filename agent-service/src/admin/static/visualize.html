@@ -46,12 +46,24 @@
   .page-head h1 { font-size: 0.95rem; margin: 0; }
   .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
 
-  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
+  /* Bottom padding deliberately smaller than the top/sides: every section
+     structurally ends in a `.row`, and that row's own margin-bottom (below)
+     already provides real trailing space before this padding even starts —
+     stacking a matching-size padding on top of it made a collapsed section's
+     bottom look noticeably heavier than its top, which has no such row above
+     the title to begin with. */
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem 0.5rem; margin-bottom: 1.5rem; }
   section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
 
   .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
   .row label { font-size: 0.78rem; color: var(--text-mute); }
-  select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit; }
+  /* min-width: 0 overrides the flex-item default of min-width: auto (which
+     floors a <select> at its content's own min-content width — the long
+     report filenames — regardless of how little room its flex row actually
+     has). max-width: 100% is the actual clamp once that floor is gone, so a
+     select inside a half-width compare panel shrinks with its column instead
+     of overflowing the section's rounded border. */
+  select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit; min-width: 0; max-width: 100%; }
   textarea {
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.4rem 0.55rem; font-size: 0.83rem; color: var(--text); font-family: inherit;
@@ -90,9 +102,14 @@
   /* erDiagram's zebra-striped attribute rows: Mermaid's attributeBackgroundColorOdd/Even theme
      variables are silently ignored by this build's erDiagram renderer (it derives its own row
      colors regardless of what's passed in), so pin the row fill directly via CSS instead — the
-     renderer always emits row-rect-odd/row-rect-even classes on the row's own path. */
-  #er-diagram .row-rect-odd path:first-of-type { fill: var(--surface) !important; }
-  #er-diagram .row-rect-even path:first-of-type { fill: var(--surface-2) !important; }
+     renderer always emits row-rect-odd/row-rect-even classes on the row's own path. Covers both
+     the primary ER container and its compare panel — scoped to #er-diagram alone until the
+     compare feature was added, which silently left the compare panel's own attribute-row text
+     unreadable against Mermaid's own unfixed row fill in dark mode. */
+  #er-diagram .row-rect-odd path:first-of-type,
+  #er-compare-diagram .row-rect-odd path:first-of-type { fill: var(--surface) !important; }
+  #er-diagram .row-rect-even path:first-of-type,
+  #er-compare-diagram .row-rect-even path:first-of-type { fill: var(--surface-2) !important; }
 
   .rule-section-label {
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
@@ -260,7 +277,7 @@
     <h2>Architecture</h2>
     <div class="row">
       <button class="primary" id="arch-render-btn">Show</button>
-      <button class="ghost" id="arch-compare-btn">Compare with another report…</button>
+      <button class="primary" id="arch-compare-btn">Compare with another report…</button>
       <span id="arch-status"></span>
     </div>
     <div class="compare-row">
@@ -281,7 +298,7 @@
     <h2>Entity relationships</h2>
     <div class="row">
       <button class="primary" id="er-render-btn">Show</button>
-      <button class="ghost" id="er-compare-btn">Compare with another report…</button>
+      <button class="primary" id="er-compare-btn">Compare with another report…</button>
       <span id="er-status"></span>
     </div>
     <div class="compare-row">
@@ -303,11 +320,11 @@
     <div class="row">
       <button class="primary" id="uf-show-btn">Show</button>
       <button class="primary" id="uf-propose-btn" style="display:none">Generate UI inventory</button>
-      <button class="ghost" id="uf-compare-btn">Compare with another report…</button>
+      <button class="primary" id="uf-compare-btn">Compare with another report…</button>
       <span id="uf-gen-status"></span>
     </div>
     <div id="uf-body"></div>
-    <div class="row">
+    <div class="row" id="uf-approve-row" style="display:none">
       <button class="primary" id="uf-approve-btn" disabled style="display:none">Approve</button>
       <span id="uf-status"></span>
     </div>
@@ -333,11 +350,11 @@
     <div class="row">
       <button class="primary" id="seq-show-btn">Show</button>
       <button class="primary" id="seq-propose-btn" style="display:none">Generate sequence flow</button>
-      <button class="ghost" id="seq-compare-btn">Compare with another report…</button>
+      <button class="primary" id="seq-compare-btn">Compare with another report…</button>
       <span id="seq-gen-status"></span>
     </div>
     <div id="seq-body"></div>
-    <div class="row">
+    <div class="row" id="seq-approve-row" style="display:none">
       <button class="primary" id="seq-approve-btn" disabled style="display:none">Approve</button>
       <span id="seq-status"></span>
     </div>
@@ -360,11 +377,11 @@
     <div class="row">
       <button class="primary" id="wf-show-btn">Show</button>
       <button class="primary" id="wf-propose-btn" style="display:none">Generate workflow model</button>
-      <button class="ghost" id="wf-compare-btn">Compare with another report…</button>
+      <button class="primary" id="wf-compare-btn">Compare with another report…</button>
       <span id="wf-gen-status"></span>
     </div>
     <div id="wf-body"></div>
-    <div class="row">
+    <div class="row" id="wf-approve-row" style="display:none">
       <button class="primary" id="wf-approve-btn" disabled style="display:none">Approve</button>
       <span id="wf-status"></span>
     </div>
@@ -812,6 +829,10 @@ function renderUiFlowEditor() {
   const body = document.getElementById('uf-body');
   body.innerHTML = '';
   const approveBtn = document.getElementById('uf-approve-btn');
+  // The row itself, not just the button — an empty row still keeps its own
+  // margin-bottom in the layout, which is real, visible dead space once a
+  // section is collapsed and nothing else follows it either.
+  document.getElementById('uf-approve-row').style.display = state.uiFlow ? '' : 'none';
   approveBtn.style.display = state.uiFlow ? '' : 'none';
   approveBtn.disabled = !state.uiFlow || state.uiFlow.pages.length === 0;
   if (!state.uiFlow) return;
@@ -910,6 +931,7 @@ function collapseUiFlow() {
   const approveBtn = document.getElementById('uf-approve-btn');
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
+  document.getElementById('uf-approve-row').style.display = 'none';
   document.getElementById('uf-show-btn').textContent = 'Show';
   document.getElementById('uf-propose-btn').style.display = 'none';
   setStatus(document.getElementById('uf-gen-status'), '');
@@ -994,6 +1016,7 @@ function renderSequenceEditor() {
   const body = document.getElementById('seq-body');
   body.innerHTML = '';
   const approveBtn = document.getElementById('seq-approve-btn');
+  document.getElementById('seq-approve-row').style.display = state.sequenceFlow ? '' : 'none';
   approveBtn.style.display = state.sequenceFlow ? '' : 'none';
   approveBtn.disabled = !state.sequenceFlow || state.sequenceFlow.scenarios.length === 0;
   if (!state.sequenceFlow) return;
@@ -1100,6 +1123,7 @@ function collapseSequence() {
   const approveBtn = document.getElementById('seq-approve-btn');
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
+  document.getElementById('seq-approve-row').style.display = 'none';
   document.getElementById('seq-show-btn').textContent = 'Show';
   document.getElementById('seq-propose-btn').style.display = 'none';
   setStatus(document.getElementById('seq-gen-status'), '');
@@ -1177,6 +1201,7 @@ function renderWorkflowEditor() {
   const body = document.getElementById('wf-body');
   body.innerHTML = '';
   const approveBtn = document.getElementById('wf-approve-btn');
+  document.getElementById('wf-approve-row').style.display = state.workflow ? '' : 'none';
   approveBtn.style.display = state.workflow ? '' : 'none';
   approveBtn.disabled = !state.workflow || state.workflow.entities.length === 0;
   if (!state.workflow) return;
@@ -1299,6 +1324,7 @@ function collapseWorkflow() {
   const approveBtn = document.getElementById('wf-approve-btn');
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
+  document.getElementById('wf-approve-row').style.display = 'none';
   document.getElementById('wf-show-btn').textContent = 'Show';
   document.getElementById('wf-propose-btn').style.display = 'none';
   setStatus(document.getElementById('wf-gen-status'), '');
