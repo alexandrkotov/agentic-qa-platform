@@ -233,11 +233,21 @@
   <div class="subtitle">Turns an approved discovery report into diagrams — architecture and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money)</div>
 </div>
 <main>
+  <!-- One report drives all five sections below — the diagrams are five
+       different views of the same discovery report, not five independent
+       choices. Switching it here resets every section that had something
+       rendered for the previous report, the same way each section already
+       reset itself on its own report-select before this was unified. -->
+  <section>
+    <div class="row" style="margin:0;">
+      <label>Report</label>
+      <select id="report-select"></select>
+    </div>
+  </section>
+
   <section>
     <h2>Architecture</h2>
     <div class="row">
-      <label>Report</label>
-      <select id="arch-report-select"></select>
       <button class="primary" id="arch-render-btn">Show</button>
       <span id="arch-status"></span>
     </div>
@@ -247,8 +257,6 @@
   <section>
     <h2>Entity relationships</h2>
     <div class="row">
-      <label>Report</label>
-      <select id="er-report-select"></select>
       <button class="primary" id="er-render-btn">Show</button>
       <span id="er-status"></span>
     </div>
@@ -258,8 +266,6 @@
   <section>
     <h2>UI Inventory <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
-      <label>Report</label>
-      <select id="uf-report-select"></select>
       <button class="primary" id="uf-show-btn">Show</button>
       <button class="primary" id="uf-propose-btn" style="display:none">Generate UI inventory</button>
       <span id="uf-gen-status"></span>
@@ -275,8 +281,6 @@
   <section>
     <h2>Sequence flow <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
-      <label>Report</label>
-      <select id="seq-report-select"></select>
       <button class="primary" id="seq-show-btn">Show</button>
       <button class="primary" id="seq-propose-btn" style="display:none">Generate sequence flow</button>
       <span id="seq-gen-status"></span>
@@ -292,8 +296,6 @@
   <section>
     <h2>Business workflow <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
-      <label>Report</label>
-      <select id="wf-report-select"></select>
       <button class="primary" id="wf-show-btn">Show</button>
       <button class="primary" id="wf-propose-btn" style="display:none">Generate workflow model</button>
       <span id="wf-gen-status"></span>
@@ -558,7 +560,7 @@ document.getElementById('arch-render-btn').onclick = async () => {
     return;
   }
 
-  const report = document.getElementById('arch-report-select').value;
+  const report = document.getElementById('report-select').value;
   const statusEl = document.getElementById('arch-status');
   const container = document.getElementById('arch-diagram');
   try {
@@ -597,8 +599,8 @@ function onArchReportChanged() {
 // regardless of whether the picked value changed. Listen to both "change"
 // and "click" — collapsing twice on a real change is harmless, just a
 // redundant reset.
-document.getElementById('arch-report-select').addEventListener('change', onArchReportChanged);
-document.getElementById('arch-report-select').addEventListener('click', onArchReportChanged);
+document.getElementById('report-select').addEventListener('change', onArchReportChanged);
+document.getElementById('report-select').addEventListener('click', onArchReportChanged);
 
 // --- Entity relationships ---------------------------------------------------
 
@@ -614,7 +616,7 @@ document.getElementById('er-render-btn').onclick = async () => {
     return;
   }
 
-  const report = document.getElementById('er-report-select').value;
+  const report = document.getElementById('report-select').value;
   const statusEl = document.getElementById('er-status');
   const container = document.getElementById('er-diagram');
   try {
@@ -649,8 +651,8 @@ function onErReportChanged() {
   collapseEr();
   setStatus(document.getElementById('er-status'), '');
 }
-document.getElementById('er-report-select').addEventListener('change', onErReportChanged);
-document.getElementById('er-report-select').addEventListener('click', onErReportChanged);
+document.getElementById('report-select').addEventListener('change', onErReportChanged);
+document.getElementById('report-select').addEventListener('click', onErReportChanged);
 
 // --- UI Inventory ---------------------------------------------------------
 
@@ -690,7 +692,7 @@ function renderUiFlowEditor() {
 
 document.getElementById('uf-propose-btn').onclick = async () => {
   const statusEl = document.getElementById('uf-gen-status');
-  const report = document.getElementById('uf-report-select').value;
+  const report = document.getElementById('report-select').value;
   if (!(await confirmModal(`Generate a UI inventory for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
@@ -765,7 +767,7 @@ function collapseUiFlow() {
 async function expandUiFlow() {
   document.getElementById('uf-show-btn').textContent = 'Hide';
   document.getElementById('uf-propose-btn').style.display = '';
-  const report = document.getElementById('uf-report-select').value;
+  const report = document.getElementById('report-select').value;
   ufShownReport = report;
   const statusEl = document.getElementById('uf-gen-status');
   try {
@@ -797,11 +799,11 @@ document.getElementById('uf-show-btn').onclick = () => {
 // is needed (re-picking the same value fires no "change" event at all).
 function onUiFlowReportChanged() {
   if (document.getElementById('uf-show-btn').textContent !== 'Hide') return;
-  if (document.getElementById('uf-report-select').value === ufShownReport) return;
+  if (document.getElementById('report-select').value === ufShownReport) return;
   collapseUiFlow();
 }
-document.getElementById('uf-report-select').addEventListener('change', onUiFlowReportChanged);
-document.getElementById('uf-report-select').addEventListener('click', onUiFlowReportChanged);
+document.getElementById('report-select').addEventListener('change', onUiFlowReportChanged);
+document.getElementById('report-select').addEventListener('click', onUiFlowReportChanged);
 
 
 // --- Sequence flow ----------------------------------------------------------
@@ -847,7 +849,7 @@ function renderSequenceEditor() {
 
 document.getElementById('seq-propose-btn').onclick = async () => {
   const statusEl = document.getElementById('seq-gen-status');
-  const report = document.getElementById('seq-report-select').value;
+  const report = document.getElementById('report-select').value;
   if (!(await confirmModal(`Generate a sequence flow model for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
@@ -924,7 +926,7 @@ function collapseSequence() {
 async function expandSequence() {
   document.getElementById('seq-show-btn').textContent = 'Hide';
   document.getElementById('seq-propose-btn').style.display = '';
-  const report = document.getElementById('seq-report-select').value;
+  const report = document.getElementById('report-select').value;
   seqShownReport = report;
   const statusEl = document.getElementById('seq-gen-status');
   try {
@@ -952,11 +954,11 @@ document.getElementById('seq-show-btn').onclick = () => {
 
 function onSequenceReportChanged() {
   if (document.getElementById('seq-show-btn').textContent !== 'Hide') return;
-  if (document.getElementById('seq-report-select').value === seqShownReport) return;
+  if (document.getElementById('report-select').value === seqShownReport) return;
   collapseSequence();
 }
-document.getElementById('seq-report-select').addEventListener('change', onSequenceReportChanged);
-document.getElementById('seq-report-select').addEventListener('click', onSequenceReportChanged);
+document.getElementById('report-select').addEventListener('change', onSequenceReportChanged);
+document.getElementById('report-select').addEventListener('click', onSequenceReportChanged);
 
 
 // --- Business workflow -------------------------------------------------------
@@ -1000,7 +1002,7 @@ function renderWorkflowEditor() {
 
 document.getElementById('wf-propose-btn').onclick = async () => {
   const statusEl = document.getElementById('wf-gen-status');
-  const report = document.getElementById('wf-report-select').value;
+  const report = document.getElementById('report-select').value;
   if (!(await confirmModal(`Generate a workflow model for "${report}"? This calls Claude and costs real money.`))) return;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
@@ -1095,7 +1097,7 @@ function collapseWorkflow() {
 async function expandWorkflow() {
   document.getElementById('wf-show-btn').textContent = 'Hide';
   document.getElementById('wf-propose-btn').style.display = '';
-  const report = document.getElementById('wf-report-select').value;
+  const report = document.getElementById('report-select').value;
   wfShownReport = report;
   const statusEl = document.getElementById('wf-gen-status');
   try {
@@ -1123,17 +1125,13 @@ document.getElementById('wf-show-btn').onclick = () => {
 
 function onWorkflowReportChanged() {
   if (document.getElementById('wf-show-btn').textContent !== 'Hide') return;
-  if (document.getElementById('wf-report-select').value === wfShownReport) return;
+  if (document.getElementById('report-select').value === wfShownReport) return;
   collapseWorkflow();
 }
-document.getElementById('wf-report-select').addEventListener('change', onWorkflowReportChanged);
-document.getElementById('wf-report-select').addEventListener('click', onWorkflowReportChanged);
+document.getElementById('report-select').addEventListener('change', onWorkflowReportChanged);
+document.getElementById('report-select').addEventListener('click', onWorkflowReportChanged);
 
-loadReportOptions('arch-report-select');
-loadReportOptions('er-report-select');
-loadReportOptions('uf-report-select');
-loadReportOptions('seq-report-select');
-loadReportOptions('wf-report-select');
+loadReportOptions('report-select');
 </script>
 </body>
 </html>
