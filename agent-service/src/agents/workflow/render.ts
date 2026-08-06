@@ -195,6 +195,74 @@ export function renderArchitectureDiagram(report: DiscoveryReport): string | nul
   return lines.join('\n');
 }
 
+/**
+ * Entirely mechanical, no LLM: `.endpoints[]` already arrives fully
+ * structured — `{method, path, description, requestBody, responseSchema}` —
+ * pulled directly from a real, live OpenAPI/Swagger spec at discovery time
+ * (see descriptor/components/restApi.ts's own prompt). Unlike UI Inventory,
+ * there's no relationship between endpoints to infer here, just a list to
+ * group and format, so this stays free/instant like Architecture and ER
+ * rather than needing a Claude call of its own.
+ *
+ * Grouped by resource — the path's first segment, so `/orders/{id}/status`
+ * groups under `/orders` alongside every other `/orders*` endpoint — rather
+ * than one node per endpoint. A REST API's own resource shape is usually the
+ * more useful way to scan its surface, and it keeps the diagram from turning
+ * into dozens of disconnected single-line boxes. No edges between groups:
+ * unlike UI Inventory's pages, endpoints don't have a meaningful "leads to"
+ * relationship with each other.
+ *
+ * Returns null when the report has no `.endpoints[]` anywhere.
+ */
+export function renderApiInventoryDiagram(report: DiscoveryReport): string | null {
+  interface Endpoint {
+    method: string;
+    path: string;
+    description: string;
+  }
+  const endpoints: Endpoint[] = [];
+  for (const component of Object.values(report.components)) {
+    const list = (component as { endpoints?: unknown[] }).endpoints;
+    if (!Array.isArray(list)) continue;
+    for (const raw of list) {
+      const e = raw as { method?: unknown; path?: unknown; description?: unknown };
+      if (typeof e.method !== 'string' || typeof e.path !== 'string') continue;
+      endpoints.push({
+        method: e.method,
+        path: e.path,
+        description: typeof e.description === 'string' ? e.description : '',
+      });
+    }
+  }
+  if (endpoints.length === 0) return null;
+
+  const resourceOf = (path: string): string => {
+    const first = path.split('/').filter(Boolean)[0];
+    return first ? `/${first}` : '/';
+  };
+
+  const byResource = new Map<string, Endpoint[]>();
+  for (const e of endpoints) {
+    const key = resourceOf(e.path);
+    const group = byResource.get(key) ?? [];
+    group.push(e);
+    byResource.set(key, group);
+  }
+
+  const lines = ['flowchart LR'];
+  let i = 0;
+  for (const [resource, group] of byResource) {
+    const id = `r${i++}_${sanitizeId(resource)}`;
+    const rows = group.map((e) => {
+      const desc = e.description ? ` — ${sanitizeLabel(e.description)}` : '';
+      return `${sanitizeLabel(e.method.toUpperCase())} ${sanitizeLabel(e.path)}${desc}`;
+    });
+    const label = `<b>${sanitizeLabel(resource)}</b><br/>${rows.join('<br/>')}`;
+    lines.push(`    ${id}["${label}"]`);
+  }
+  return lines.join('\n');
+}
+
 export interface RenderedUiFlow {
   mermaid: string;
 }

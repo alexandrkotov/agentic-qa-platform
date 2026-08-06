@@ -81,12 +81,12 @@
   }
   button.ghost:hover { background: var(--surface-2); }
 
-  #arch-status, #er-status, #uf-gen-status, #uf-status, #seq-gen-status, #seq-status, #wf-gen-status, #wf-status,
-  #arch-compare-status, #er-compare-status, #uf-compare-status, #seq-compare-status, #wf-compare-status { font-size: 0.83rem; }
-  #arch-status.ok, #er-status.ok, #uf-gen-status.ok, #uf-status.ok, #seq-gen-status.ok, #seq-status.ok, #wf-gen-status.ok, #wf-status.ok,
-  #arch-compare-status.ok, #er-compare-status.ok, #uf-compare-status.ok, #seq-compare-status.ok, #wf-compare-status.ok { color: #2f8f5b; }
-  #arch-status.err, #er-status.err, #uf-gen-status.err, #uf-status.err, #seq-gen-status.err, #seq-status.err, #wf-gen-status.err, #wf-status.err,
-  #arch-compare-status.err, #er-compare-status.err, #uf-compare-status.err, #seq-compare-status.err, #wf-compare-status.err { color: var(--danger); }
+  #arch-status, #api-status, #er-status, #uf-gen-status, #uf-status, #seq-gen-status, #seq-status, #wf-gen-status, #wf-status,
+  #arch-compare-status, #api-compare-status, #er-compare-status, #uf-compare-status, #seq-compare-status, #wf-compare-status { font-size: 0.83rem; }
+  #arch-status.ok, #api-status.ok, #er-status.ok, #uf-gen-status.ok, #uf-status.ok, #seq-gen-status.ok, #seq-status.ok, #wf-gen-status.ok, #wf-status.ok,
+  #arch-compare-status.ok, #api-compare-status.ok, #er-compare-status.ok, #uf-compare-status.ok, #seq-compare-status.ok, #wf-compare-status.ok { color: #2f8f5b; }
+  #arch-status.err, #api-status.err, #er-status.err, #uf-gen-status.err, #uf-status.err, #seq-gen-status.err, #seq-status.err, #wf-gen-status.err, #wf-status.err,
+  #arch-compare-status.err, #api-compare-status.err, #er-compare-status.err, #uf-compare-status.err, #seq-compare-status.err, #wf-compare-status.err { color: var(--danger); }
 
   /* Compare panels sit side by side with the primary diagram, not stacked —
      each side shrinks independently and scrolls its own mermaid overflow
@@ -277,11 +277,11 @@
 </header>
 <div class="page-head">
   <h1>Analysis</h1>
-  <div class="subtitle">Turns an approved discovery report into diagrams — architecture and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money)</div>
+  <div class="subtitle">Turns an approved discovery report into diagrams — architecture, API inventory, and entity relationships (free, instant), then UI inventory, sequence flow, and business workflow (calls Claude, costs money)</div>
 </div>
 <main>
-  <!-- One report drives all five sections below — the diagrams are five
-       different views of the same discovery report, not five independent
+  <!-- One report drives all six sections below — the diagrams are six
+       different views of the same discovery report, not six independent
        choices. Switching it here resets every section that had something
        rendered for the previous report, the same way each section already
        reset itself on its own report-select before this was unified. -->
@@ -313,6 +313,24 @@
     <div class="compare-row">
       <div id="arch-diagram"></div>
       <div class="compare-panel" id="arch-compare-diagram" style="display:none"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>API Inventory</h2>
+    <div class="row">
+      <button class="primary" id="api-render-btn">Show</button>
+      <button class="primary" id="api-compare-btn" style="display:none">Compare with another report…</button>
+      <span id="api-status"></span>
+    </div>
+    <div class="row" id="api-compare-controls" style="display:none">
+      <label>Compare with</label>
+      <select id="api-compare-select"></select>
+      <span id="api-compare-status"></span>
+    </div>
+    <div class="compare-row">
+      <div id="api-diagram"></div>
+      <div class="compare-panel" id="api-compare-diagram" style="display:none"></div>
     </div>
   </section>
 
@@ -664,12 +682,13 @@ document.addEventListener('keydown', (e) => {
 // regardless of which diagram the human happened to click on.
 const COMPARE_PAIR = {
   'arch-diagram': 'arch-compare-diagram', 'arch-compare-diagram': 'arch-diagram',
+  'api-diagram': 'api-compare-diagram', 'api-compare-diagram': 'api-diagram',
   'er-diagram': 'er-compare-diagram', 'er-compare-diagram': 'er-diagram',
   'uf-diagrams': 'uf-compare-diagrams', 'uf-compare-diagrams': 'uf-diagrams',
   'seq-diagrams': 'seq-compare-diagrams', 'seq-compare-diagrams': 'seq-diagrams',
   'wf-diagrams': 'wf-compare-diagrams', 'wf-compare-diagrams': 'wf-diagrams',
 };
-const COMPARE_IDS = new Set(['arch-compare-diagram', 'er-compare-diagram', 'uf-compare-diagrams', 'seq-compare-diagrams', 'wf-compare-diagrams']);
+const COMPARE_IDS = new Set(['arch-compare-diagram', 'api-compare-diagram', 'er-compare-diagram', 'uf-compare-diagrams', 'seq-compare-diagrams', 'wf-compare-diagrams']);
 
 function holderIdOf(pre) {
   const holder = pre.closest('div[id]');
@@ -910,6 +929,106 @@ document.getElementById('arch-compare-btn').onclick = async () => {
   await renderArchCompare();
 };
 document.getElementById('arch-compare-select').addEventListener('change', renderArchCompare);
+
+// --- API Inventory ---------------------------------------------------------
+// Same mechanical, no-LLM shape as Architecture and ER — `.endpoints[]` in
+// the report already arrives fully structured from a real Swagger spec, so
+// there's nothing to synthesize, just group and render.
+
+function collapseApi() {
+  document.getElementById('api-diagram').innerHTML = '';
+  document.getElementById('api-render-btn').textContent = 'Show';
+  document.getElementById('api-compare-btn').style.display = 'none';
+  document.getElementById('api-compare-btn').textContent = 'Compare with another report…';
+  document.getElementById('api-compare-controls').style.display = 'none';
+  document.getElementById('api-compare-diagram').style.display = 'none';
+  document.getElementById('api-compare-diagram').innerHTML = '';
+  setStatus(document.getElementById('api-compare-status'), '');
+}
+
+document.getElementById('api-render-btn').onclick = async () => {
+  const btn = document.getElementById('api-render-btn');
+  if (btn.textContent === 'Hide') {
+    collapseApi();
+    return;
+  }
+
+  const report = document.getElementById('report-select').value;
+  const statusEl = document.getElementById('api-status');
+  const container = document.getElementById('api-diagram');
+  try {
+    const { mermaid: text } = await api('/api/workflow/render-api-inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    if (!text) {
+      setStatus(statusEl, "This report doesn't have any REST endpoints to diagram.", 'err');
+      return;
+    }
+    container.innerHTML = '<pre class="mermaid"></pre>';
+    const pre = container.querySelector('pre');
+    pre.textContent = text;
+    pre.dataset.source = text;
+    pre.dataset.title = 'API Inventory';
+    await mermaid.run({ querySelector: '#api-diagram pre.mermaid' });
+    btn.textContent = 'Hide';
+    document.getElementById('api-compare-btn').style.display = '';
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+function onApiReportChanged() {
+  collapseApi();
+  setStatus(document.getElementById('api-status'), '');
+}
+document.getElementById('report-select').addEventListener('change', onApiReportChanged);
+document.getElementById('report-select').addEventListener('click', onApiReportChanged);
+
+async function renderApiCompare() {
+  const report = document.getElementById('api-compare-select').value;
+  const statusEl = document.getElementById('api-compare-status');
+  const container = document.getElementById('api-compare-diagram');
+  try {
+    const { mermaid: text } = await api('/api/workflow/render-api-inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    });
+    if (!text) {
+      container.innerHTML = '';
+      setStatus(statusEl, "This report doesn't have any REST endpoints to diagram.", 'err');
+      return;
+    }
+    container.innerHTML = '<pre class="mermaid"></pre>';
+    const pre = container.querySelector('pre');
+    pre.textContent = text;
+    pre.dataset.source = text;
+    pre.dataset.title = 'API Inventory (compare)';
+    await mermaid.run({ querySelector: '#api-compare-diagram pre.mermaid' });
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+}
+document.getElementById('api-compare-btn').onclick = async () => {
+  const controlsRow = document.getElementById('api-compare-controls');
+  const diagramCol = document.getElementById('api-compare-diagram');
+  const opening = controlsRow.style.display === 'none';
+  controlsRow.style.display = opening ? '' : 'none';
+  diagramCol.style.display = opening ? '' : 'none';
+  document.getElementById('api-compare-btn').textContent = opening ? 'Hide comparison' : 'Compare with another report…';
+  if (!opening) {
+    diagramCol.innerHTML = '';
+    setStatus(document.getElementById('api-compare-status'), '');
+    return;
+  }
+  ensureCompareDiffersFromPrimary('api-compare-select');
+  await renderApiCompare();
+};
+document.getElementById('api-compare-select').addEventListener('change', renderApiCompare);
 
 // --- Entity relationships ---------------------------------------------------
 
@@ -1623,11 +1742,12 @@ document.getElementById('wf-compare-btn').onclick = async () => {
 };
 document.getElementById('wf-compare-select').addEventListener('change', renderWfCompare);
 
-// The 5 compare selects wait for the primary select's own value, since their
+// The 6 compare selects wait for the primary select's own value, since their
 // "default to something different" logic (loadCompareReportOptions) needs a
 // real primary value to compare against, not just an empty select.
 loadReportOptions('report-select').then(() => {
   loadCompareReportOptions('arch-compare-select', 'report-select');
+  loadCompareReportOptions('api-compare-select', 'report-select');
   loadCompareReportOptions('er-compare-select', 'report-select');
   loadCompareReportOptions('uf-compare-select', 'report-select');
   loadCompareReportOptions('seq-compare-select', 'report-select');

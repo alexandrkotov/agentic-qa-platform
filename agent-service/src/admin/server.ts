@@ -30,6 +30,7 @@ import {
   renderErDiagram,
   renderStateDiagram,
   renderArchitectureDiagram,
+  renderApiInventoryDiagram,
   renderUiFlowDiagram,
   renderSequenceDiagram,
 } from '../agents/workflow/render.ts';
@@ -488,6 +489,20 @@ app.post('/api/workflow/render-architecture', async (req, res) => {
     }
     const report = parseDiscoveryReport(JSON.parse(await readFile(reportFilePath(reportName), 'utf-8')));
     res.json({ mermaid: renderArchitectureDiagram(report) });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/workflow/render-api-inventory', async (req, res) => {
+  try {
+    const { report: reportName } = req.body as { report?: string };
+    if (!reportName) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const report = parseDiscoveryReport(JSON.parse(await readFile(reportFilePath(reportName), 'utf-8')));
+    res.json({ mermaid: renderApiInventoryDiagram(report) });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
