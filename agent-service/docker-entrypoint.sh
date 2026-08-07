@@ -24,12 +24,30 @@ if [ -S /var/run/docker.sock ]; then
   # setpriv execs the target directly (no wrapper process left running as
   # root), so signal handling (docker compose stop/down) reaches the real
   # process exactly like it would running unprivileged in the first place.
-  # --reset-env: also fixes HOME (root -> /home/node), which matters here
-  # specifically because the playwright-browsers volume is now mounted at
-  # /home/node/.cache/ms-playwright, not /root/.cache/ms-playwright -- see
-  # docker-compose.yml. Without this, Playwright would resolve its cache
-  # path against the wrong (root's) HOME even after the uid/gid switch.
-  exec setpriv --reuid=node --regid=node --groups "$SOCK_GID" --reset-env "$@"
+  #
+  # HOME is overridden by hand (root -> /home/node) rather than via
+  # setpriv's own --reset-env, which matters here specifically because the
+  # playwright-browsers volume is mounted at /home/node/.cache/ms-playwright,
+  # not /root/.cache/ms-playwright -- see docker-compose.yml. Without a
+  # correct HOME, Playwright would resolve its cache path against root's
+  # HOME even after the uid/gid switch.
+  #
+  # --reset-env itself is deliberately NOT used: found live (2026-08-07)
+  # that it wipes the ENTIRE environment down to just
+  # HOME/SHELL/USER/LOGNAME/PATH, silently dropping every docker-compose
+  # env_file variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, CLAUDE_MODEL,
+  # etc.) before the real node process ever starts -- confirmed via
+  # `setpriv ... --reset-env env` printing only those 5 vars. This broke
+  # every real Claude/OpenAI call made through this container (Discovery,
+  # Stage 2 generate, workflow-propose, E2E diagnose) since this fix
+  # originally landed, unnoticed because later live checks either didn't
+  # need a *new* paid call (reused an already-approved proposal) or used a
+  # free/mechanical diagram path with no LLM call at all. Exporting HOME by
+  # hand and dropping --reset-env keeps the rest of the container's
+  # environment (including env_file) intact.
+  export HOME=/home/node
+  exec setpriv --reuid=node --regid=node --groups "$SOCK_GID" "$@"
 else
-  exec setpriv --reuid=node --regid=node --clear-groups --reset-env "$@"
+  export HOME=/home/node
+  exec setpriv --reuid=node --regid=node --clear-groups "$@"
 fi
