@@ -137,7 +137,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
         <td class="num">${e.cacheReadTokens.toLocaleString()}</td>`
         : '';
       return `
-      <tr${failed ? ' data-failed="true"' : ''} data-descriptor="${esc(e.descriptor ?? '')}" data-timestamp="${esc(e.timestamp)}">
+      <tr${failed ? ' data-failed="true"' : ''} data-descriptor="${esc(e.descriptor ?? '')}" data-timestamp="${esc(e.timestamp)}" data-input="${e.inputTokens}" data-output="${e.outputTokens}" data-cost="${e.costUsd ?? ''}">
         <td>${esc(e.timestamp)}</td>
         <td>${esc(e.operation)}</td>
         <td>${esc(e.provider)}</td>
@@ -246,6 +246,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
   <div class="subtitle" id="subtitle">${subtitleHtml}</div>
   <div class="summary" id="summary">${summaryHtml}</div>
   <div id="note">${noteHtml}</div>
+  <div class="summary" id="filtered-summary" hidden></div>
   <div class="controls" id="controls">${controlsHtml}</div>
   <div id="results">${resultsHtml}</div>
   <script>
@@ -280,6 +281,45 @@ function renderHtml(entries: UsageLogEntry[]): string {
           if (to && date > to) matches = false;
           row.classList.toggle('filtered-out', !matches);
         });
+        updateFilteredSummary();
+      }
+
+      // Totals for whatever's actually visible right now — distinct from
+      // the top #summary box, which is a fixed server-rendered snapshot
+      // across ALL entries and never reacts to a filter. Reads each row's
+      // own data-input/data-output/data-cost attributes (raw numbers, not
+      // the comma-formatted/rounded text in the cells) rather than
+      // re-parsing rendered text. A row counts as visible only if it isn't
+      // filtered out AND isn't a hidden failed-call row — the latter is
+      // normally handled purely by CSS (body.show-failed), so this
+      // reimplements that one check in JS just for this calculation.
+      function updateFilteredSummary() {
+        var container = document.getElementById('filtered-summary');
+        if (!container) return;
+        var showFailed = document.body.classList.contains('show-failed');
+        var rows = document.querySelectorAll('#results tr[data-timestamp]');
+        var total = rows.length;
+        var visible = 0, input = 0, output = 0, cost = 0;
+        rows.forEach(function (row) {
+          var isFailed = row.hasAttribute('data-failed');
+          if (isFailed && !showFailed) return;
+          if (row.classList.contains('filtered-out')) return;
+          visible++;
+          input += Number(row.getAttribute('data-input')) || 0;
+          output += Number(row.getAttribute('data-output')) || 0;
+          var costAttr = row.getAttribute('data-cost');
+          if (costAttr) cost += Number(costAttr);
+        });
+        if (total === 0) {
+          container.hidden = true;
+          return;
+        }
+        container.hidden = false;
+        container.innerHTML =
+          '<div class="stat"><span class="label">Showing</span><span class="value">' + visible + ' of ' + total + '</span></div>' +
+          '<div class="stat"><span class="label">Input tokens</span><span class="value">' + input.toLocaleString() + '</span></div>' +
+          '<div class="stat"><span class="label">Output tokens</span><span class="value">' + output.toLocaleString() + '</span></div>' +
+          '<div class="stat"><span class="label">Known cost</span><span class="value">$' + cost.toFixed(4) + '</span></div>';
       }
 
       // Re-attaches listeners and restores saved values every time this
@@ -295,6 +335,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
           checkbox.addEventListener('change', function () {
             localStorage.setItem(SHOW_FAILED_KEY, checkbox.checked ? '1' : '0');
             document.body.classList.toggle('show-failed', checkbox.checked);
+            updateFilteredSummary();
           });
         }
 
