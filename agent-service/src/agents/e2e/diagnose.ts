@@ -119,6 +119,11 @@ export async function diagnoseFailure(
     tools: [],
     maxIterations: 5,
     operation: `e2e-diagnose:${scenario.id}`,
+    // E2E has no descriptor concept yet — it's hardcoded to one tests/
+    // tree (OrderFlow). Accurate today; revisit once E2E itself becomes
+    // multi-target (build-order steps 3/4 of the wizard initiative, not
+    // this one).
+    descriptor: 'orderflow',
   });
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);

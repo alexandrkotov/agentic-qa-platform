@@ -12,6 +12,8 @@ export interface UsageLogEntry {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   costUsd: number | null;
+  /** Which target system's descriptor this call was for (e.g. "orderflow"), null if unknown/not applicable (e.g. a CLI call that never resolved one). Powers the usage report's descriptor filter. */
+  descriptor: string | null;
 }
 
 const LOG_PATH = join(config.reportsDir, 'usage-log.jsonl');
@@ -117,6 +119,15 @@ function renderHtml(entries: UsageLogEntry[]): string {
   // Hidden until an entry actually has cache activity, not deleted outright,
   // so they reappear on their own the day that changes.
 
+  // Distinct descriptor labels actually present, for the filter <select>'s
+  // options — sorted for a stable dropdown order, independent of how the
+  // underlying log happens to be ordered. typeof-checked, not `!== null`:
+  // log lines written before this field existed have no "descriptor" key at
+  // all, so JSON.parse gives `undefined` there, not `null` — a `!== null`
+  // filter would let `undefined` straight through into esc(), which throws
+  // on a non-string (confirmed live against this repo's own real log file).
+  const descriptors = [...new Set(entries.map((e) => e.descriptor).filter((d): d is string => typeof d === 'string'))].sort();
+
   const rows = sorted
     .map((e) => {
       const failed = e.inputTokens === 0 && e.outputTokens === 0;
@@ -126,7 +137,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
         <td class="num">${e.cacheReadTokens.toLocaleString()}</td>`
         : '';
       return `
-      <tr${failed ? ' data-failed="true"' : ''}>
+      <tr${failed ? ' data-failed="true"' : ''} data-descriptor="${esc(e.descriptor ?? '')}" data-timestamp="${esc(e.timestamp)}">
         <td>${esc(e.timestamp)}</td>
         <td>${esc(e.operation)}</td>
         <td>${esc(e.provider)}</td>
@@ -155,10 +166,22 @@ function renderHtml(entries: UsageLogEntry[]): string {
     ? '<div class="note">Note: some entries have no cost estimate (e.g. OpenAI calls, or an unpriced model) and are excluded from the total above.</div>'
     : '';
 
-  const controlsHtml =
+  const descriptorOptionsHtml = descriptors.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  const failedToggleHtml =
     failedCount > 0
       ? `<label class="toggle"><span class="switch"><input type="checkbox" id="show-failed"><span class="switch-track"></span></span>Show ${failedCount} failed call${failedCount === 1 ? '' : 's'} (0 tokens, errored before any response)</label>`
       : '';
+  const filterHtml =
+    entries.length === 0
+      ? ''
+      : `<div class="filters">
+    <label class="filter-field">Descriptor
+      <select id="filter-descriptor"><option value="">All descriptors</option>${descriptorOptionsHtml}</select>
+    </label>
+    <label class="filter-field">From <input type="date" id="filter-from"></label>
+    <label class="filter-field">To <input type="date" id="filter-to"></label>
+  </div>`;
+  const controlsHtml = filterHtml + failedToggleHtml;
 
   const resultsHtml =
     entries.length === 0
@@ -190,6 +213,13 @@ function renderHtml(entries: UsageLogEntry[]): string {
   .summary .stat .value { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size:1.15rem; margin-top:0.15rem; }
   .note { color:#d4a72c; font-size:0.8rem; margin-top:0.5rem; }
   .controls { margin-bottom: 1rem; }
+  .filters { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-bottom: 0.75rem; }
+  .filter-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: #8a8f98; text-transform: uppercase; letter-spacing: 0.03em; }
+  .filter-field select, .filter-field input[type="date"] {
+    font: inherit; text-transform: none; letter-spacing: normal; color: #e4e6eb;
+    background: #1b1e27; border: 1px solid #2a2e3a; border-radius: 6px; padding: 0.35rem 0.5rem;
+  }
+  tr.filtered-out { display: none !important; }
   .toggle { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: #8a8f98; cursor: pointer; user-select: none; }
   .switch { position: relative; display: inline-block; flex-shrink: 0; width: 36px; height: 20px; }
   .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
@@ -224,18 +254,76 @@ function renderHtml(entries: UsageLogEntry[]): string {
     // anything else with live DOM state) survives an update instead of
     // needing localStorage just to get through a reload.
     (function () {
-      var KEY = 'usage-log-show-failed';
+      var SHOW_FAILED_KEY = 'usage-log-show-failed';
+      var DESCRIPTOR_KEY = 'usage-log-filter-descriptor';
+      var FROM_KEY = 'usage-log-filter-from';
+      var TO_KEY = 'usage-log-filter-to';
 
-      function applyToggleState() {
-        var checkbox = document.getElementById('show-failed');
-        if (!checkbox) return;
-        var show = localStorage.getItem(KEY) === '1';
-        checkbox.checked = show;
-        document.body.classList.toggle('show-failed', show);
-        checkbox.addEventListener('change', function () {
-          localStorage.setItem(KEY, checkbox.checked ? '1' : '0');
-          document.body.classList.toggle('show-failed', checkbox.checked);
+      // Re-applies row visibility for the descriptor/date filters — needs
+      // its own pass separate from the failed-calls toggle (that one's
+      // handled by a body class + CSS attribute selector) because it
+      // depends on comparing each row's own data attributes against the
+      // filter controls' current values.
+      function filterRows() {
+        var descriptorSel = document.getElementById('filter-descriptor');
+        var fromInput = document.getElementById('filter-from');
+        var toInput = document.getElementById('filter-to');
+        var descriptor = descriptorSel ? descriptorSel.value : '';
+        var from = fromInput ? fromInput.value : '';
+        var to = toInput ? toInput.value : '';
+        var rows = document.querySelectorAll('#results tr[data-timestamp]');
+        rows.forEach(function (row) {
+          var matches = true;
+          if (descriptor && row.getAttribute('data-descriptor') !== descriptor) matches = false;
+          var date = (row.getAttribute('data-timestamp') || '').slice(0, 10); // YYYY-MM-DD prefix of an ISO 8601 timestamp
+          if (from && date < from) matches = false;
+          if (to && date > to) matches = false;
+          row.classList.toggle('filtered-out', !matches);
         });
+      }
+
+      // Re-attaches listeners and restores saved values every time this
+      // runs, not just once — #controls' entire innerHTML (including these
+      // very elements) gets replaced wholesale on every 5s poll swap below,
+      // so any listener/value from a previous pass is gone along with it.
+      function applyFilters() {
+        var checkbox = document.getElementById('show-failed');
+        if (checkbox) {
+          var show = localStorage.getItem(SHOW_FAILED_KEY) === '1';
+          checkbox.checked = show;
+          document.body.classList.toggle('show-failed', show);
+          checkbox.addEventListener('change', function () {
+            localStorage.setItem(SHOW_FAILED_KEY, checkbox.checked ? '1' : '0');
+            document.body.classList.toggle('show-failed', checkbox.checked);
+          });
+        }
+
+        var descriptorSel = document.getElementById('filter-descriptor');
+        if (descriptorSel) {
+          descriptorSel.value = localStorage.getItem(DESCRIPTOR_KEY) || '';
+          descriptorSel.addEventListener('change', function () {
+            localStorage.setItem(DESCRIPTOR_KEY, descriptorSel.value);
+            filterRows();
+          });
+        }
+        var fromInput = document.getElementById('filter-from');
+        if (fromInput) {
+          fromInput.value = localStorage.getItem(FROM_KEY) || '';
+          fromInput.addEventListener('input', function () {
+            localStorage.setItem(FROM_KEY, fromInput.value);
+            filterRows();
+          });
+        }
+        var toInput = document.getElementById('filter-to');
+        if (toInput) {
+          toInput.value = localStorage.getItem(TO_KEY) || '';
+          toInput.addEventListener('input', function () {
+            localStorage.setItem(TO_KEY, toInput.value);
+            filterRows();
+          });
+        }
+
+        filterRows();
       }
 
       function swap(id, doc) {
@@ -252,14 +340,14 @@ function renderHtml(entries: UsageLogEntry[]): string {
           ['subtitle', 'summary', 'note', 'controls', 'results'].forEach(function (id) {
             swap(id, doc);
           });
-          applyToggleState();
+          applyFilters();
         } catch (err) {
           console.warn('[usage-log] refresh failed', err);
         }
         setTimeout(poll, 5000);
       }
 
-      applyToggleState();
+      applyFilters();
       setTimeout(poll, 5000);
     })();
   </script>

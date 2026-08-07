@@ -66,6 +66,8 @@ export async function proposeSequenceFlow(
   provider: AgentProvider,
   report: DiscoveryReport,
   sourceReportPath: string,
+  /** Which target system's descriptor sourceReportPath belongs to, for the usage log's descriptor filter — see admin/server.ts's descriptorFromReportName(). Optional; omitted callers just get an unlabeled usage entry. */
+  descriptorLabel?: string,
 ): Promise<ProposedSequenceFlow> {
   const componentKeys = Object.keys(report.components);
   const raw = await provider.run({
@@ -75,6 +77,7 @@ export async function proposeSequenceFlow(
     tools: [],
     maxIterations: 5,
     operation: 'workflow-sequence-propose',
+    descriptor: descriptorLabel,
   });
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);

@@ -118,6 +118,7 @@ export async function runDiscoveryForDescriptor(
     tools,
     maxIterations: 60,
     operation: 'discovery',
+    descriptor: descriptorLabel,
     onProgress,
   });
 

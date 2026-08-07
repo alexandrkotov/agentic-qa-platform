@@ -23,6 +23,7 @@ export class ClaudeProvider implements AgentProvider {
     model = config.model.claude,
     maxIterations = 50,
     operation = 'unspecified',
+    descriptor,
     onProgress,
   }: AgentRunOptions): Promise<string> {
     const mcp = new McpManager();
@@ -164,6 +165,7 @@ export class ClaudeProvider implements AgentProvider {
         cacheCreationTokens: totalUsage.cache_creation_input_tokens,
         cacheReadTokens: totalUsage.cache_read_input_tokens,
         costUsd: cost,
+        descriptor: descriptor ?? null,
       });
       await mcp.disconnectAll();
     }

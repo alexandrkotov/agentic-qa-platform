@@ -46,6 +46,7 @@ export class OpenAIProvider implements AgentProvider {
     tools = [],
     model = config.model.openai,
     operation = 'unspecified',
+    descriptor,
   }: AgentRunOptions): Promise<string> {
     const mcpInstances = mcpServers.map(
       (s) =>
@@ -95,6 +96,7 @@ export class OpenAIProvider implements AgentProvider {
         cacheCreationTokens: 0,
         cacheReadTokens: 0,
         costUsd: null,
+        descriptor: descriptor ?? null,
       });
 
       return result.finalOutput ?? '';

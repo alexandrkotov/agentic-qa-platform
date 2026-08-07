@@ -65,6 +65,8 @@ export async function proposeWorkflow(
   provider: AgentProvider,
   report: DiscoveryReport,
   sourceReportPath: string,
+  /** Which target system's descriptor sourceReportPath belongs to, for the usage log's descriptor filter — see admin/server.ts's descriptorFromReportName(). Optional; omitted callers just get an unlabeled usage entry. */
+  descriptorLabel?: string,
 ): Promise<ProposedWorkflow> {
   const raw = await provider.run({
     systemPrompt: buildSystemPrompt(JSON.stringify(report, null, 2)),
@@ -73,6 +75,7 @@ export async function proposeWorkflow(
     tools: [],
     maxIterations: 5,
     operation: 'workflow-propose',
+    descriptor: descriptorLabel,
   });
 
   const jsonMatch = raw.match(/\[[\s\S]*\]/);

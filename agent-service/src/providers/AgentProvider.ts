@@ -25,6 +25,8 @@ export interface AgentRunOptions {
   maxIterations?: number;
   /** Label for the usage/cost log, e.g. "discovery", "generate:customers", "e2e-diagnose:submit-draft-order". */
   operation?: string;
+  /** Which target system's descriptor this call is for (e.g. "orderflow"), for the usage log's descriptor filter. Optional — a caller that has no descriptor in scope simply omits it, and the log entry ends up with descriptor: null. */
+  descriptor?: string;
   /** Optional live-progress sink — a caller that wants to show what a long-running agent call is doing (which tool it just invoked, etc.) instead of just waiting silently. Purely additive: a provider that doesn't call it behaves exactly as before. */
   onProgress?: (message: string) => void;
 }
