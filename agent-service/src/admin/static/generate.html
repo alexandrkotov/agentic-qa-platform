@@ -116,6 +116,16 @@
   button.ghost:disabled { opacity: 0.5; cursor: not-allowed; }
   button.ghost:hover { background: var(--surface-2); }
   button.link { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.76rem; padding: 0.1rem 0.3rem; }
+  /* The browser's own "Choose file" button inside <input type="file"> isn't
+     a real <button> we can put class="primary" on — style its own
+     pseudo-element instead, matching .primary's look exactly so it doesn't
+     read as a different, unstyled control next to "Extract from link". */
+  input[type="file"]::file-selector-button, input[type="file"]::-webkit-file-upload-button {
+    display: inline-block; text-decoration: none; background: var(--accent); color: #fff;
+    border: none; border-radius: 6px; padding: 0.5rem 0.95rem; font-size: 0.83rem;
+    font-weight: 600; cursor: pointer; font-family: inherit; margin-right: 0.6rem;
+  }
+  input[type="file"]::file-selector-button:hover, input[type="file"]::-webkit-file-upload-button:hover { filter: brightness(1.08); }
   /* Same bare-link look as button.link, but for a purely informational
      cross-reference (Generate tab -> Corrections tab), not a destructive
      action — var(--danger) there would misread as a warning. */
@@ -331,7 +341,7 @@
         <div class="row">
           <span class="field-pair">
             <input type="text" id="uat-google-url" placeholder="Google Doc/Sheet link (shared &quot;Anyone with the link&quot;)" style="width:22rem">
-            <button class="ghost" id="uat-extract-url-btn">Extract from link</button>
+            <button class="primary" id="uat-extract-url-btn">Extract from link</button>
           </span>
         </div>
         <div class="row">
