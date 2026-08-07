@@ -246,7 +246,6 @@ function renderHtml(entries: UsageLogEntry[]): string {
   <div class="subtitle" id="subtitle">${subtitleHtml}</div>
   <div class="summary" id="summary">${summaryHtml}</div>
   <div id="note">${noteHtml}</div>
-  <div class="summary" id="filtered-summary" hidden></div>
   <div class="controls" id="controls">${controlsHtml}</div>
   <div id="results">${resultsHtml}</div>
   <script>
@@ -259,6 +258,13 @@ function renderHtml(entries: UsageLogEntry[]): string {
       var DESCRIPTOR_KEY = 'usage-log-filter-descriptor';
       var FROM_KEY = 'usage-log-filter-from';
       var TO_KEY = 'usage-log-filter-to';
+
+      // Snapshot of #summary's own last server-rendered content (plain
+      // grand totals), refreshed every time applyFilters() runs (page load,
+      // and after every 5s poll's swap()) — restored verbatim the moment a
+      // filter is cleared, rather than leaving the stale filtered view up
+      // to 5s stale until the next poll happens to swap it away.
+      var originalSummaryHtml = '';
 
       // Re-applies row visibility for the descriptor/date filters — needs
       // its own pass separate from the failed-calls toggle (that one's
@@ -281,21 +287,35 @@ function renderHtml(entries: UsageLogEntry[]): string {
           if (to && date > to) matches = false;
           row.classList.toggle('filtered-out', !matches);
         });
-        updateFilteredSummary();
+        updateSummaryForFilter();
       }
 
-      // Totals for whatever's actually visible right now — distinct from
-      // the top #summary box, which is a fixed server-rendered snapshot
-      // across ALL entries and never reacts to a filter. Reads each row's
-      // own data-input/data-output/data-cost attributes (raw numbers, not
-      // the comma-formatted/rounded text in the cells) rather than
-      // re-parsing rendered text. A row counts as visible only if it isn't
-      // filtered out AND isn't a hidden failed-call row — the latter is
-      // normally handled purely by CSS (body.show-failed), so this
-      // reimplements that one check in JS just for this calculation.
-      function updateFilteredSummary() {
-        var container = document.getElementById('filtered-summary');
+      // Reuses the same #summary box a filter-free page already shows,
+      // rather than a second block next to it — one place to look, not two
+      // that could disagree. Left alone (still whatever the server just
+      // rendered — grand totals across every entry, unaffected by the
+      // failed-calls toggle, same as always) unless the descriptor/date
+      // filters are actually engaged; only then does it switch to a
+      // "Showing N of M" view computed from what's currently visible
+      // (which — in this mode only — does also take the failed-calls
+      // toggle into account, since the whole point is "what am I looking
+      // at right now"). Every 5s poll swap puts the plain server-rendered
+      // version back first (see swap()/poll() below), so clearing the
+      // filters later needs no separate "restore" path — filterRows()
+      // simply stops overwriting it once nothing is engaged, and it's the
+      // very state that came off the wire.
+      function updateSummaryForFilter() {
+        var container = document.getElementById('summary');
         if (!container) return;
+        var descriptorSel = document.getElementById('filter-descriptor');
+        var fromInput = document.getElementById('filter-from');
+        var toInput = document.getElementById('filter-to');
+        var filterEngaged = (descriptorSel && descriptorSel.value) || (fromInput && fromInput.value) || (toInput && toInput.value);
+        if (!filterEngaged) {
+          if (originalSummaryHtml) container.innerHTML = originalSummaryHtml;
+          return;
+        }
+
         var showFailed = document.body.classList.contains('show-failed');
         var rows = document.querySelectorAll('#results tr[data-timestamp]');
         var total = rows.length;
@@ -310,11 +330,6 @@ function renderHtml(entries: UsageLogEntry[]): string {
           var costAttr = row.getAttribute('data-cost');
           if (costAttr) cost += Number(costAttr);
         });
-        if (total === 0) {
-          container.hidden = true;
-          return;
-        }
-        container.hidden = false;
         container.innerHTML =
           '<div class="stat"><span class="label">Showing</span><span class="value">' + visible + ' of ' + total + '</span></div>' +
           '<div class="stat"><span class="label">Input tokens</span><span class="value">' + input.toLocaleString() + '</span></div>' +
@@ -327,6 +342,9 @@ function renderHtml(entries: UsageLogEntry[]): string {
       // very elements) gets replaced wholesale on every 5s poll swap below,
       // so any listener/value from a previous pass is gone along with it.
       function applyFilters() {
+        var summaryEl = document.getElementById('summary');
+        if (summaryEl) originalSummaryHtml = summaryEl.innerHTML;
+
         var checkbox = document.getElementById('show-failed');
         if (checkbox) {
           var show = localStorage.getItem(SHOW_FAILED_KEY) === '1';
@@ -335,7 +353,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
           checkbox.addEventListener('change', function () {
             localStorage.setItem(SHOW_FAILED_KEY, checkbox.checked ? '1' : '0');
             document.body.classList.toggle('show-failed', checkbox.checked);
-            updateFilteredSummary();
+            updateSummaryForFilter();
           });
         }
 
