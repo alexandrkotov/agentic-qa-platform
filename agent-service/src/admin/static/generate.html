@@ -354,6 +354,7 @@
 
     <div class="row">
       <button class="primary" id="save-corr-btn">Save corrections &amp; UAT notes</button>
+      <button class="ghost" id="undo-corr-btn" disabled title="Undo the last structural change (added/removed/renamed a correction, or an uploaded file/link) to either card above.">Undo</button>
       <span id="corr-status"></span>
     </div>
   </section>
@@ -924,10 +925,13 @@ function setStage2GatedButtonsDisabled(disabled) {
   // "{}". "+ Add correction" was already guarded against the equivalent
   // risk (see correctionsUnloadedRisk below) — Save itself never was.
   var saveBtn = document.getElementById('save-corr-btn');
-  saveBtn.disabled = disabled || correctionsUnloadedRisk;
+  var hasUnsavedChanges = correctionsDirty || uatDirty;
+  saveBtn.disabled = disabled || correctionsUnloadedRisk || !hasUnsavedChanges;
   saveBtn.title = correctionsUnloadedRisk
     ? 'This descriptor already has saved corrections that haven’t been loaded here yet — click Load first, or this would overwrite them.'
-    : '';
+    : !hasUnsavedChanges
+      ? 'No changes to save yet.'
+      : '';
   // Load and "+ Add correction" each have their own extra reason to stay
   // disabled even when this one doesn't apply — see correctionsFileMissing
   // and correctionsUnloadedRisk below.
@@ -1277,6 +1281,36 @@ document.getElementById('run-tests-btn').onclick = async () => {
 
 let corrections = {};
 
+// Dirty-tracking + shared undo, covering BOTH cards (corrections and UAT) —
+// mirrors the one shared Save button with one shared "is there anything to
+// save" flag and one shared undo history, rather than tracking each card
+// separately. Plain typing into an existing field (a correction's own text,
+// the UAT textarea) already gets free undo from the browser's own native
+// per-field undo stack, since those are real keystrokes — only JS-driven
+// structural changes (add/remove/rename a correction row, a file/link
+// append to UAT) need their own snapshot here, since a JS `el.value = ...`
+// assignment does NOT enter the browser's native undo stack at all.
+let correctionsDirty = false;
+let uatDirty = false;
+let undoStack = [];
+const UNDO_STACK_LIMIT = 50;
+
+function pushUndoSnapshot() {
+  undoStack.push({ corrections: JSON.parse(JSON.stringify(corrections)), uatText: document.getElementById('uat-text').value });
+  if (undoStack.length > UNDO_STACK_LIMIT) undoStack.shift();
+  document.getElementById('undo-corr-btn').disabled = false;
+}
+
+function markCorrectionsDirty() {
+  correctionsDirty = true;
+  setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+}
+
+function markUatDirty() {
+  uatDirty = true;
+  setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+}
+
 // Which descriptor's file is actually reflected in `corrections` right now —
 // null until a real Load or Save happens for a given descriptor.
 let correctionsLoadedForDescriptor = null;
@@ -1315,6 +1349,14 @@ async function checkCorrectionsLoadRisk(descriptor) {
     corrections = {};
     correctionsLoadedForDescriptor = null;
     renderCorrections();
+    // A genuinely different descriptor makes any prior undo history/dirty
+    // state meaningless (it belonged to whatever descriptor was open
+    // before) — start both clean rather than let a stale snapshot from
+    // one descriptor ever get restored into another's.
+    correctionsDirty = false;
+    uatDirty = false;
+    undoStack = [];
+    document.getElementById('undo-corr-btn').disabled = true;
     if (descriptor) {
       try {
         const existing = await api('/api/generate/corrections/' + encodeURIComponent(descriptor));
@@ -1384,17 +1426,27 @@ function renderCorrections() {
     nameInput.placeholder = 'Exact scenario name';
     const text = document.createElement('textarea');
     text.value = corrections[scenarioName];
-    text.oninput = () => { corrections[nameInput.value] = text.value; };
+    // Plain typing here already gets free undo from the field's own native
+    // browser undo stack (a real keystroke, not a JS-driven value write) —
+    // no pushUndoSnapshot() needed, just keep the dirty flag in sync.
+    text.oninput = () => { corrections[nameInput.value] = text.value; markCorrectionsDirty(); };
     nameInput.onchange = () => {
       if (nameInput.value !== scenarioName) {
+        pushUndoSnapshot();
         delete corrections[scenarioName];
         corrections[nameInput.value] = text.value;
         renderCorrections();
+        markCorrectionsDirty();
       }
     };
     const removeBtn = document.createElement('button');
     removeBtn.className = 'link'; removeBtn.textContent = 'Remove';
-    removeBtn.onclick = () => { delete corrections[scenarioName]; renderCorrections(); };
+    removeBtn.onclick = () => {
+      pushUndoSnapshot();
+      delete corrections[scenarioName];
+      renderCorrections();
+      markCorrectionsDirty();
+    };
     row.appendChild(nameInput);
     row.appendChild(text);
     row.appendChild(removeBtn);
@@ -1418,6 +1470,9 @@ document.getElementById('load-corr-btn').onclick = async () => {
     correctionsLoadedForDescriptor = name;
     correctionsUnloadedRisk = false;
     correctionsFileMissing = Object.keys(corrections).length === 0;
+    // Corrections now match disk again — Save has nothing new to do until
+    // an actual edit happens (doesn't touch uatDirty, that's independent).
+    correctionsDirty = false;
     document.getElementById('add-corr-btn').title = '';
     document.getElementById('load-corr-btn').title = correctionsFileMissing
       ? 'No saved corrections exist yet for this descriptor — nothing to load.'
@@ -1429,11 +1484,13 @@ document.getElementById('load-corr-btn').onclick = async () => {
 };
 
 document.getElementById('add-corr-btn').onclick = () => {
+  pushUndoSnapshot();
   let key = 'New scenario name';
   let i = 1;
   while (key in corrections) key = `New scenario name ${++i}`;
   corrections[key] = '';
   renderCorrections();
+  markCorrectionsDirty();
 };
 
 document.getElementById('save-corr-btn').onclick = async () => {
@@ -1465,6 +1522,13 @@ document.getElementById('save-corr-btn').onclick = async () => {
     });
     uatLoadedForDescriptor = name;
 
+    // Both cards now match disk — nothing left for Save to do until the
+    // next real edit (undo history itself is left alone; see its own
+    // comment for why undo isn't tied to save/load checkpoints).
+    correctionsDirty = false;
+    uatDirty = false;
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+
     setStatus(statusEl, 'Saved.', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
@@ -1492,6 +1556,8 @@ async function loadUatIfNeeded() {
     const { text } = await api('/api/generate/uat/' + encodeURIComponent(name));
     document.getElementById('uat-text').value = text;
     uatLoadedForDescriptor = name;
+    uatDirty = false; // now matches disk (doesn't touch correctionsDirty, that's independent)
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   } catch (e) {
     setStatus(statusEl, 'Failed to load UAT notes: ' + e.message, 'err');
   }
@@ -1503,9 +1569,16 @@ async function loadUatIfNeeded() {
 // document instead of each wiping out what came before. No leading
 // separator when the textarea starts out empty (the common first call).
 function appendToUatText(newContent) {
+  pushUndoSnapshot(); // JS-driven value write, not a real keystroke — native undo won't cover this
   const el = document.getElementById('uat-text');
   el.value = el.value.trim() ? el.value.replace(/\s+$/, '') + '\n\n' + newContent : newContent;
+  markUatDirty();
 }
+
+// Plain typing gets free undo from the textarea's own native browser undo
+// stack — this listener only needs to keep the dirty flag (and therefore
+// Save's enabled state) in sync with it.
+document.getElementById('uat-text').addEventListener('input', markUatDirty);
 
 document.getElementById('uat-file-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
@@ -1547,6 +1620,23 @@ document.getElementById('uat-extract-url-btn').onclick = async () => {
   } catch (err) {
     setStatus(statusEl, 'Failed: ' + err.message, 'err');
   }
+};
+
+// Steps back through the shared undo stack one entry at a time, restoring
+// BOTH cards to that snapshot even if only one of them actually changed in
+// that particular action (restoring the other to what it already was is
+// harmless). Marks both dirty afterward rather than trying to work out
+// whether undo happened to land exactly back on the last-saved state.
+document.getElementById('undo-corr-btn').onclick = () => {
+  if (undoStack.length === 0) return;
+  const snapshot = undoStack.pop();
+  corrections = snapshot.corrections;
+  renderCorrections();
+  document.getElementById('uat-text').value = snapshot.uatText;
+  correctionsDirty = true;
+  uatDirty = true;
+  document.getElementById('undo-corr-btn').disabled = undoStack.length === 0;
+  setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
 };
 
 loadReportList().then(onReportChanged);
