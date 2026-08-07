@@ -915,7 +915,19 @@ function renderGroupsFilterCheckboxes(groupingDetails) {
 // read whatever was on disk a moment ago).
 function setStage2GatedButtonsDisabled(disabled) {
   document.getElementById('spec-generate-btn').disabled = disabled;
-  document.getElementById('save-corr-btn').disabled = disabled;
+  // Pre-existing gap, closed here: this button now also saves UAT notes
+  // (see save-corr-btn's own handler), so a click with zero interaction —
+  // no Load, nothing added — used to silently PUT an empty `corrections`
+  // object over a real, already-saved corrections file. Confirmed live:
+  // a verification script that only touched the UAT textarea did exactly
+  // this and wiped orderflow.corrections.json's 5 real entries down to
+  // "{}". "+ Add correction" was already guarded against the equivalent
+  // risk (see correctionsUnloadedRisk below) — Save itself never was.
+  var saveBtn = document.getElementById('save-corr-btn');
+  saveBtn.disabled = disabled || correctionsUnloadedRisk;
+  saveBtn.title = correctionsUnloadedRisk
+    ? 'This descriptor already has saved corrections that haven’t been loaded here yet — click Load first, or this would overwrite them.'
+    : '';
   // Load and "+ Add correction" each have their own extra reason to stay
   // disabled even when this one doesn't apply — see correctionsFileMissing
   // and correctionsUnloadedRisk below.
