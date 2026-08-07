@@ -172,6 +172,11 @@
      free. First group open by default (see renderSpec()), the rest closed,
      since a full suite's worth of real generated files is a lot to render
      open all at once. */
+  /* Two equal-weight sibling cards inside Corrections — see the section's
+     own comment for why (manual fact corrections vs. reference UAT text
+     are independent inputs, not one nested under the other). */
+  .corrections-block { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .corrections-block h2 { margin-top: 0; }
   .gen-group-details { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
   .gen-group-details > summary {
     cursor: pointer; padding: 0.7rem 1rem; font-weight: 600; list-style: none;
@@ -307,49 +312,50 @@
   </section>
 
   <section id="stage-corrections" hidden>
-    <h2>Scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the generation tied to Generate's selected grouping)</span></h2>
-    <div class="row">
-      <span class="field-pair">
-        <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
-        <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">
-      </span>
-      <button class="primary" id="load-corr-btn">Load</button>
-      <button class="primary" id="add-corr-btn">+ Add correction</button>
-    </div>
-    <div class="corr-header">
-      <span title="Must exactly match a scenario's name as it appears in Stage 1/Generate — this is the lookup key used to find and apply the correction below when tests are generated.">Scenario name ⓘ</span>
-      <span title="Plain-language instructions on what's actually true for this scenario — applied OVER the discovery report's own text when Generate writes its tests.">Correction ⓘ</span>
-    </div>
-    <div id="corr-body"></div>
-    <div class="row">
-      <button class="primary" id="save-corr-btn">Save corrections</button>
-      <span id="corr-status"></span>
+    <!-- Two sibling cards, deliberately equal weight — a human's manual fact
+         corrections and reference UAT material are two independent inputs
+         to Stage 2's prompt, not one nested inside the other. One shared
+         Save button/status at the bottom covers both in a single click. -->
+    <div class="corrections-block">
+      <h2>Manual scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the generation tied to Generate's selected grouping)</span></h2>
+      <div class="row">
+        <span class="field-pair">
+          <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
+          <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">
+        </span>
+        <button class="primary" id="load-corr-btn">Load</button>
+        <button class="primary" id="add-corr-btn">+ Add correction</button>
+      </div>
+      <div class="corr-header">
+        <span title="Must exactly match a scenario's name as it appears in Stage 1/Generate — this is the lookup key used to find and apply the correction below when tests are generated.">Scenario name ⓘ</span>
+        <span title="Plain-language instructions on what's actually true for this scenario — applied OVER the discovery report's own text when Generate writes its tests.">Correction ⓘ</span>
+      </div>
+      <div id="corr-body"></div>
     </div>
 
-    <details class="gen-group-details" id="uat-details">
-      <summary>UAT / acceptance-test notes (optional — mixed into Generate's own prompt alongside the report)</summary>
-      <div style="padding: 0.75rem 1rem 1rem;">
-        <div class="row">
-          <textarea id="uat-text" rows="8" style="width:100%" placeholder="Paste acceptance-test notes here, or extract them from a file or Google link below."></textarea>
-        </div>
-        <div class="row">
-          <span class="field-pair">
-            <label for="uat-file-input">Upload file</label>
-            <input type="file" id="uat-file-input" accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls">
-          </span>
-        </div>
-        <div class="row">
-          <span class="field-pair">
-            <input type="text" id="uat-google-url" placeholder="Google Doc/Sheet link (shared &quot;Anyone with the link&quot;)" style="width:22rem">
-            <button class="primary" id="uat-extract-url-btn">Extract from link</button>
-          </span>
-        </div>
-        <div class="row">
-          <button class="primary" id="uat-save-btn">Save UAT notes</button>
-          <span id="uat-status"></span>
-        </div>
+    <div class="corrections-block">
+      <h2>UAT / acceptance-test notes <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(optional — mixed into Generate's own prompt alongside the report)</span></h2>
+      <div class="row">
+        <textarea id="uat-text" rows="8" style="width:100%" placeholder="Paste acceptance-test notes here, or extract them from a file or Google link below."></textarea>
       </div>
-    </details>
+      <div class="row">
+        <span class="field-pair">
+          <label for="uat-file-input">Upload file</label>
+          <input type="file" id="uat-file-input" accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls">
+        </span>
+      </div>
+      <div class="row">
+        <span class="field-pair">
+          <input type="text" id="uat-google-url" placeholder="Google Doc/Sheet link (shared &quot;Anyone with the link&quot;)" style="width:22rem">
+          <button class="primary" id="uat-extract-url-btn">Extract from link</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="save-corr-btn">Save corrections &amp; UAT notes</button>
+      <span id="corr-status"></span>
+    </div>
   </section>
 
   <section id="stage-render" hidden>
@@ -407,6 +413,10 @@ function showStage(name) {
   // one (e.g. a Generate round finished and got approved from the Generate
   // tab, then the user switches here directly).
   if (name === 'render') refreshRenderSpecOptions();
+  // loadUatIfNeeded is defined further down with the rest of the UAT logic
+  // — safe to reference here since showStage() itself only ever runs from
+  // a later user click, well after the whole script has finished loading.
+  if (name === 'corrections') loadUatIfNeeded();
 }
 for (const s of STAGE_NAMES) {
   document.getElementById('tab-' + s).onclick = () => showStage(s);
@@ -1423,7 +1433,6 @@ document.getElementById('save-corr-btn').onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(corrections),
     });
-    setStatus(statusEl, 'Saved.', 'ok');
     // Disk now matches memory for this descriptor too.
     correctionsLoadedForDescriptor = name;
     correctionsUnloadedRisk = false;
@@ -1433,6 +1442,18 @@ document.getElementById('save-corr-btn').onclick = async () => {
       ? 'No saved corrections exist yet for this descriptor — nothing to load.'
       : '';
     setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+
+    // One button saves both cards — see the section's own comment for why
+    // these two are siblings, not one nested in the other.
+    const uatText = document.getElementById('uat-text').value;
+    await api('/api/generate/uat/' + encodeURIComponent(name), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: uatText }),
+    });
+    uatLoadedForDescriptor = name;
+
+    setStatus(statusEl, 'Saved.', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   }
@@ -1442,33 +1463,33 @@ document.getElementById('save-corr-btn').onclick = async () => {
 // One free-text blob per descriptor (see agents/generate/uat.ts), not keyed
 // by scenario the way corrections are — so this is far simpler than the
 // corrections block above: no per-row highlighting, no "unloaded risk"
-// tracking. Lazy-loads the saved text the first time this <details> is
-// opened for the current descriptor (not on page load, since most visits to
-// this tab never touch it), and again if the descriptor changes while it's
-// already open or gets reopened after a switch.
+// tracking, and it shares save-corr-btn's own status line and gating
+// instead of having its own. Lazy-loads the saved text the first time the
+// Corrections tab is actually opened for the current descriptor (see
+// loadUatIfNeeded(), called from showStage()) — not on every page load,
+// since most visits to this tab never touch it — and again if the
+// descriptor changes before the next visit.
 
 let uatLoadedForDescriptor = null;
 
-document.getElementById('uat-details').addEventListener('toggle', async (e) => {
-  if (!e.target.open) return;
+async function loadUatIfNeeded() {
   const name = document.getElementById('descriptor-name').value;
   if (!name || name === uatLoadedForDescriptor) return;
-  const statusEl = document.getElementById('uat-status');
+  const statusEl = document.getElementById('corr-status');
   try {
     const { text } = await api('/api/generate/uat/' + encodeURIComponent(name));
     document.getElementById('uat-text').value = text;
     uatLoadedForDescriptor = name;
-    setStatus(statusEl, '');
-  } catch (e2) {
-    setStatus(statusEl, 'Failed to load: ' + e2.message, 'err');
+  } catch (e) {
+    setStatus(statusEl, 'Failed to load UAT notes: ' + e.message, 'err');
   }
-});
+}
 
 document.getElementById('uat-file-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = ''; // let the same file be picked again after a fix, without a no-op "no change" event
   if (!file) return;
-  const statusEl = document.getElementById('uat-status');
+  const statusEl = document.getElementById('corr-status');
   const formData = new FormData();
   formData.append('file', file);
   try {
@@ -1485,7 +1506,7 @@ document.getElementById('uat-file-input').addEventListener('change', async (e) =
 
 document.getElementById('uat-extract-url-btn').onclick = async () => {
   const url = document.getElementById('uat-google-url').value.trim();
-  const statusEl = document.getElementById('uat-status');
+  const statusEl = document.getElementById('corr-status');
   if (!url) {
     setStatus(statusEl, 'Paste a Google Doc/Sheet link first.', 'err');
     return;
@@ -1499,27 +1520,6 @@ document.getElementById('uat-extract-url-btn').onclick = async () => {
     });
     document.getElementById('uat-text').value = text;
     setStatus(statusEl, 'Extracted — review below, then Save.', 'ok');
-  } catch (err) {
-    setStatus(statusEl, 'Failed: ' + err.message, 'err');
-  }
-};
-
-document.getElementById('uat-save-btn').onclick = async () => {
-  const name = document.getElementById('descriptor-name').value;
-  const statusEl = document.getElementById('uat-status');
-  if (!name) {
-    setStatus(statusEl, 'No descriptor selected — pick a report in Stage 1 first.', 'err');
-    return;
-  }
-  try {
-    const text = document.getElementById('uat-text').value;
-    await api('/api/generate/uat/' + encodeURIComponent(name), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    uatLoadedForDescriptor = name;
-    setStatus(statusEl, 'Saved.', 'ok');
   } catch (err) {
     setStatus(statusEl, 'Failed: ' + err.message, 'err');
   }
