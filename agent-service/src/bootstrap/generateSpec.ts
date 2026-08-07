@@ -6,6 +6,7 @@ import { ApprovedGroupingSchema } from '../agents/generate/contract.ts';
 import { splitByBudget, DEFAULT_MAX_SCENARIOS_PER_GROUP } from '../agents/generate/budget.ts';
 import { generateGeneration } from '../agents/generate/spec.ts';
 import { loadCorrections } from '../agents/generate/corrections.ts';
+import { loadUatContext } from '../agents/generate/uat.ts';
 import { config } from '../config.ts';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +56,7 @@ export async function runGenerateSpec(
   const reportJson = JSON.stringify(reportRaw, null, 2);
 
   const corrections = descriptorPath ? await loadCorrections(descriptorPath) : {};
+  const uatContext = descriptorPath ? await loadUatContext(descriptorPath) : '';
 
   let renderGroups = splitByBudget(grouping, maxScenariosPerGroup ?? DEFAULT_MAX_SCENARIOS_PER_GROUP);
   if (groupFilter?.length) {
@@ -72,6 +74,7 @@ export async function runGenerateSpec(
     corrections,
     resolvedGroupingPath,
     TESTS_STEPS_DIR,
+    uatContext,
   );
 
   await mkdir(config.reportsDir, { recursive: true });

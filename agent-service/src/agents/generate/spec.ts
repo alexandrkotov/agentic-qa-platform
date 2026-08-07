@@ -48,7 +48,18 @@ ${claimedPatterns.map((p) => `- ${p}`).join('\n')}
 `;
 }
 
-function buildSystemPrompt(renderGroup: RenderGroup, reportJson: string, correctionsBlock: string, claimedPatterns: string[]): string {
+function buildUatBlock(uatContext: string): string {
+  if (!uatContext.trim()) return '';
+  return `\n## User-provided UAT / acceptance-test notes — extra context, treat as authoritative on real user expectations alongside the report above\n${uatContext}\n`;
+}
+
+function buildSystemPrompt(
+  renderGroup: RenderGroup,
+  reportJson: string,
+  correctionsBlock: string,
+  claimedPatterns: string[],
+  uatContext: string,
+): string {
   return `You are a QA test-automation agent. You convert a system discovery report (JSON) into a REAL,
 readable BDD test suite, one group of scenarios at a time — a real Gherkin .feature file and a real
 Playwright/playwright-bdd .steps.ts file. There is no intermediate JSON format and no generic phrase
@@ -57,7 +68,7 @@ up on disk and what actually runs.
 
 ## System discovery report (source of truth for endpoints, schema, business rules)
 ${reportJson}
-${correctionsBlock}${buildClaimedPatternsBlock(claimedPatterns)}
+${buildUatBlock(uatContext)}${correctionsBlock}${buildClaimedPatternsBlock(claimedPatterns)}
 ## Your task for THIS call
 Produce the .feature and .steps.ts content for the "${renderGroup.key}" group ONLY. Cover exactly these
 testScenarios entries (by report name) and no others:
@@ -212,9 +223,10 @@ export async function generateGenerationForGroup(
   reportJson: string,
   corrections: Corrections,
   patternRegistry: Map<string, string>,
+  uatContext: string = '',
 ): Promise<GeneratedGroup> {
   const raw = await provider.run({
-    systemPrompt: buildSystemPrompt(renderGroup, reportJson, buildCorrectionsBlock(renderGroup, corrections), [...patternRegistry.keys()]),
+    systemPrompt: buildSystemPrompt(renderGroup, reportJson, buildCorrectionsBlock(renderGroup, corrections), [...patternRegistry.keys()], uatContext),
     userMessage: USER_MESSAGE(renderGroup),
     mcpServers: [],
     tools: [],
@@ -248,6 +260,8 @@ export async function generateGeneration(
   corrections: Corrections,
   sourceGroupingPath: string,
   testsStepsDir: string,
+  /** User-provided UAT/acceptance-test notes (see uat.ts), mixed into every render-group's prompt alongside the report and corrections. Defaults to '' (no extra section) for CLI/older callers that don't have one. */
+  uatContext: string = '',
   // Mirrors this function's own console.log/console.error calls (not
   // ClaudeProvider's lower-level per-call logging, which the admin server
   // surfaces separately by wrapping the provider it passes in) — lets a
@@ -288,7 +302,7 @@ export async function generateGeneration(
       console.log(`\n${startMsg}`);
       onProgress?.(startMsg);
       try {
-        pieceGroups.push(await generateGenerationForGroup(provider, renderGroup, reportJson, corrections, patternRegistry));
+        pieceGroups.push(await generateGenerationForGroup(provider, renderGroup, reportJson, corrections, patternRegistry, uatContext));
       } catch (err) {
         const failMsg = `[${renderGroup.key}] FAILED: ${(err as Error).message}`;
         console.error(`  ${failMsg}`);

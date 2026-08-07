@@ -315,6 +315,31 @@
       <button class="primary" id="save-corr-btn">Save corrections</button>
       <span id="corr-status"></span>
     </div>
+
+    <details class="gen-group-details" id="uat-details">
+      <summary>UAT / acceptance-test notes (optional — mixed into Generate's own prompt alongside the report)</summary>
+      <div style="padding: 0.75rem 1rem 1rem;">
+        <div class="row">
+          <textarea id="uat-text" rows="8" style="width:100%" placeholder="Paste acceptance-test notes here, or extract them from a file or Google link below."></textarea>
+        </div>
+        <div class="row">
+          <span class="field-pair">
+            <label for="uat-file-input">Upload file</label>
+            <input type="file" id="uat-file-input" accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls">
+          </span>
+        </div>
+        <div class="row">
+          <span class="field-pair">
+            <input type="text" id="uat-google-url" placeholder="Google Doc/Sheet link (shared &quot;Anyone with the link&quot;)" style="width:22rem">
+            <button class="ghost" id="uat-extract-url-btn">Extract from link</button>
+          </span>
+        </div>
+        <div class="row">
+          <button class="primary" id="uat-save-btn">Save UAT notes</button>
+          <span id="uat-status"></span>
+        </div>
+      </div>
+    </details>
   </section>
 
   <section id="stage-render" hidden>
@@ -1400,6 +1425,93 @@ document.getElementById('save-corr-btn').onclick = async () => {
     setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  }
+};
+
+// --- UAT / acceptance-test notes -------------------------------------------
+// One free-text blob per descriptor (see agents/generate/uat.ts), not keyed
+// by scenario the way corrections are — so this is far simpler than the
+// corrections block above: no per-row highlighting, no "unloaded risk"
+// tracking. Lazy-loads the saved text the first time this <details> is
+// opened for the current descriptor (not on page load, since most visits to
+// this tab never touch it), and again if the descriptor changes while it's
+// already open or gets reopened after a switch.
+
+let uatLoadedForDescriptor = null;
+
+document.getElementById('uat-details').addEventListener('toggle', async (e) => {
+  if (!e.target.open) return;
+  const name = document.getElementById('descriptor-name').value;
+  if (!name || name === uatLoadedForDescriptor) return;
+  const statusEl = document.getElementById('uat-status');
+  try {
+    const { text } = await api('/api/generate/uat/' + encodeURIComponent(name));
+    document.getElementById('uat-text').value = text;
+    uatLoadedForDescriptor = name;
+    setStatus(statusEl, '');
+  } catch (e2) {
+    setStatus(statusEl, 'Failed to load: ' + e2.message, 'err');
+  }
+});
+
+document.getElementById('uat-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = ''; // let the same file be picked again after a fix, without a no-op "no change" event
+  if (!file) return;
+  const statusEl = document.getElementById('uat-status');
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    setStatus(statusEl, 'Extracting…');
+    // No Content-Type header here on purpose — the browser sets the
+    // multipart boundary itself when the fetch body is a FormData.
+    const { text } = await api('/api/generate/uat/extract-file', { method: 'POST', body: formData });
+    document.getElementById('uat-text').value = text;
+    setStatus(statusEl, 'Extracted — review below, then Save.', 'ok');
+  } catch (err) {
+    setStatus(statusEl, 'Failed: ' + err.message, 'err');
+  }
+});
+
+document.getElementById('uat-extract-url-btn').onclick = async () => {
+  const url = document.getElementById('uat-google-url').value.trim();
+  const statusEl = document.getElementById('uat-status');
+  if (!url) {
+    setStatus(statusEl, 'Paste a Google Doc/Sheet link first.', 'err');
+    return;
+  }
+  try {
+    setStatus(statusEl, 'Extracting…');
+    const { text } = await api('/api/generate/uat/extract-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    document.getElementById('uat-text').value = text;
+    setStatus(statusEl, 'Extracted — review below, then Save.', 'ok');
+  } catch (err) {
+    setStatus(statusEl, 'Failed: ' + err.message, 'err');
+  }
+};
+
+document.getElementById('uat-save-btn').onclick = async () => {
+  const name = document.getElementById('descriptor-name').value;
+  const statusEl = document.getElementById('uat-status');
+  if (!name) {
+    setStatus(statusEl, 'No descriptor selected — pick a report in Stage 1 first.', 'err');
+    return;
+  }
+  try {
+    const text = document.getElementById('uat-text').value;
+    await api('/api/generate/uat/' + encodeURIComponent(name), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    uatLoadedForDescriptor = name;
+    setStatus(statusEl, 'Saved.', 'ok');
+  } catch (err) {
+    setStatus(statusEl, 'Failed: ' + err.message, 'err');
   }
 };
 

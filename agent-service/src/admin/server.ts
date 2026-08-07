@@ -23,6 +23,9 @@ import {
   CorrectionsSchema,
 } from '../agents/generate/contract.ts';
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
+import { loadUatContext, saveUatContext } from '../agents/generate/uat.ts';
+import { extractTextFromFile, extractTextFromGoogleUrl } from '../agents/generate/uatExtract.ts';
+import multer from 'multer';
 import { proposeWorkflow } from '../agents/workflow/propose.ts';
 import { proposeUiFlow } from '../agents/workflow/proposeUiFlow.ts';
 import { proposeSequenceFlow } from '../agents/workflow/proposeSequenceFlow.ts';
@@ -450,7 +453,7 @@ app.post('/api/workflow/propose', async (req, res) => {
     const path = reportFilePath(reportName);
     const report = parseDiscoveryReport(JSON.parse(await readFile(path, 'utf-8')));
     const provider = new ClaudeProvider();
-    const proposed = await proposeWorkflow(provider, report, path);
+    const proposed = await proposeWorkflow(provider, report, path, descriptorFromReportName(reportName) ?? undefined);
     res.json(proposed);
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
@@ -545,7 +548,7 @@ app.post('/api/workflow/propose-ui-flow', async (req, res) => {
     const path = reportFilePath(reportName);
     const report = parseDiscoveryReport(JSON.parse(await readFile(path, 'utf-8')));
     const provider = new ClaudeProvider();
-    const proposed = await proposeUiFlow(provider, report, path);
+    const proposed = await proposeUiFlow(provider, report, path, descriptorFromReportName(reportName) ?? undefined);
     res.json(proposed);
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
@@ -611,7 +614,7 @@ app.post('/api/workflow/propose-sequence', async (req, res) => {
     const path = reportFilePath(reportName);
     const report = parseDiscoveryReport(JSON.parse(await readFile(path, 'utf-8')));
     const provider = new ClaudeProvider();
-    const proposed = await proposeSequenceFlow(provider, report, path);
+    const proposed = await proposeSequenceFlow(provider, report, path, descriptorFromReportName(reportName) ?? undefined);
     res.json(proposed);
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {
@@ -766,6 +769,71 @@ app.put('/api/generate/corrections/:descriptorName', async (req, res) => {
       res.status(400).json({ error: 'Validation failed', issues: (err as { issues: unknown }).issues });
       return;
     }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// UAT / acceptance-test notes — free text mixed into Stage 2's own prompt
+// (see uat.ts, spec.ts's buildUatBlock). GET/PUT mirror the corrections pair
+// above exactly. The two extract-* routes are deliberately "propose, don't
+// persist" — same pattern as Stage 1 grouping/Stage 2 spec/E2E fixes: they
+// only ever return extracted text for the browser to show in a textarea for
+// review, never call saveUatContext themselves. A human still has to click
+// "Save UAT notes" (the PUT route) to actually persist anything, so a bad
+// extraction (garbled PDF text, wrong sheet) is never silently written.
+// ---------------------------------------------------------------------------
+
+app.get('/api/generate/uat/:descriptorName', async (req, res) => {
+  try {
+    res.json({ text: await loadUatContext(descriptorPath(req.params.descriptorName)) });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/generate/uat/:descriptorName', async (req, res) => {
+  try {
+    const { text } = req.body as { text?: string };
+    if (typeof text !== 'string') {
+      res.status(400).json({ error: '"text" is required' });
+      return;
+    }
+    await saveUatContext(descriptorPath(req.params.descriptorName), text);
+    res.json({ text });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// Memory storage (not disk) — the extracted text is all that ever needs to
+// survive past this one request; nothing here writes the uploaded file
+// itself anywhere.
+const uatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.post('/api/generate/uat/extract-file', uatUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: '"file" is required' });
+      return;
+    }
+    const text = await extractTextFromFile(req.file.buffer, req.file.originalname);
+    res.json({ text });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/generate/uat/extract-url', async (req, res) => {
+  try {
+    const { url } = req.body as { url?: string };
+    if (!url) {
+      res.status(400).json({ error: '"url" is required' });
+      return;
+    }
+    const text = await extractTextFromGoogleUrl(url);
+    res.json({ text });
+  } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
@@ -967,6 +1035,7 @@ app.post('/api/generate/spec', async (req, res) => {
     parseDiscoveryReport(reportRaw); // validate shape before spending money on a Claude call
     const reportJson = JSON.stringify(reportRaw, null, 2);
     const corrections = descriptor ? await loadCorrections(descriptorPath(descriptor)) : {};
+    const uatContext = descriptor ? await loadUatContext(descriptorPath(descriptor)) : '';
 
     // Filter by Stage 1 group keys (e.g. "orders") *before* budget-splitting,
     // not after — filtering the post-split render groups would require the
@@ -1004,6 +1073,12 @@ app.post('/api/generate/spec', async (req, res) => {
     const rawProvider = new ClaudeProvider();
     const provider: AgentProvider = {
       run: async (opts) => {
+        // Injects the descriptor here, once, rather than threading it through
+        // spec.ts's own generateGeneration/generateGenerationForGroup param
+        // lists — this wrapper already sees every provider.run() call this
+        // route makes, and every call already has this route's own
+        // `descriptor` request-body field in scope.
+        opts = { ...opts, descriptor: opts.descriptor ?? descriptor };
         const t0 = Date.now();
         send({ type: 'progress', message: `Calling Claude for "${opts.operation}"…` });
         try {
@@ -1025,6 +1100,7 @@ app.post('/api/generate/spec', async (req, res) => {
         corrections,
         groupingPath,
         TESTS_STEPS_DIR,
+        uatContext,
         (message) => send({ type: 'progress', message }),
       );
       send({ type: 'done', generation, failures });
