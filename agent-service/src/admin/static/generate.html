@@ -1497,6 +1497,16 @@ async function loadUatIfNeeded() {
   }
 }
 
+// Appends onto whatever's already in the textarea instead of replacing it
+// — the whole point being that a file batch, then another file batch, then
+// a Google link, then another link, all accumulate into one combined
+// document instead of each wiping out what came before. No leading
+// separator when the textarea starts out empty (the common first call).
+function appendToUatText(newContent) {
+  const el = document.getElementById('uat-text');
+  el.value = el.value.trim() ? el.value.replace(/\s+$/, '') + '\n\n' + newContent : newContent;
+}
+
 document.getElementById('uat-file-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
   e.target.value = ''; // let the same file(s) be picked again after a fix, without a no-op "no change" event
@@ -1509,15 +1519,16 @@ document.getElementById('uat-file-input').addEventListener('change', async (e) =
     // No Content-Type header here on purpose — the browser sets the
     // multipart boundary itself when the fetch body is a FormData.
     const { text } = await api('/api/generate/uat/extract-file', { method: 'POST', body: formData });
-    document.getElementById('uat-text').value = text;
-    setStatus(statusEl, 'Extracted — review below, then Save.', 'ok');
+    appendToUatText(text); // server already headers each file with "## File: <name>"
+    setStatus(statusEl, 'Extracted and added — review below, then Save.', 'ok');
   } catch (err) {
     setStatus(statusEl, 'Failed: ' + err.message, 'err');
   }
 });
 
 document.getElementById('uat-extract-url-btn').onclick = async () => {
-  const url = document.getElementById('uat-google-url').value.trim();
+  const urlInput = document.getElementById('uat-google-url');
+  const url = urlInput.value.trim();
   const statusEl = document.getElementById('corr-status');
   if (!url) {
     setStatus(statusEl, 'Paste a Google Doc/Sheet link first.', 'err');
@@ -1530,8 +1541,9 @@ document.getElementById('uat-extract-url-btn').onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
-    document.getElementById('uat-text').value = text;
-    setStatus(statusEl, 'Extracted — review below, then Save.', 'ok');
+    appendToUatText('## Link: ' + url + '\n' + text);
+    urlInput.value = ''; // ready for the next link right away — failure below leaves it as-is so the human can fix/retry it
+    setStatus(statusEl, 'Extracted and added — review below, then Save.', 'ok');
   } catch (err) {
     setStatus(statusEl, 'Failed: ' + err.message, 'err');
   }

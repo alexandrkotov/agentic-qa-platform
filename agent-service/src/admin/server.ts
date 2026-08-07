@@ -833,12 +833,15 @@ app.post('/api/generate/uat/extract-file', uatUpload.array('files', 10), async (
         });
       }
     }
-    // A single file's own text stands alone, unchanged from before this
-    // route supported more than one — only multiple files get a "## File:"
-    // heading each, mirroring how uatExtract.ts already headers multiple
-    // xlsx sheets the same way.
-    const text =
-      files.length === 1 ? extracted[0] : files.map((f, i) => `## File: ${f.originalname}\n${extracted[i]}`).join('\n\n');
+    // Every file gets its own "## File: <name>" heading, even a lone one —
+    // not just when there's more than one (revised from this route's first
+    // version): the client now APPENDS each extraction onto whatever's
+    // already in the UAT textarea rather than replacing it (see
+    // generate.html), specifically so multiple file batches and multiple
+    // Google links can all accumulate into one combined document. Without
+    // a heading on every piece, a human editing that combined text has no
+    // way to tell where one source's content ends and the next begins.
+    const text = files.map((f, i) => `## File: ${f.originalname}\n${extracted[i]}`).join('\n\n');
     res.json({ text });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
