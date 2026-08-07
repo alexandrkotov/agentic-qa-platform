@@ -340,8 +340,8 @@
       </div>
       <div class="row">
         <span class="field-pair">
-          <label for="uat-file-input">Upload file</label>
-          <input type="file" id="uat-file-input" accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls">
+          <label for="uat-file-input">Upload file(s)</label>
+          <input type="file" id="uat-file-input" accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls" multiple>
         </span>
       </div>
       <div class="row">
@@ -1498,14 +1498,14 @@ async function loadUatIfNeeded() {
 }
 
 document.getElementById('uat-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = ''; // let the same file be picked again after a fix, without a no-op "no change" event
-  if (!file) return;
+  const files = [...e.target.files];
+  e.target.value = ''; // let the same file(s) be picked again after a fix, without a no-op "no change" event
+  if (files.length === 0) return;
   const statusEl = document.getElementById('corr-status');
   const formData = new FormData();
-  formData.append('file', file);
+  for (const file of files) formData.append('files', file);
   try {
-    setStatus(statusEl, 'Extracting…');
+    setStatus(statusEl, files.length === 1 ? 'Extracting…' : `Extracting ${files.length} files…`);
     // No Content-Type header here on purpose — the browser sets the
     // multipart boundary itself when the fetch body is a FormData.
     const { text } = await api('/api/generate/uat/extract-file', { method: 'POST', body: formData });

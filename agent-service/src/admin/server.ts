@@ -808,16 +808,37 @@ app.put('/api/generate/uat/:descriptorName', async (req, res) => {
 
 // Memory storage (not disk) — the extracted text is all that ever needs to
 // survive past this one request; nothing here writes the uploaded file
-// itself anywhere.
+// itself anywhere. Capped at 10 files per request — plenty for a UAT
+// upload, cheap to raise later if that's ever actually too tight.
 const uatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-app.post('/api/generate/uat/extract-file', uatUpload.single('file'), async (req, res) => {
+app.post('/api/generate/uat/extract-file', uatUpload.array('files', 10), async (req, res) => {
   try {
-    if (!req.file) {
-      res.status(400).json({ error: '"file" is required' });
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: '"files" is required' });
       return;
     }
-    const text = await extractTextFromFile(req.file.buffer, req.file.originalname);
+    // All-or-nothing: one bad file (wrong extension, corrupt PDF) fails the
+    // whole batch with a clear "which one" error, rather than silently
+    // dropping it and returning a partial result the human might not
+    // notice is incomplete.
+    const extracted: string[] = [];
+    for (const file of files) {
+      try {
+        extracted.push(await extractTextFromFile(file.buffer, file.originalname));
+      } catch (err) {
+        throw Object.assign(new Error(`"${file.originalname}": ${(err as Error).message}`), {
+          status: (err as { status?: number }).status ?? 500,
+        });
+      }
+    }
+    // A single file's own text stands alone, unchanged from before this
+    // route supported more than one — only multiple files get a "## File:"
+    // heading each, mirroring how uatExtract.ts already headers multiple
+    // xlsx sheets the same way.
+    const text =
+      files.length === 1 ? extracted[0] : files.map((f, i) => `## File: ${f.originalname}\n${extracted[i]}`).join('\n\n');
     res.json({ text });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
