@@ -354,7 +354,7 @@
 
     <div class="row">
       <button class="primary" id="save-corr-btn">Save corrections &amp; UAT notes</button>
-      <button class="ghost" id="undo-corr-btn" disabled title="Undo the last structural change (added/removed/renamed a correction, or an uploaded file/link) to either card above.">Undo</button>
+      <button class="primary" id="undo-corr-btn" disabled title="Undo the last change to either card above.">Undo</button>
       <span id="corr-status"></span>
     </div>
   </section>
@@ -1311,6 +1311,32 @@ function markUatDirty() {
   setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
 }
 
+// Plain typing does NOT get its own Undo entry per keystroke — that would
+// flood the stack and make one click only step back one character. It also
+// turned out NOT to get the browser's own native per-field undo either, as
+// first assumed: confirmed live (a real user typing directly into the UAT
+// textarea) that Undo stayed permanently disabled no matter how much was
+// typed, since nothing here was pushing a snapshot for it at all. Fixed by
+// coalescing a whole typing *session* (focus -> first keystroke -> however
+// much more typing before the field loses focus or is re-focused) into ONE
+// snapshot, captured at focus time (before any of that session's edits)
+// and pushed on the session's first resulting input event only.
+let pendingTypingSnapshot = null;
+function attachTypingUndoTracking(el, onInput) {
+  el.addEventListener('focus', () => {
+    pendingTypingSnapshot = { corrections: JSON.parse(JSON.stringify(corrections)), uatText: document.getElementById('uat-text').value };
+  });
+  el.addEventListener('input', () => {
+    if (pendingTypingSnapshot) {
+      undoStack.push(pendingTypingSnapshot);
+      if (undoStack.length > UNDO_STACK_LIMIT) undoStack.shift();
+      document.getElementById('undo-corr-btn').disabled = false;
+      pendingTypingSnapshot = null;
+    }
+    onInput();
+  });
+}
+
 // Which descriptor's file is actually reflected in `corrections` right now —
 // null until a real Load or Save happens for a given descriptor.
 let correctionsLoadedForDescriptor = null;
@@ -1356,6 +1382,7 @@ async function checkCorrectionsLoadRisk(descriptor) {
     correctionsDirty = false;
     uatDirty = false;
     undoStack = [];
+    pendingTypingSnapshot = null;
     document.getElementById('undo-corr-btn').disabled = true;
     if (descriptor) {
       try {
@@ -1426,10 +1453,7 @@ function renderCorrections() {
     nameInput.placeholder = 'Exact scenario name';
     const text = document.createElement('textarea');
     text.value = corrections[scenarioName];
-    // Plain typing here already gets free undo from the field's own native
-    // browser undo stack (a real keystroke, not a JS-driven value write) —
-    // no pushUndoSnapshot() needed, just keep the dirty flag in sync.
-    text.oninput = () => { corrections[nameInput.value] = text.value; markCorrectionsDirty(); };
+    attachTypingUndoTracking(text, () => { corrections[nameInput.value] = text.value; markCorrectionsDirty(); });
     nameInput.onchange = () => {
       if (nameInput.value !== scenarioName) {
         pushUndoSnapshot();
@@ -1575,10 +1599,7 @@ function appendToUatText(newContent) {
   markUatDirty();
 }
 
-// Plain typing gets free undo from the textarea's own native browser undo
-// stack — this listener only needs to keep the dirty flag (and therefore
-// Save's enabled state) in sync with it.
-document.getElementById('uat-text').addEventListener('input', markUatDirty);
+attachTypingUndoTracking(document.getElementById('uat-text'), markUatDirty);
 
 document.getElementById('uat-file-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
@@ -1629,6 +1650,7 @@ document.getElementById('uat-extract-url-btn').onclick = async () => {
 // whether undo happened to land exactly back on the last-saved state.
 document.getElementById('undo-corr-btn').onclick = () => {
   if (undoStack.length === 0) return;
+  pendingTypingSnapshot = null; // don't let a not-yet-pushed in-progress typing session survive across an undo
   const snapshot = undoStack.pop();
   corrections = snapshot.corrections;
   renderCorrections();
