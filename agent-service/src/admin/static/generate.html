@@ -926,9 +926,20 @@ function setStage2GatedButtonsDisabled(disabled) {
   // risk (see correctionsUnloadedRisk below) — Save itself never was.
   var saveBtn = document.getElementById('save-corr-btn');
   var hasUnsavedChanges = correctionsDirty || uatDirty;
-  saveBtn.disabled = disabled || correctionsUnloadedRisk || !hasUnsavedChanges;
-  saveBtn.title = correctionsUnloadedRisk
-    ? 'This descriptor already has saved corrections that haven’t been loaded here yet — click Load first, or this would overwrite them.'
+  // The risk only actually matters if corrections are actually about to be
+  // WRITTEN — save-corr-btn's own handler now only PUTs corrections when
+  // correctionsDirty is true (skips it entirely otherwise), so a UAT-only
+  // edit on a descriptor with real unloaded corrections is completely safe
+  // to save: nothing corrections-related gets touched. Blocking Save
+  // outright regardless of what actually changed (the first version of
+  // this fix) was stricter than the real risk called for, confirmed live
+  // by the user hitting exactly this: a UAT-only edit left Save stuck
+  // disabled with no way to save it short of clicking Load first for
+  // completely unrelated data.
+  var correctionsWriteBlocked = correctionsDirty && correctionsUnloadedRisk;
+  saveBtn.disabled = disabled || correctionsWriteBlocked || !hasUnsavedChanges;
+  saveBtn.title = correctionsWriteBlocked
+    ? 'This descriptor already has saved corrections that haven’t been loaded here yet — click Load first, or saving your correction edits would overwrite them.'
     : !hasUnsavedChanges
       ? 'No changes to save yet.'
       : '';
@@ -1521,38 +1532,42 @@ document.getElementById('save-corr-btn').onclick = async () => {
   const name = document.getElementById('descriptor-name').value;
   const statusEl = document.getElementById('corr-status');
   try {
-    await api('/api/generate/corrections/' + encodeURIComponent(name), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(corrections),
-    });
-    // Disk now matches memory for this descriptor too.
-    correctionsLoadedForDescriptor = name;
-    correctionsUnloadedRisk = false;
-    correctionsFileMissing = Object.keys(corrections).length === 0;
-    document.getElementById('add-corr-btn').title = '';
-    document.getElementById('load-corr-btn').title = correctionsFileMissing
-      ? 'No saved corrections exist yet for this descriptor — nothing to load.'
-      : '';
+    // One button saves both cards, but each PUT only fires if that card
+    // actually changed — see the section's own comment for why these two
+    // are siblings, not one nested in the other, and setStage2GatedButtonsDisabled's
+    // own comment for why writing corrections unconditionally here was
+    // exactly the bug that button-merge introduced (a UAT-only edit would
+    // have PUT the current, possibly-still-unloaded `corrections` object
+    // right along with it).
+    if (correctionsDirty) {
+      await api('/api/generate/corrections/' + encodeURIComponent(name), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corrections),
+      });
+      // Disk now matches memory for this descriptor too.
+      correctionsLoadedForDescriptor = name;
+      correctionsUnloadedRisk = false;
+      correctionsFileMissing = Object.keys(corrections).length === 0;
+      document.getElementById('add-corr-btn').title = '';
+      document.getElementById('load-corr-btn').title = correctionsFileMissing
+        ? 'No saved corrections exist yet for this descriptor — nothing to load.'
+        : '';
+      correctionsDirty = false;
+    }
+
+    if (uatDirty) {
+      const uatText = document.getElementById('uat-text').value;
+      await api('/api/generate/uat/' + encodeURIComponent(name), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: uatText }),
+      });
+      uatLoadedForDescriptor = name;
+      uatDirty = false;
+    }
+
     setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
-
-    // One button saves both cards — see the section's own comment for why
-    // these two are siblings, not one nested in the other.
-    const uatText = document.getElementById('uat-text').value;
-    await api('/api/generate/uat/' + encodeURIComponent(name), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: uatText }),
-    });
-    uatLoadedForDescriptor = name;
-
-    // Both cards now match disk — nothing left for Save to do until the
-    // next real edit (undo history itself is left alone; see its own
-    // comment for why undo isn't tied to save/load checkpoints).
-    correctionsDirty = false;
-    uatDirty = false;
-    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
-
     setStatus(statusEl, 'Saved.', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
