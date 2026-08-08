@@ -216,6 +216,7 @@
   #status, #spec-gen-status, #spec-status, #corr-status, #render-status, #run-tests-status { font-size: 0.83rem; margin-left: 0.5rem; }
   #status.ok, #spec-gen-status.ok, #spec-status.ok, #corr-status.ok, #render-status.ok, #run-tests-status.ok { color: #2f8f5b; }
   #status.err, #spec-gen-status.err, #spec-status.err, #corr-status.err, #render-status.err, #run-tests-status.err { color: var(--danger); }
+  #corr-status.warn { color: var(--warn); }
 
   .corr-row { display: flex; gap: 0.6rem; margin-bottom: 0.6rem; align-items: flex-start; }
   .corr-row input { flex: 0 0 260px; }
@@ -1327,10 +1328,21 @@ function recomputeDirtyState() {
   // A leftover "Saved." (or a stale error) from before this edit is
   // actively misleading once the state has moved on — confirmed live, the
   // green "Saved." stayed up after Undo removed everything it referred to.
-  // Any success/error message a caller wants to show for what it just did
+  // Replaced with an "Unsaved changes." notice whenever the two cards
+  // genuinely differ from what's on disk right now — including the
+  // non-obvious case where that's true because Undo reverted a browser
+  // edit made *after* the last real Save: Undo only ever touches this
+  // page's own in-memory state, never the server, so disk still has
+  // whatever that Save wrote until Save is clicked again. Any
+  // success/error message a caller wants to show for what it just did
   // (extraction, save itself) is set again right after calling this, so
-  // clearing here first never fights with those.
-  setStatus(document.getElementById('corr-status'), '');
+  // neither fights with this.
+  const statusEl = document.getElementById('corr-status');
+  if (correctionsDirty || uatDirty) {
+    setStatus(statusEl, 'Unsaved changes.', 'warn');
+  } else {
+    setStatus(statusEl, '');
+  }
 }
 
 function markCorrectionsClean() {
