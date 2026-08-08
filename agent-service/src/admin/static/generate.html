@@ -1324,6 +1324,13 @@ function recomputeDirtyState() {
   correctionsDirty = JSON.stringify(corrections) !== cleanCorrectionsSnapshot;
   uatDirty = document.getElementById('uat-text').value !== cleanUatText;
   setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+  // A leftover "Saved." (or a stale error) from before this edit is
+  // actively misleading once the state has moved on — confirmed live, the
+  // green "Saved." stayed up after Undo removed everything it referred to.
+  // Any success/error message a caller wants to show for what it just did
+  // (extraction, save itself) is set again right after calling this, so
+  // clearing here first never fights with those.
+  setStatus(document.getElementById('corr-status'), '');
 }
 
 function markCorrectionsClean() {
