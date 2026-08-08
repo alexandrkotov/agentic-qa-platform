@@ -313,6 +313,18 @@
   </section>
 
   <section id="stage-corrections" hidden>
+    <!-- Descriptor is read-only here and shared by both cards below — no
+         manual "Load" step anymore. Both cards auto-load the moment this
+         tab is opened (or the descriptor changes while already here); see
+         loadCorrectionsIfNeeded()/loadUatIfNeeded(). -->
+    <div class="row">
+      <span class="field-pair">
+        <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
+        <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">
+      </span>
+      <span id="corr-loading-note" style="display:none; font-size:0.78rem; color:var(--text-mute);">Loading saved corrections/UAT notes…</span>
+    </div>
+
     <!-- Two sibling cards, deliberately equal weight — a human's manual fact
          corrections and reference UAT material are two independent inputs
          to Stage 2's prompt, not one nested inside the other. One shared
@@ -320,11 +332,6 @@
     <div class="corrections-block">
       <h2>Manual scenario corrections <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(highlighted rows match the generation tied to Generate's selected grouping)</span></h2>
       <div class="row">
-        <span class="field-pair">
-          <label title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">Descriptor ⓘ</label>
-          <input type="text" id="descriptor-name" readonly style="width:10rem" title="Derived from the report selected in Stage 1 — not editable. Updates immediately, even before a grouping exists for that report; Generate's own Descriptor above may briefly differ until a grouping is approved for the new report.">
-        </span>
-        <button class="primary" id="load-corr-btn">Load</button>
         <button class="primary" id="add-corr-btn">+ Add correction</button>
       </div>
       <div class="corr-header">
@@ -354,7 +361,7 @@
     </div>
 
     <div class="row">
-      <button class="primary" id="save-corr-btn">Save corrections &amp; UAT notes</button>
+      <button class="primary" id="save-corr-btn">Save</button>
       <button class="primary" id="undo-corr-btn" disabled title="Undo the last change to either card above.">Undo</button>
       <span id="corr-status"></span>
     </div>
@@ -415,10 +422,15 @@ function showStage(name) {
   // one (e.g. a Generate round finished and got approved from the Generate
   // tab, then the user switches here directly).
   if (name === 'render') refreshRenderSpecOptions();
-  // loadUatIfNeeded is defined further down with the rest of the UAT logic
-  // — safe to reference here since showStage() itself only ever runs from
-  // a later user click, well after the whole script has finished loading.
-  if (name === 'corrections') loadUatIfNeeded();
+  // loadCorrectionsIfNeeded/loadUatIfNeeded are defined further down with
+  // the rest of that logic — safe to reference here since showStage()
+  // itself only ever runs from a later user click, well after the whole
+  // script has finished loading.
+  if (name === 'corrections') {
+    const descriptor = document.getElementById('descriptor-name').value;
+    loadCorrectionsIfNeeded(descriptor);
+    loadUatIfNeeded(descriptor);
+  }
 }
 for (const s of STAGE_NAMES) {
   document.getElementById('tab-' + s).onclick = () => showStage(s);
@@ -587,7 +599,7 @@ async function onReportChanged() {
   const report = document.getElementById('report-select').value;
   const descriptor = descriptorFromReportName(report) ?? '';
   document.getElementById('descriptor-name').value = descriptor;
-  await checkCorrectionsLoadRisk(descriptor);
+  await onDescriptorChanged(descriptor);
   if (!report) return;
   await loadGroupingList(descriptor || undefined);
   await onGroupingChanged();
@@ -911,44 +923,45 @@ function renderGroupsFilterCheckboxes(groupingDetails) {
 // whichever grouping IS selected (a second click, or editing corrections
 // out from under a generation that's about to use them, would both be
 // premature). Covers Generate tests (would fail server-side on a missing
-// "grouping" if forced) and Load/+ Add correction/Save corrections
-// (corrections themselves don't need a grouping to exist, but there is
-// nothing yet worth reviewing them against, or the in-flight call already
-// read whatever was on disk a moment ago).
+// "grouping" if forced) and "+ Add correction"/Save (corrections themselves
+// don't need a grouping to exist, but there is nothing yet worth reviewing
+// them against, or the in-flight call already read whatever was on disk a
+// moment ago).
+// History of this function's own risk-gating, kept because it's a genuinely
+// instructive dead end: an earlier design tracked "does this descriptor
+// have saved corrections nobody has Loaded into memory yet" as a standing
+// risk flag, disabling Save/"+ Add correction" until a manual Load — closed
+// a real bug (Save silently overwriting real corrections with a stale
+// empty object) but needed its own increasingly special-cased logic to
+// avoid over-blocking (e.g. a UAT-only edit didn't actually need Load at
+// all). That whole flag is GONE now: both cards auto-load the moment the
+// descriptor is known (loadCorrectionsIfNeeded/loadUatIfNeeded below), so
+// there's no more "loaded vs. not" state to track — only "loading vs.
+// loaded", which is what `correctionsLoading`/`uatLoading` guard here
+// instead. Confirmed important, not just simpler, before removing the old
+// system: the auto-load itself is an async fetch, and a human editing
+// during the (normally sub-second) window before it resolves would have
+// hit the exact same class of overwrite bug the old system prevented, just
+// via a different trigger (a fast click instead of a forgotten Load).
 function setStage2GatedButtonsDisabled(disabled) {
   document.getElementById('spec-generate-btn').disabled = disabled;
-  // Pre-existing gap, closed here: this button now also saves UAT notes
-  // (see save-corr-btn's own handler), so a click with zero interaction —
-  // no Load, nothing added — used to silently PUT an empty `corrections`
-  // object over a real, already-saved corrections file. Confirmed live:
-  // a verification script that only touched the UAT textarea did exactly
-  // this and wiped orderflow.corrections.json's 5 real entries down to
-  // "{}". "+ Add correction" was already guarded against the equivalent
-  // risk (see correctionsUnloadedRisk below) — Save itself never was.
+  var loading = correctionsLoading || uatLoading;
+  document.getElementById('corr-loading-note').style.display = loading ? '' : 'none';
+
   var saveBtn = document.getElementById('save-corr-btn');
   var hasUnsavedChanges = correctionsDirty || uatDirty;
-  // The risk only actually matters if corrections are actually about to be
-  // WRITTEN — save-corr-btn's own handler now only PUTs corrections when
-  // correctionsDirty is true (skips it entirely otherwise), so a UAT-only
-  // edit on a descriptor with real unloaded corrections is completely safe
-  // to save: nothing corrections-related gets touched. Blocking Save
-  // outright regardless of what actually changed (the first version of
-  // this fix) was stricter than the real risk called for, confirmed live
-  // by the user hitting exactly this: a UAT-only edit left Save stuck
-  // disabled with no way to save it short of clicking Load first for
-  // completely unrelated data.
-  var correctionsWriteBlocked = correctionsDirty && correctionsUnloadedRisk;
-  saveBtn.disabled = disabled || correctionsWriteBlocked || !hasUnsavedChanges;
-  saveBtn.title = correctionsWriteBlocked
-    ? 'This descriptor already has saved corrections that haven’t been loaded here yet — click Load first, or saving your correction edits would overwrite them.'
-    : !hasUnsavedChanges
-      ? 'No changes to save yet.'
-      : '';
-  // Load and "+ Add correction" each have their own extra reason to stay
-  // disabled even when this one doesn't apply — see correctionsFileMissing
-  // and correctionsUnloadedRisk below.
-  document.getElementById('load-corr-btn').disabled = disabled || correctionsFileMissing;
-  document.getElementById('add-corr-btn').disabled = disabled || correctionsUnloadedRisk;
+  saveBtn.disabled = disabled || loading || !hasUnsavedChanges;
+  saveBtn.title = loading ? 'Loading saved data…' : !hasUnsavedChanges ? 'No changes to save yet.' : '';
+
+  document.getElementById('add-corr-btn').disabled = disabled || loading;
+  document.getElementById('add-corr-btn').title = loading ? 'Loading saved corrections…' : '';
+
+  document.getElementById('uat-text').disabled = loading;
+  document.getElementById('uat-file-input').disabled = loading;
+  document.getElementById('uat-google-url').disabled = loading;
+  document.getElementById('uat-extract-url-btn').disabled = disabled || loading;
+
+  document.getElementById('undo-corr-btn').disabled = loading || undoStack.length === 0;
 }
 
 // Write & Run's own approved-file picker — deliberately independent of
@@ -1382,73 +1395,60 @@ function attachTypingUndoTracking(el, onInput) {
 }
 
 // Which descriptor's file is actually reflected in `corrections` right now —
-// null until a real Load or Save happens for a given descriptor.
+// null until a real auto-load (or Save) happens for a given descriptor.
 let correctionsLoadedForDescriptor = null;
-// True when a real, non-empty corrections file already exists on disk for
-// the current descriptor but hasn't been loaded into memory this session.
-// Clicking "+ Add correction" then Save in that state would silently
-// overwrite that file with just the one new entry, discarding every
-// correction already saved for every other group — this is exactly the
-// footgun explained earlier in this conversation. Disables "+ Add
-// correction" until Load (or a Save, which also catches memory up with
-// disk) clears it. Re-checked every time the descriptor changes.
-let correctionsUnloadedRisk = false;
-// True when the current descriptor has no corrections worth loading at all
-// (no file, or one that's genuinely empty — the GET endpoint can't tell
-// those apart, and it doesn't matter: either way there's nothing for Load
-// to bring in). Disables Load itself, rather than leaving a button up that
-// can only ever no-op.
-let correctionsFileMissing = false;
+// True while a fetch to actually populate `corrections` for the current
+// descriptor is in flight — guards against a human editing (typing, "+ Add
+// correction") in the brief window before that async GET resolves, which
+// would otherwise get silently discarded the moment it does resolve and
+// overwrites `corrections` wholesale. See setStage2GatedButtonsDisabled's
+// own comment for the fuller history of what this replaced.
+let correctionsLoading = false;
 
-async function checkCorrectionsLoadRisk(descriptor) {
-  correctionsUnloadedRisk = false;
-  correctionsFileMissing = false;
-  const addBtn = document.getElementById('add-corr-btn');
-  const loadBtn = document.getElementById('load-corr-btn');
-  addBtn.title = '';
-  loadBtn.title = '';
-  if (descriptor !== correctionsLoadedForDescriptor) {
-    // Switching to (or away from, and back to) a descriptor that hasn't
-    // been freshly loaded in THIS transition — whatever's sitting in
-    // `corrections` right now belongs to a different descriptor (or
-    // nothing) and must not silently carry over into this one via +Add
-    // correction/Save. Reset to null (not just "skip re-checking") so
-    // returning to a descriptor loaded earlier, then abandoned, then
-    // revisited, is correctly treated as unloaded again rather than
-    // trusting a stale claim from before the detour.
-    corrections = {};
-    correctionsLoadedForDescriptor = null;
-    renderCorrections();
-    // A genuinely different descriptor makes any prior undo history
-    // meaningless (it belonged to whatever descriptor was open before) —
-    // and corrections really did just reset to {}, so that side's clean
-    // baseline resets too. UAT's own text on screen isn't actually
-    // changing here (it only refreshes via loadUatIfNeeded, on the
-    // Corrections tab actually being opened) — leave its dirty/baseline
-    // state alone rather than guess.
-    markCorrectionsClean();
-    undoStack = [];
-    pendingTypingSnapshot = null;
-    document.getElementById('undo-corr-btn').disabled = true;
-    if (descriptor) {
-      try {
-        const existing = await api('/api/generate/corrections/' + encodeURIComponent(descriptor));
-        const hasContent = Object.keys(existing).length > 0;
-        correctionsUnloadedRisk = hasContent;
-        correctionsFileMissing = !hasContent;
-      } catch {
-        // Soft-fail, same reasoning as this page's other non-critical
-        // checks — worst case both buttons stay exactly as they were.
-      }
-    }
-  }
-  if (correctionsUnloadedRisk) {
-    addBtn.title = "This descriptor already has a saved corrections file that hasn't been loaded here yet — click Load first, or Save could silently overwrite it.";
-  }
-  if (correctionsFileMissing) {
-    loadBtn.title = 'No saved corrections exist yet for this descriptor — nothing to load.';
-  }
+// Runs on every descriptor change (Stage 1 report select), regardless of
+// which stage tab is currently open. Resets both cards to a blank slate for
+// the new descriptor and, if the Corrections tab happens to already be the
+// active one, immediately (re-)loads both — otherwise showStage('corrections')
+// does that the next time the human actually switches here.
+async function onDescriptorChanged(descriptor) {
+  corrections = {};
+  correctionsLoadedForDescriptor = null;
+  uatLoadedForDescriptor = null;
+  document.getElementById('uat-text').value = '';
+  renderCorrections();
+  // Both cards' clean baselines reset to "blank" until a real load
+  // populates them — undo history from whatever descriptor was open before
+  // is meaningless for this one.
+  markCorrectionsClean();
+  markUatClean();
+  undoStack = [];
+  pendingTypingSnapshot = null;
+  document.getElementById('undo-corr-btn').disabled = true;
   setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+  if (descriptor && !document.getElementById('stage-corrections').hidden) {
+    await Promise.all([loadCorrectionsIfNeeded(descriptor), loadUatIfNeeded(descriptor)]);
+  }
+}
+
+async function loadCorrectionsIfNeeded(descriptor) {
+  if (!descriptor || descriptor === correctionsLoadedForDescriptor) return;
+  correctionsLoading = true;
+  setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+  try {
+    corrections = await api('/api/generate/corrections/' + encodeURIComponent(descriptor));
+    renderCorrections();
+    correctionsLoadedForDescriptor = descriptor;
+    markCorrectionsClean();
+  } catch (e) {
+    // Left correctionsLoadedForDescriptor unset on purpose — the next
+    // opportunity (revisiting this tab, or the descriptor "changing" back
+    // to the same value on a retry) will attempt the load again, rather
+    // than silently treating a failed fetch as "nothing to load".
+    setStatus(document.getElementById('corr-status'), 'Failed to load corrections: ' + e.message, 'err');
+  } finally {
+    correctionsLoading = false;
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
+  }
 }
 
 // Corrections are stored per-descriptor (all groups mixed together — see
@@ -1526,33 +1526,6 @@ function renderCorrections() {
   updateStageGating();
 }
 
-document.getElementById('load-corr-btn').onclick = async () => {
-  const name = document.getElementById('descriptor-name').value;
-  const statusEl = document.getElementById('corr-status');
-  try {
-    corrections = await api('/api/generate/corrections/' + encodeURIComponent(name));
-    renderCorrections();
-    setStatus(statusEl, '');
-    // Memory now genuinely matches disk for this descriptor — "+ Add
-    // correction" is safe again. If what actually came back is empty,
-    // there's nothing further for Load itself to do until something gets
-    // added and saved.
-    correctionsLoadedForDescriptor = name;
-    correctionsUnloadedRisk = false;
-    correctionsFileMissing = Object.keys(corrections).length === 0;
-    // Corrections now match disk again — Save has nothing new to do until
-    // an actual edit happens (doesn't touch uatDirty, that's independent).
-    markCorrectionsClean();
-    document.getElementById('add-corr-btn').title = '';
-    document.getElementById('load-corr-btn').title = correctionsFileMissing
-      ? 'No saved corrections exist yet for this descriptor — nothing to load.'
-      : '';
-    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
-  } catch (e) {
-    setStatus(statusEl, 'Failed: ' + e.message, 'err');
-  }
-};
-
 document.getElementById('add-corr-btn').onclick = () => {
   pushUndoSnapshot();
   let key = 'New scenario name';
@@ -1582,12 +1555,6 @@ document.getElementById('save-corr-btn').onclick = async () => {
       });
       // Disk now matches memory for this descriptor too.
       correctionsLoadedForDescriptor = name;
-      correctionsUnloadedRisk = false;
-      correctionsFileMissing = Object.keys(corrections).length === 0;
-      document.getElementById('add-corr-btn').title = '';
-      document.getElementById('load-corr-btn').title = correctionsFileMissing
-        ? 'No saved corrections exist yet for this descriptor — nothing to load.'
-        : '';
       markCorrectionsClean();
     }
 
@@ -1612,28 +1579,37 @@ document.getElementById('save-corr-btn').onclick = async () => {
 // --- UAT / acceptance-test notes -------------------------------------------
 // One free-text blob per descriptor (see agents/generate/uat.ts), not keyed
 // by scenario the way corrections are — so this is far simpler than the
-// corrections block above: no per-row highlighting, no "unloaded risk"
-// tracking, and it shares save-corr-btn's own status line and gating
-// instead of having its own. Lazy-loads the saved text the first time the
-// Corrections tab is actually opened for the current descriptor (see
-// loadUatIfNeeded(), called from showStage()) — not on every page load,
-// since most visits to this tab never touch it — and again if the
-// descriptor changes before the next visit.
+// corrections block above: no per-row highlighting, and it shares
+// save-corr-btn's own status line and gating instead of having its own.
+// Lazy-loads the saved text the first time it's actually needed for the
+// current descriptor (see onDescriptorChanged()/showStage()'s own calls) —
+// not on every page load, since most visits never touch it — and again if
+// the descriptor changes before the next visit.
 
 let uatLoadedForDescriptor = null;
+// Same reasoning as correctionsLoading — guards the window between
+// starting this fetch and it resolving, so a human typing right after
+// switching to this tab can't have their first keystrokes silently
+// clobbered the moment the fetch finishes and sets uat-text's value.
+let uatLoading = false;
 
-async function loadUatIfNeeded() {
-  const name = document.getElementById('descriptor-name').value;
-  if (!name || name === uatLoadedForDescriptor) return;
-  const statusEl = document.getElementById('corr-status');
+async function loadUatIfNeeded(descriptor) {
+  if (!descriptor || descriptor === uatLoadedForDescriptor) return;
+  uatLoading = true;
+  setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   try {
-    const { text } = await api('/api/generate/uat/' + encodeURIComponent(name));
+    const { text } = await api('/api/generate/uat/' + encodeURIComponent(descriptor));
     document.getElementById('uat-text').value = text;
-    uatLoadedForDescriptor = name;
+    uatLoadedForDescriptor = descriptor;
     markUatClean(); // now matches disk (doesn't touch correctionsDirty, that's independent)
-    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   } catch (e) {
-    setStatus(statusEl, 'Failed to load UAT notes: ' + e.message, 'err');
+    // Left uatLoadedForDescriptor unset on purpose, same reasoning as
+    // loadCorrectionsIfNeeded's own catch block — retried on next visit
+    // rather than treated as "nothing to load".
+    setStatus(document.getElementById('corr-status'), 'Failed to load UAT notes: ' + e.message, 'err');
+  } finally {
+    uatLoading = false;
+    setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   }
 }
 
