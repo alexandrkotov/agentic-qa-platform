@@ -96,6 +96,7 @@
     padding: 0.55rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
   }
   button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
   button.ghost {
     background: none; border: 1px solid var(--line); color: var(--text);
     border-radius: 6px; padding: 0.45rem 0.8rem; font-size: 0.82rem; cursor: pointer;
@@ -128,6 +129,28 @@
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
+  /* Same overlay treatment as .confirm-modal-overlay above, own box shape —
+     a vertical form instead of an icon+message+yes/no row. */
+  .wizard-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .wizard-modal-overlay.open { display: flex; }
+  .wizard-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem 1.4rem; width: 100%; max-width: 26rem;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .wizard-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+  .wizard-modal-head h2 { margin: 0; font-size: 1.15rem; }
+  .wizard-modal-close {
+    flex-shrink: 0; background: none; border: none; color: var(--text-mute);
+    font-size: 1.3rem; line-height: 1; cursor: pointer; padding: 0 0.2rem;
+  }
+  .wizard-modal-close:hover { color: var(--text); }
+  .wizard-modal .subtitle { margin: 0.2rem 0 1.1rem; }
+  .wizard-modal-actions { display: flex; justify-content: flex-end; }
+
   main { flex: 1; padding: 1.75rem clamp(1rem, 4vw, 3rem); max-width: 780px; }
   main h2 { margin: 0 0 0.15rem; font-size: 1.15rem; }
   main .empty { color: var(--text-mute); font-size: 0.9rem; margin-top: 3rem; }
@@ -140,6 +163,8 @@
   }
   .field textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; resize: vertical; min-height: 3.5rem; }
   .field .hint { font-size: 0.72rem; color: var(--text-mute); }
+  .required-mark { color: var(--danger); }
+  .field input.invalid { border-color: var(--danger); }
 
   .components-head { display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 0.75rem; }
   .components-head h3 { margin: 0; font-size: 0.95rem; }
@@ -174,6 +199,22 @@
   </div>
   <div class="app-body">
   <aside>
+    <!-- A second, guided front door to the same descriptor-creation flow
+         "+ New descriptor" below already provides — not a replacement for
+         it. Placed above System Descriptors per this feature's own scoping
+         (see memory: "above the existing System Descriptors list"). The
+         form itself lives in a modal (#wizard-modal-overlay, near the end
+         of <body>), not permanently on the page — it's only ever used in
+         one short burst per new target, and used to push System
+         Descriptors/Run Discovery below the fold at all other times. -->
+    <div class="side-tile">
+      <div>
+        <h2>New target</h2>
+        <div class="subtitle">Create a System Descriptor from a few fields, instead of writing JSON by hand</div>
+      </div>
+      <button class="primary" id="open-wizard-btn">New target wizard</button>
+    </div>
+
     <div class="side-tile">
       <div>
         <h2>System Descriptors</h2>
@@ -211,6 +252,7 @@
 
       <div class="save-bar">
         <button class="primary" id="save-btn">Save</button>
+        <button class="primary" id="cancel-btn" title="Delete this descriptor entirely — for undoing an accidental or mis-configured creation.">Cancel</button>
         <span id="status"></span>
       </div>
       <div id="issues"></div>
@@ -228,6 +270,41 @@
       <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
     </div>
     </div>
+    </div>
+  </div>
+</div>
+
+<!-- The wizard's own form, in a modal rather than permanently on the page —
+     see the sidebar tile's own comment for why. Own overlay/box (not a
+     reuse of #confirm-modal-overlay, which is a promise-based one-shot
+     message+yes/no helper, not shaped for arbitrary form content) but the
+     same visual language (same overlay treatment, same surface/border/
+     radius as every other modal on this page). -->
+<div class="wizard-modal-overlay" id="wizard-modal-overlay">
+  <div class="wizard-modal">
+    <div class="wizard-modal-head">
+      <h2>New target</h2>
+      <button class="wizard-modal-close" id="wizard-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="subtitle">Create a System Descriptor from a few fields, instead of writing JSON by hand</div>
+    <div class="field">
+      <label>Target address <span class="required-mark">*</span> <span class="hint">(a URL — including a repo link if not yet deployed — or a real IP, optionally with a port)</span></label>
+      <input type="text" id="wizard-address" placeholder="http://localhost:5173 or 10.0.0.12:5432">
+    </div>
+    <div class="field">
+      <label>Descriptor name <span class="required-mark">*</span></label>
+      <input type="text" id="wizard-name" placeholder="my-target">
+    </div>
+    <div class="field">
+      <label>Test types <span class="required-mark">*</span></label>
+      <div class="checkbox-row"><input type="checkbox" id="wizard-type-api"><label for="wizard-type-api">API (REST/CRUD)</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="wizard-type-ui"><label for="wizard-type-ui">UI</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="wizard-type-e2e"><label for="wizard-type-e2e">E2E workflows</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="wizard-type-load"><label for="wizard-type-load">Load / Stress</label></div>
+      <div class="hint">Pick at least one — tells the Discovery Agent what it's exploring for.</div>
+    </div>
+    <div class="wizard-modal-actions">
+      <button class="primary" id="wizard-create-btn" disabled>Create</button>
     </div>
   </div>
 </div>
@@ -543,6 +620,233 @@ document.getElementById('add-component').onclick = () => {
   renderComponents();
 };
 
+// --- "New target" wizard ---------------------------------------------------
+// A second, richer front door to the exact same POST /api/descriptors the
+// plain "+ New descriptor" prompt() below already calls — no new backend
+// route. See memory project_external_target_demo_idea for the full design
+// reasoning: test-type checkboxes feed the discovery-agent's own
+// extraInstructions prompt (not a new schema field some later step might
+// read someday), and component pre-population stays honest — only ever a
+// real, complete component or a deliberately incomplete skeleton the human
+// finishes below, never a guessed value the wizard can't actually know.
+
+const WIZARD_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/; // mirrors server.ts's own NAME_PATTERN — same duplication-across-two-JS-worlds convention as descriptorFromReportName elsewhere in this project
+const WIZARD_TYPE_IDS = ['wizard-type-api', 'wizard-type-ui', 'wizard-type-e2e', 'wizard-type-load'];
+
+// Lives in a modal, not permanently on the page — the sidebar tile's own
+// comment explains why. Fields are left as-is on a plain close (nothing
+// lost if the human just wanted to glance elsewhere and comes back); only
+// a successful Create actually resets them, in wizard-create-btn's own
+// handler below.
+function openWizardModal() {
+  document.getElementById('wizard-modal-overlay').classList.add('open');
+  document.getElementById('wizard-address').focus();
+}
+function closeWizardModal() {
+  document.getElementById('wizard-modal-overlay').classList.remove('open');
+}
+document.getElementById('open-wizard-btn').onclick = openWizardModal;
+document.getElementById('wizard-modal-close').onclick = closeWizardModal;
+document.getElementById('wizard-modal-overlay').onclick = (e) => {
+  if (e.target === document.getElementById('wizard-modal-overlay')) closeWizardModal();
+};
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('wizard-modal-overlay').classList.contains('open')) closeWizardModal();
+});
+
+function wizardCheckedTypes() {
+  return WIZARD_TYPE_IDS.filter((id) => document.getElementById(id).checked);
+}
+
+// URL's own well-formedness is checked with the real URL constructor
+// (throws on anything that isn't a syntactically valid absolute URL) —
+// more reliable than a hand-rolled regex, and it's what web-ui/rest-api's
+// own schema fields ultimately require too (z.string().url()). Confirmed
+// live this was a real gap: a garbage value ("fdfdf") sailed straight
+// through into a component's baseUrl with nothing catching it until a
+// much later Save.
+function wizardUrlValid(url) {
+  try { new URL(url); return true; } catch { return false; }
+}
+
+// A target system is always one of two things: a real web server (a URL,
+// checked above) or something else reachable at a real IP (v4 or v6),
+// optionally with a port — confirmed directly with the user rather than
+// assumed. Accepts an optional ":port" suffix (IPv6 addresses with a port
+// need their own [::1]:5432 bracket form to stay unambiguous, same
+// convention URLs themselves use). Deliberately does NOT accept a bare
+// hostname with neither a scheme nor being an IP (e.g. "db01") — the user
+// explicitly scoped this to "IP or URL", not a third free-text category.
+function wizardIpValid(address) {
+  let host = address;
+  const bracketed = address.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketed) {
+    host = bracketed[1];
+  } else {
+    const withPort = address.match(/^(.+):(\d{1,5})$/);
+    if (withPort) host = withPort[1];
+  }
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) return ipv4.slice(1).every((octet) => Number(octet) <= 255);
+  // IPv6 without brackets (no port in this form) — a real validator would
+  // check group count/structure too, but this is enough to reject obvious
+  // non-addresses like the plain garbage text this is meant to catch.
+  return host.includes(':') && /^[0-9a-fA-F:]+$/.test(host);
+}
+
+function wizardAddressValid(address) {
+  return wizardUrlValid(address) || wizardIpValid(address);
+}
+
+// "Create" starts disabled and stays disabled until every required field
+// is filled AND, for the address, valid — a real IP or a real URL, the
+// user's own confirmed framing of what a target system always is, checked
+// via wizardAddressValid() above. Confirmed live this needed tightening:
+// an earlier version accepted any non-empty string at all (reasoning that
+// not every target is a web server), which let obvious garbage
+// ("wqwqwqwqwqwqwqwq") straight through into a real descriptor.
+// wizardUrlValid() is ALSO consulted later, separately, to decide whether
+// a valid address can specifically become a web-ui/rest-api component's
+// baseUrl — a valid IP-only address still can't (that schema field
+// requires a real URL), and correctly falls back to an incomplete
+// skeleton the human finishes, same as before.
+function updateWizardCreateDisabled() {
+  const addressInput = document.getElementById('wizard-address');
+  const address = addressInput.value.trim();
+  const name = document.getElementById('wizard-name').value.trim();
+  const addressOk = address !== '' && wizardAddressValid(address);
+  addressInput.classList.toggle('invalid', address !== '' && !addressOk);
+  document.getElementById('wizard-create-btn').disabled = !addressOk || !name || wizardCheckedTypes().length === 0;
+}
+WIZARD_TYPE_IDS.forEach((id) => document.getElementById(id).addEventListener('change', updateWizardCreateDisabled));
+document.getElementById('wizard-address').addEventListener('input', updateWizardCreateDisabled);
+document.getElementById('wizard-name').addEventListener('input', updateWizardCreateDisabled);
+
+// Joins with an "and" before the last item, no Oxford comma — reads
+// naturally for 1-4 items alike ("API tests." / "API and UI tests." /
+// "API, UI and E2E tests."). Operates on the array, not a naive
+// last-comma-in-the-joined-string regex — confirmed live that the regex
+// version misfires when an item's own text already contains a comma (the
+// load/stress focus text does: "…(rate limits, concurrency behavior,
+// capacity constraints)"), landing "and" inside that parenthetical instead
+// of between the real list items.
+function wizardJoinAnd(items) {
+  if (items.length <= 1) return items.join('');
+  return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
+}
+
+// Always records the raw address as its own sentence, regardless of
+// whether it happens to double as a component's baseUrl — otherwise a
+// non-URL address (an internal IP:port, a hostname with no scheme) was
+// silently dropped everywhere once neither UI nor API used it mechanically,
+// even though the human explicitly typed it in as this target's own
+// location.
+function wizardExtraInstructions(checked, address) {
+  const testType = { 'wizard-type-api': 'API (REST/CRUD)', 'wizard-type-ui': 'UI', 'wizard-type-e2e': 'E2E', 'wizard-type-load': 'load/stress' };
+  const focus = {
+    'wizard-type-api': 'API request/response behavior',
+    'wizard-type-ui': 'UI workflows',
+    'wizard-type-e2e': 'cross-component processes',
+    'wizard-type-load': 'performance-sensitive endpoints or workflows (rate limits, concurrency behavior, capacity constraints)',
+  };
+  const testTypes = wizardJoinAnd(checked.map((id) => testType[id]));
+  const focusAreas = wizardJoinAnd(checked.map((id) => focus[id]));
+  return `Target address: ${address}. This target is being onboarded for ${testTypes} tests. When exploring, prioritize scenarios, business rules, and component detail relevant to ${focusAreas}.`;
+}
+
+// Only ever a real, COMPLETE component — web-ui, when UI is checked AND the
+// address is actually a well-formed URL (wizardUrlValid), so both its
+// required fields are genuinely known. Not every target is a web server —
+// an IP:port or bare hostname for some other kind of system is just as
+// legitimate an address, it just can't honestly become a web-ui baseUrl
+// (see wizardSkeletonComponents for what happens to UI in that case
+// instead). This is the only kind of component the wizard is allowed to
+// send in the initial POST below: /api/descriptors validates the full
+// descriptor immediately (same schema Save uses), so an incomplete
+// component would fail creation outright, not just a later Save —
+// confirmed live.
+function wizardValidComponents(checked, address) {
+  const components = [];
+  if (checked.includes('wizard-type-ui') && wizardUrlValid(address)) {
+    components.push({ type: 'web-ui', baseUrl: address, routes: ['/'] });
+  }
+  return components;
+}
+
+// Deliberately INCOMPLETE skeletons the human finishes in the existing
+// editor — never sent to the server; pushed into the client-side `state`
+// AFTER a successful creation and rendered via the exact same
+// renderComponents() a human's own "+ Add component"/type-dropdown-switch
+// already uses to leave a card incomplete until Save:
+// - rest-api, when API is checked: swaggerUrl is required but the wizard
+//   has no honest way to know it (typically a different path/host than
+//   the app itself) — baseUrl is filled in when the address happens to be
+//   a valid URL, left for the human otherwise.
+// - web-ui, when UI is checked but the address ISN'T a valid URL (an
+//   IP:port or bare host for a target that isn't primarily a web server,
+//   or has one at a different address than what was typed here) — the
+//   human fills in a real baseUrl by hand instead of the wizard guessing.
+function wizardSkeletonComponents(checked, address) {
+  const components = [];
+  const addressIsUrl = wizardUrlValid(address);
+  if (checked.includes('wizard-type-api')) {
+    const c = { type: 'rest-api' };
+    if (addressIsUrl) c.baseUrl = address;
+    components.push(c);
+  }
+  if (checked.includes('wizard-type-ui') && !addressIsUrl) {
+    components.push({ type: 'web-ui', routes: ['/'] });
+  }
+  return components;
+}
+
+document.getElementById('wizard-create-btn').onclick = async () => {
+  const address = document.getElementById('wizard-address').value.trim();
+  const name = document.getElementById('wizard-name').value.trim();
+  const checked = wizardCheckedTypes();
+  if (!wizardAddressValid(address) || !name || checked.length === 0) return; // Create is already disabled in this state — defensive only
+  if (!WIZARD_NAME_PATTERN.test(name)) { alert('Descriptor name must be alphanumeric (with - or _ only).'); return; }
+
+  const validComponents = wizardValidComponents(checked, address);
+  // components.min(1) requires at least one — same blank postgres
+  // placeholder "+ New descriptor" already uses when there's nothing
+  // better to offer yet.
+  const usedPlaceholder = validComponents.length === 0;
+  const initialComponents = usedPlaceholder ? [{ type: 'postgres', connectionString: '' }] : validComponents;
+
+  const payload = { name, components: initialComponents, extraInstructions: wizardExtraInstructions(checked, address) };
+  try {
+    await api('/api/descriptors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    // Reset the wizard for the next target — same spirit as the plain
+    // "+ New descriptor" prompt() not leaving stale state behind either —
+    // and close the modal, since the one thing it exists to do just
+    // succeeded.
+    document.getElementById('wizard-address').value = '';
+    document.getElementById('wizard-name').value = '';
+    WIZARD_TYPE_IDS.forEach((id) => { document.getElementById(id).checked = false; });
+    updateWizardCreateDisabled();
+    closeWizardModal();
+    await selectDescriptor(name); // sets state.components from what was actually just saved
+
+    const skeletons = wizardSkeletonComponents(checked, address);
+    if (skeletons.length > 0) {
+      // The placeholder was only ever there because components.min(1)
+      // demanded *something* — now that there's a real skeleton to offer
+      // instead, drop it rather than leave a confusing extra blank
+      // postgres card the human never asked for.
+      if (usedPlaceholder) state.components = [];
+      state.components.push(...skeletons);
+      renderComponents();
+    }
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
 document.getElementById('new-btn').onclick = async () => {
   const name = prompt('Descriptor name (letters, numbers, - and _ only):');
   if (!name) return;
@@ -577,6 +881,12 @@ document.getElementById('save-btn').onclick = async () => {
     showIssues(e.issues);
   }
 };
+
+// Right next to Save, not just the small "×" in the list — undoes an
+// accidental or mis-configured creation (the wizard included) without
+// having to go find it in System Descriptors first. Reuses
+// deleteDescriptor() verbatim, including its own confirm modal.
+document.getElementById('cancel-btn').onclick = () => deleteDescriptor(state.current);
 
 function setStatus(text, kind) {
   const el = document.getElementById('status');
