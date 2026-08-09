@@ -97,6 +97,24 @@
   }
   button.primary:hover { filter: brightness(1.08); }
   button.primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+  /* Deploy/Stop side by side (Stop on the right) rather than stacked —
+     they're a pair (start/stop the same target), reads more like one
+     control than two separate actions stacked vertically. */
+  .deploy-actions { display: flex; gap: 0.6rem; }
+  .deploy-actions button { flex: 1; }
+  /* Neither button.primary nor button.ghost defines its own :focus style
+     anywhere on this page — Deploy/Stop is the one place a real, easy-to-
+     miss action (spinning up or tearing down real containers) benefits
+     from a visible "yes, this is the one that just got clicked / would
+     fire on Enter" cue. NOT a :focus rule — confirmed live that the
+     clicked button gets `.disabled = true` (see runDeployAction) the
+     instant the action starts, and a disabled element can't hold focus
+     at all, so a :focus-based ring would never actually render for the
+     one case it exists for. `.acting` is toggled by JS instead
+     (independent of :disabled), on click, off once the action finishes.
+     var(--text), not a hardcoded color, for contrast against both the
+     button's own accent fill and the tile's surface in either theme. */
+  .deploy-actions button.acting { outline: 2px solid var(--text); outline-offset: 2px; }
   button.ghost {
     background: none; border: 1px solid var(--line); color: var(--text);
     border-radius: 6px; padding: 0.45rem 0.8rem; font-size: 0.82rem; cursor: pointer;
@@ -235,6 +253,30 @@
       <button class="primary" id="new-btn">+ New descriptor</button>
     </div>
 
+    <!-- Above Run Discovery, not below: a docker-compose-deployed target
+         has to actually be up and reachable before there's anything for
+         Discovery to explore, so this is the step that logically comes
+         first for that kind of descriptor. Select is filtered to
+         descriptors that actually have a `docker-compose` component (see
+         loadList()) — the other component types have nothing for this
+         tile to do. Free (no Claude call) but not quick: real image
+         pulls, real containers. Deploy first here, then hand-add the
+         real components (their now-live URLs reported in the status line
+         below) before Run Discovery below has anything to do. -->
+    <div class="side-tile">
+      <div>
+        <h2>Deploy target</h2>
+        <div class="subtitle">Spin up (or stop) a descriptor's own docker-compose.yml — free, but can take a few minutes on first pull</div>
+      </div>
+      <select id="deploy-descriptor-select"></select>
+      <div class="deploy-actions">
+        <button class="primary" id="deploy-btn">Deploy</button>
+        <button class="primary" id="undeploy-btn">Stop</button>
+      </div>
+      <div id="deploy-status"></div>
+      <pre id="deploy-log" class="gen-log" style="display:none"></pre>
+    </div>
+
     <div class="side-tile">
       <div>
         <h2>Run Discovery</h2>
@@ -244,24 +286,6 @@
       <button class="primary" id="run-discovery-btn">Run discovery</button>
       <div id="discovery-status"></div>
       <pre id="discovery-log" class="gen-log" style="display:none"></pre>
-    </div>
-
-    <!-- For a descriptor whose only component (so far) is `docker-compose`
-         (see FIELD_DEFS above) — clones that repo and runs its own compose
-         file for real, via the Docker socket. Free (no Claude call) but not
-         quick: real image pulls, real containers. Deploy first here, then
-         hand-add the real components (their now-live URLs reported in the
-         status line below) before Run Discovery above has anything to do. -->
-    <div class="side-tile">
-      <div>
-        <h2>Deploy target</h2>
-        <div class="subtitle">Spin up (or stop) a descriptor's own docker-compose.yml — free, but can take a few minutes on first pull</div>
-      </div>
-      <select id="deploy-descriptor-select"></select>
-      <button class="primary" id="deploy-btn">Deploy</button>
-      <button class="ghost" id="undeploy-btn">Stop</button>
-      <div id="deploy-status"></div>
-      <pre id="deploy-log" class="gen-log" style="display:none"></pre>
     </div>
   </aside>
   <main>
@@ -490,15 +514,26 @@ async function loadList() {
   discoverySelect.innerHTML = state.names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (state.names.includes(previous)) discoverySelect.value = previous;
 
-  // Lists every descriptor, same as discoverySelect above — not filtered to
-  // ones that already have a docker-compose component, matching how this
-  // page never pre-validates a select's contents against what the button
-  // will actually do (the route itself returns a clear 400 if there's
-  // nothing to deploy, surfaced the same way any other failure is below).
+  // Filtered to descriptors that actually have a docker-compose component
+  // — the other component types have nothing for this tile to act on, so
+  // listing them here would just be a way to hit the route's own 400 for
+  // no reason. Needs each descriptor's full body (the names-only list
+  // above doesn't carry component types), fetched in parallel; order is
+  // preserved by filtering against the parallel results afterward rather
+  // than pushing into an array as each fetch resolves.
   const deploySelect = document.getElementById('deploy-descriptor-select');
   const previousDeploy = deploySelect.value;
-  deploySelect.innerHTML = state.names.map((n) => `<option value="${n}">${n}</option>`).join('');
-  if (state.names.includes(previousDeploy)) deploySelect.value = previousDeploy;
+  const hasDockerCompose = await Promise.all(state.names.map(async (n) => {
+    try {
+      const d = await api('/api/descriptors/' + encodeURIComponent(n));
+      return (d.components || []).some((c) => c.type === 'docker-compose');
+    } catch {
+      return false;
+    }
+  }));
+  const deployNames = state.names.filter((_, i) => hasDockerCompose[i]);
+  deploySelect.innerHTML = deployNames.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (deployNames.includes(previousDeploy)) deploySelect.value = previousDeploy;
 }
 
 async function deleteDescriptor(name) {
@@ -997,7 +1032,16 @@ document.getElementById('run-discovery-btn').onclick = async () => {
 // same time is exactly what the server's own in-process lock
 // (bootstrap/deployTarget.ts's withLock) rejects, so mirroring that here
 // avoids sending a request that's just going to bounce.
-async function runDeployAction(path, busyMessage, formatDone) {
+//
+// `triggerBtn` gets a plain `.acting` class, not just left to native
+// :focus — a disabled button can't hold focus at all (confirmed live: it
+// drops to `document.activeElement !== btn` the instant `.disabled =
+// true` runs, which happens right after the click that fires this
+// function), so the CSS :focus ring on .deploy-actions button would never
+// actually render for the one case it exists for. A manually-toggled
+// class isn't affected by :disabled the way native focus is, and gets
+// removed itself once the action finishes either way.
+async function runDeployAction(triggerBtn, path, busyMessage, formatDone) {
   const name = document.getElementById('deploy-descriptor-select').value;
   const statusEl = document.getElementById('deploy-status');
   const deployBtn = document.getElementById('deploy-btn');
@@ -1005,6 +1049,7 @@ async function runDeployAction(path, busyMessage, formatDone) {
   if (!name) return;
   deployBtn.disabled = true;
   undeployBtn.disabled = true;
+  triggerBtn.classList.add('acting');
   statusEl.className = '';
   statusEl.textContent = busyMessage(name);
   const logEl = document.getElementById('deploy-log');
@@ -1036,14 +1081,17 @@ async function runDeployAction(path, busyMessage, formatDone) {
   } finally {
     deployBtn.disabled = false;
     undeployBtn.disabled = false;
+    triggerBtn.classList.remove('acting');
   }
 }
 
 document.getElementById('deploy-btn').onclick = async () => {
+  const btn = document.getElementById('deploy-btn');
   const name = document.getElementById('deploy-descriptor-select').value;
   if (!name) return;
   if (!(await confirmModal(`Deploy "${name}" from its own docker-compose.yml? This clones the repo (if not already cloned) and starts real containers via the Docker socket — no Claude call, but can take a few minutes on the first image pull.`, 'time'))) return;
   await runDeployAction(
+    btn,
     `/api/descriptors/${encodeURIComponent(name)}/deploy`,
     (n) => `Deploying "${n}"…`,
     (evt) => 'Deployed. Ports: ' + evt.ports.map((p) => `${p.service}:${p.containerPort} → host.docker.internal:${p.publishedPort}`).join(', '),
@@ -1051,10 +1099,12 @@ document.getElementById('deploy-btn').onclick = async () => {
 };
 
 document.getElementById('undeploy-btn').onclick = async () => {
+  const btn = document.getElementById('undeploy-btn');
   const name = document.getElementById('deploy-descriptor-select').value;
   if (!name) return;
   if (!(await confirmModal(`Stop "${name}"? This tears down its running containers (volumes are kept, so the next deploy picks up where this one left off).`, 'time'))) return;
   await runDeployAction(
+    btn,
     `/api/descriptors/${encodeURIComponent(name)}/undeploy`,
     (n) => `Stopping "${n}"…`,
     () => 'Stopped.',
