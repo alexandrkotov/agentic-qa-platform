@@ -307,8 +307,10 @@
       <div id="components"></div>
 
       <div class="save-bar">
-        <button class="primary" id="save-btn">Save</button>
-        <button class="primary" id="undo-btn" title="Discard unsaved changes and revert to the last saved version of this descriptor.">Undo</button>
+        <!-- disabled by default: matches "no unsaved changes yet" until a
+             descriptor is opened and updateSaveUndoDisabled() corrects it. -->
+        <button class="primary" id="save-btn" disabled>Save</button>
+        <button class="primary" id="undo-btn" title="Discard unsaved changes and revert to the last saved version of this descriptor." disabled>Undo</button>
         <span id="status"></span>
       </div>
       <div id="issues"></div>
@@ -425,6 +427,29 @@ const state = { names: [], current: null, components: [] };
 // clobbering it.
 let deployTargetsAvailable = false;
 let deployActionBusy = false;
+
+// JSON snapshot of {components, extraInstructions} as of the last time the
+// editor's content matched the server — right after a descriptor is loaded,
+// and again right after a successful Save. Save and Undo are both disabled
+// whenever the live editor state serializes to the same string: nothing to
+// save, nothing to undo. Recomputed on every field edit (delegated
+// input/change listener on #editor, registered further down) and inside
+// renderComponents() itself (covers add/remove/type-change, none of which
+// fire a bubbling input/change event of their own).
+let savedSnapshot = null;
+
+function currentEditorSnapshot() {
+  return JSON.stringify({
+    components: state.components,
+    extraInstructions: document.getElementById('extra-instructions').value || undefined,
+  });
+}
+
+function updateSaveUndoDisabled() {
+  const dirty = !!state.current && currentEditorSnapshot() !== savedSnapshot;
+  document.getElementById('save-btn').disabled = !dirty;
+  document.getElementById('undo-btn').disabled = !dirty;
+}
 
 const FIELD_DEFS = {
   'postgres': [
@@ -571,6 +596,7 @@ async function deleteDescriptor(name) {
       state.components = [];
       document.getElementById('editor').style.display = 'none';
       document.getElementById('empty').style.display = 'block';
+      updateSaveUndoDisabled();
     }
     await loadList();
   } catch (e) {
@@ -586,6 +612,10 @@ async function selectDescriptor(name) {
   document.getElementById('editor').style.display = 'block';
   document.getElementById('editor-title').textContent = name + '.json';
   document.getElementById('extra-instructions').value = descriptor.extraInstructions || '';
+  // Baseline captured now, from what the server actually just returned —
+  // before renderComponents() below, whose own updateSaveUndoDisabled()
+  // call needs this in place already to correctly read "not dirty".
+  savedSnapshot = currentEditorSnapshot();
   renderComponents();
   setStatus('');
   await loadList();
@@ -595,6 +625,11 @@ function renderComponents() {
   const root = document.getElementById('components');
   root.innerHTML = '';
   state.components.forEach((comp, idx) => root.appendChild(renderCard(comp, idx)));
+  // Covers add/remove/type-change (all three call renderComponents()
+  // directly rather than firing a bubbling input/change event) — per-field
+  // edits within a card are covered separately by the delegated listener
+  // on #editor.
+  updateSaveUndoDisabled();
 }
 
 function renderCard(comp, idx) {
@@ -986,11 +1021,22 @@ document.getElementById('save-btn').onclick = async () => {
     });
     setStatus('Saved.', 'ok');
     hideIssues();
+    savedSnapshot = currentEditorSnapshot();
+    updateSaveUndoDisabled();
   } catch (e) {
     setStatus('Save failed: ' + e.message, 'err');
     showIssues(e.issues);
   }
 };
+
+// Delegated rather than per-field: every text/number/lines input, the name
+// field, and the Kafka SASL/TLS sub-fields all live inside #editor and fire
+// a bubbling 'input' (typing) or 'change' (selects, checkboxes) event —
+// one listener here catches all of them without having to remember to wire
+// dirty-tracking into every renderField()/renderKafkaSasl() call site
+// individually.
+document.getElementById('editor').addEventListener('input', updateSaveUndoDisabled);
+document.getElementById('editor').addEventListener('change', updateSaveUndoDisabled);
 
 // Discards whatever's been typed/toggled in the form since the last Save
 // (or since it was opened, if never saved) — NOT a delete. Deleting the
