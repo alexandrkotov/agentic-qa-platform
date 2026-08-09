@@ -270,8 +270,11 @@
       </div>
       <select id="deploy-descriptor-select"></select>
       <div class="deploy-actions">
-        <button class="primary" id="deploy-btn">Deploy</button>
-        <button class="primary" id="undeploy-btn">Stop</button>
+        <!-- disabled by default: matches "no docker-compose descriptor yet"
+             until loadList()'s first pass resolves and corrects it, rather
+             than flashing enabled-then-disabled on load. -->
+        <button class="primary" id="deploy-btn" disabled>Deploy</button>
+        <button class="primary" id="undeploy-btn" disabled>Stop</button>
       </div>
       <div id="deploy-status"></div>
       <pre id="deploy-log" class="gen-log" style="display:none"></pre>
@@ -412,6 +415,17 @@ function confirmModal(message, kind = 'money') {
 
 const state = { names: [], current: null, components: [] };
 
+// Tracks whether *any* descriptor currently has a docker-compose component
+// — read by runDeployAction's `finally` so it re-enables the buttons to the
+// right state (not unconditionally back to enabled) once an action finishes,
+// and by loadList() itself every time the descriptor list changes. Kept
+// separate from `deployActionBusy` below: availability and "is something
+// running right now" are two independent reasons a button can be disabled,
+// and each site needs to know the OTHER one's current value without
+// clobbering it.
+let deployTargetsAvailable = false;
+let deployActionBusy = false;
+
 const FIELD_DEFS = {
   'postgres': [
     { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'postgresql://user:pass@host:5432/db' },
@@ -534,6 +548,18 @@ async function loadList() {
   const deployNames = state.names.filter((_, i) => hasDockerCompose[i]);
   deploySelect.innerHTML = deployNames.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (deployNames.includes(previousDeploy)) deploySelect.value = previousDeploy;
+
+  // Empty select + both buttons disabled when no descriptor has a
+  // docker-compose component left (e.g. the last one was deleted or
+  // edited to drop it); re-enabled the moment one exists again. Skipped
+  // while a deploy/undeploy is actually running (deployActionBusy) —
+  // that action's own `finally` block is what re-derives the right
+  // disabled state once it finishes, so this doesn't fight it mid-flight.
+  deployTargetsAvailable = deployNames.length > 0;
+  if (!deployActionBusy) {
+    document.getElementById('deploy-btn').disabled = !deployTargetsAvailable;
+    document.getElementById('undeploy-btn').disabled = !deployTargetsAvailable;
+  }
 }
 
 async function deleteDescriptor(name) {
@@ -1047,6 +1073,7 @@ async function runDeployAction(triggerBtn, path, busyMessage, formatDone) {
   const deployBtn = document.getElementById('deploy-btn');
   const undeployBtn = document.getElementById('undeploy-btn');
   if (!name) return;
+  deployActionBusy = true;
   deployBtn.disabled = true;
   undeployBtn.disabled = true;
   triggerBtn.classList.add('acting');
@@ -1079,8 +1106,13 @@ async function runDeployAction(triggerBtn, path, busyMessage, formatDone) {
     statusEl.className = 'err';
     statusEl.textContent = 'Failed: ' + e.message;
   } finally {
-    deployBtn.disabled = false;
-    undeployBtn.disabled = false;
+    deployActionBusy = false;
+    // Not unconditionally `false` — if the descriptor list changed while
+    // this action was running (e.g. the target descriptor got deleted out
+    // from under it), re-derive from the latest deployTargetsAvailable
+    // rather than blindly re-enabling.
+    deployBtn.disabled = !deployTargetsAvailable;
+    undeployBtn.disabled = !deployTargetsAvailable;
     triggerBtn.classList.remove('acting');
   }
 }
