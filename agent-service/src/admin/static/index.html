@@ -128,6 +128,17 @@
   .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+  /* Both confirm-modal buttons are .primary (uniform white-on-blue, same look
+     as every other button in the app) — the user's own call: a statically
+     "recommended" button (one primary, one ghost) read as if the highlight
+     wasn't responding to real focus at all. Instead, :focus (not
+     :focus-visible — clicking a button focuses it too, and that should count,
+     not just Tab) rings whichever button ACTUALLY has focus right now, so the
+     visual highlight genuinely tracks Tab/click instead of being fixed at
+     whichever button opened as the default. */
+  .confirm-modal-actions button:focus {
+    outline: 2px solid var(--text); outline-offset: 2px;
+  }
 
   /* Same overlay treatment as .confirm-modal-overlay above, own box shape —
      a vertical form instead of an icon+message+yes/no row. */
@@ -267,7 +278,7 @@
     <p id="confirm-modal-message"></p>
     <div class="confirm-modal-actions">
       <button class="primary" id="confirm-modal-cancel">Cancel</button>
-      <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+      <button class="primary" id="confirm-modal-ok">Yes, proceed</button>
     </div>
     </div>
     </div>

@@ -1,5 +1,5 @@
 import express from 'express';
-import { readFile, writeFile, readdir, mkdir, unlink } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir, unlink, cp } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -1020,6 +1020,11 @@ app.get('/api/generate/specs', async (req, res) => {
 const APP_ROOT = resolve(config.reportsDir, '..');
 const TESTS_ROOT = join(APP_ROOT, 'tests');
 const TESTS_STEPS_DIR = join(APP_ROOT, 'tests', 'steps');
+const TESTS_FEATURES_DIR = join(APP_ROOT, 'tests', 'features');
+// Sibling of reports/ on disk (the user's own call, not nested under it —
+// see docker-compose.yml's own comment on this same directory's bind mount
+// for why that needs its own mount entry).
+const APP_ARCHIVE_DIR = join(APP_ROOT, 'archive');
 
 /**
  * tests/.env (and the currently-committed steps.ts files' own hardcoded
@@ -1194,6 +1199,80 @@ app.post('/api/generate/render', async (req, res) => {
       res.status(400).json({ error: 'Spec failed validation', issues: (err as { issues: unknown }).issues });
       return;
     }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Test-suite snapshot — the user's own idea. "Write files" above silently
+// overwrites tests/features/tests/steps with zero history; corrections/UAT
+// have the exact same problem elsewhere in this app (see
+// project_test_suite_snapshot_idea in memory). Two routes, not one:
+// /preview computes the exact descriptor+timestamp+path WITHOUT touching
+// disk at all, so a confirm dialog can show the human the real destination
+// before they commit to anything; the plain route does the actual copy,
+// reusing the SAME timestamp the client already saw (only the timestamp —
+// descriptor is re-derived independently both times, deterministically,
+// rather than trusted from the client) so the two calls can never disagree
+// about where a snapshot actually lands.
+// ---------------------------------------------------------------------------
+
+async function resolveSnapshotContext(specName: string): Promise<{ descriptor: string; groupingPath: string; reportPath: string }> {
+  const generation = ApprovedGenerationSchema.parse(JSON.parse(await readFile(specFilePath(specName), 'utf-8')));
+  const groupingName = generation.sourceGroupingPath.split('/').pop()!;
+  const descriptor = (await descriptorForGroupingFile(groupingName)) ?? 'unknown';
+  const groupingPath = groupingFilePath(groupingName);
+  const grouping = ApprovedGroupingSchema.parse(JSON.parse(await readFile(groupingPath, 'utf-8')));
+  return { descriptor, groupingPath, reportPath: grouping.sourceReportPath };
+}
+
+app.post('/api/generate/snapshot/preview', async (req, res) => {
+  try {
+    const { spec: specName } = req.body as { spec?: string };
+    if (!specName) {
+      res.status(400).json({ error: '"spec" is required' });
+      return;
+    }
+    const { descriptor } = await resolveSnapshotContext(specName);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.json({ descriptor, timestamp, path: `archive/bdd-test-suite-${descriptor}-${timestamp}` });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/generate/snapshot', async (req, res) => {
+  try {
+    const { spec: specName, timestamp } = req.body as { spec?: string; timestamp?: string };
+    if (!specName || !timestamp) {
+      res.status(400).json({ error: '"spec" and "timestamp" are required' });
+      return;
+    }
+    const { descriptor, groupingPath, reportPath } = await resolveSnapshotContext(specName);
+    const snapshotDir = join(APP_ARCHIVE_DIR, `bdd-test-suite-${descriptor}-${timestamp}`);
+    await mkdir(snapshotDir, { recursive: true });
+
+    // Whatever's currently on disk, about to be overwritten by this same
+    // round's "Write files" — a no-op (caught, not fatal) if either
+    // doesn't exist yet, e.g. a fresh target's very first generation.
+    await cp(TESTS_FEATURES_DIR, join(snapshotDir, 'tests', 'features'), { recursive: true }).catch(() => {});
+    await cp(TESTS_STEPS_DIR, join(snapshotDir, 'tests', 'steps'), { recursive: true }).catch(() => {});
+
+    await cp(descriptorPath(descriptor), join(snapshotDir, 'descriptor.json')).catch(() => {});
+    await cp(descriptorPath(descriptor).replace(/\.json$/, '.corrections.json'), join(snapshotDir, 'corrections.json')).catch(() => {});
+    await cp(descriptorPath(descriptor).replace(/\.json$/, '.uat.md'), join(snapshotDir, 'uat.md')).catch(() => {});
+
+    // The exact recipe that produced THIS generation — not every
+    // historical discovery report/grouping ever run for this descriptor;
+    // those already have their own permanent, never-overwritten
+    // timestamped files elsewhere in reports/, so re-bundling all of
+    // history into every single snapshot would be redundant bloat.
+    await cp(reportPath, join(snapshotDir, 'discovery-report.json')).catch(() => {});
+    await cp(groupingPath, join(snapshotDir, 'grouping.json')).catch(() => {});
+    await cp(specFilePath(specName), join(snapshotDir, 'approved-spec.json')).catch(() => {});
+
+    res.json({ path: `archive/bdd-test-suite-${descriptor}-${timestamp}` });
+  } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });

@@ -156,6 +156,19 @@
   .confirm-modal-body { min-width: 0; }
   .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
   .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+  /* All confirm-modal buttons render as .primary (uniform white-on-blue,
+     same look as every other button in the app) — the user's own call:
+     mixing .primary/.ghost read as if the "highlighted" button was a fixed
+     property of the button rather than of wherever focus actually is. The
+     :focus ring below is what shows that instead, and it uses plain :focus
+     (not :focus-visible) specifically so a mouse click focusing a button
+     rings it too, not just Tab — the user explicitly wants both to count.
+     var(--text), not a hardcoded color, so it reads clearly against both
+     the buttons' own var(--accent) fill and the modal's var(--surface)
+     background in either theme. */
+  .confirm-modal-actions button:focus {
+    outline: 2px solid var(--text); outline-offset: 2px;
+  }
 
   .banner { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.83rem; margin-bottom: 1rem; }
 
@@ -401,8 +414,9 @@
     <div class="confirm-modal-body">
     <p id="confirm-modal-message"></p>
     <div class="confirm-modal-actions">
+      <button class="primary" id="confirm-modal-abort" style="display:none">Cancel</button>
       <button class="primary" id="confirm-modal-cancel">Cancel</button>
-      <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+      <button class="primary" id="confirm-modal-ok">Yes, proceed</button>
     </div>
     </div>
   </div>
@@ -473,28 +487,62 @@ const MODAL_ICONS = { money: MONEY_ICON_SVG, time: '⏳', warning: WARNING_ICON_
 // mutate real state, 'warning' for actions that can silently discard other
 // work (e.g. overwriting a file someone hand-edited elsewhere) — each reads
 // as visually distinct at a glance.
-function confirmModal(message, kind = 'money') {
+//
+// opts.defaultOk flips which button gets INITIAL keyboard focus — every
+// existing caller leaves this false (Cancel is the safe default for a modal
+// warning about a consequential action), but the test-suite snapshot
+// confirm (added alongside this option) is the opposite case: its own "yes"
+// IS the safe/recommended choice, so declining should be the one that takes
+// a deliberate Tab+click, not just Enter. All buttons render identically
+// (.primary, white-on-blue, same as everywhere else in the app — the user's
+// own call, see the CSS comment on .confirm-modal-actions button:focus for
+// why a static "recommended" button color was actively confusing); only the
+// :focus ring, which genuinely tracks Tab/click, shows which one is next.
+// opts.okLabel/cancelLabel let that same confirm read as "Save snapshot" /
+// "Skip snapshot" instead of the generic default wording.
+//
+// opts.abortLabel adds a THIRD button (hidden/absent for every other
+// caller, which still gets the plain true/false this function always
+// returned) — for a two-part action like "snapshot, then write" where
+// declining the FIRST part ("Skip snapshot" -> false) must stay distinct from
+// abandoning the whole thing outright. Resolves null specifically so a
+// caller can tell the three cases apart (true/false/null), not just
+// truthy/falsy. Escape/backdrop-click resolve null too when this option is
+// set — dismissing the dialog without an explicit choice should abort
+// everything, not silently take the "skip" branch.
+function confirmModal(message, kind = 'money', opts = {}) {
+  const { okLabel = 'Yes, proceed', cancelLabel = 'Cancel', defaultOk = false, abortLabel = null } = opts;
   return new Promise((resolve) => {
     document.getElementById('confirm-modal-message').textContent = message;
     const icon = document.getElementById('confirm-modal-icon');
     icon.innerHTML = MODAL_ICONS[kind];
     icon.className = 'confirm-modal-icon ' + kind;
+    const okBtn = document.getElementById('confirm-modal-ok');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const abortBtn = document.getElementById('confirm-modal-abort');
+    okBtn.textContent = okLabel;
+    cancelBtn.textContent = cancelLabel;
+    abortBtn.style.display = abortLabel ? '' : 'none';
+    if (abortLabel) abortBtn.textContent = abortLabel;
+    // All three buttons stay .primary (uniform white-on-blue, see the CSS
+    // comment on .confirm-modal-actions button:focus) — defaultOk only
+    // decides which one gets INITIAL keyboard focus below, not which one
+    // looks different. The :focus ring is what actually shows the human
+    // which button is about to fire, and it moves with real Tab/click focus.
     const overlay = document.getElementById('confirm-modal-overlay');
     overlay.classList.add('open');
-    // Cancel, not "Yes, proceed", is the default — focusing it means Enter
-    // does the safe thing on a modal that exists specifically to warn about
-    // a consequential action.
-    document.getElementById('confirm-modal-cancel').focus();
+    (defaultOk ? okBtn : cancelBtn).focus();
     const cleanup = (result) => {
       overlay.classList.remove('open');
       document.removeEventListener('keydown', onKey);
       resolve(result);
     };
-    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
-    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
-    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(abortLabel ? null : false); };
+    abortBtn.onclick = () => cleanup(null);
+    okBtn.onclick = () => cleanup(true);
+    cancelBtn.onclick = () => cleanup(false);
     document.addEventListener('keydown', onKey);
-    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(abortLabel ? null : false); };
   });
 }
 
@@ -1238,6 +1286,54 @@ document.getElementById('render-btn').onclick = async () => {
     'completely — if you\'ve already applied a fix to any of them from the E2E tab, that patch ' +
     'will be lost.';
   if (!(await confirmModal(msg, 'warning'))) return;
+
+  // Offers a snapshot of everything about to be overwritten — the user's
+  // own idea, a separate confirm from the one above since this one's own
+  // default is the opposite ("yes" IS the safe choice here, not Cancel).
+  // /preview computes the exact destination without touching disk, purely
+  // so this dialog can show the real path before anything commits to it;
+  // the actual copy (if the human says yes) reuses that same timestamp.
+  let preview = null;
+  try {
+    preview = await api('/api/generate/snapshot/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec: specName }),
+    });
+  } catch (e) {
+    // Soft-fail — a feature that only exists to protect Write files
+    // shouldn't itself be able to block Write files.
+  }
+  if (preview) {
+    // Three-way, not a plain yes/no — "Skip snapshot" (proceed without a
+    // snapshot) has to stay distinct from aborting Write files entirely,
+    // which is what dismissing this dialog any other way (the Cancel
+    // button, Escape, backdrop click) now means.
+    const choice = await confirmModal(
+      'Save a snapshot of the current test suite — plus the descriptor, corrections, UAT notes, ' +
+        'discovery report, and grouping that produced it — before overwriting? It will be saved to ' +
+        preview.path,
+      'time',
+      { okLabel: 'Save snapshot', cancelLabel: 'Skip snapshot', defaultOk: true, abortLabel: 'Cancel' },
+    );
+    if (choice === null) return; // abort Write files altogether
+    if (choice === true) {
+      try {
+        await api('/api/generate/snapshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spec: specName, timestamp: preview.timestamp }),
+        });
+      } catch (e) {
+        const proceedAnyway = await confirmModal(
+          'Snapshot failed: ' + e.message + '. Continue writing files anyway (without a snapshot)?',
+          'warning',
+        );
+        if (!proceedAnyway) return;
+      }
+    }
+  }
+
   const btn = document.getElementById('render-btn');
   const statusEl = document.getElementById('render-status');
   btn.disabled = true;

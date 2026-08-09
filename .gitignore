@@ -6,3 +6,6 @@ build/
 .DS_Store
 agent-service/reports/
 agent-service/.playwright-mcp/
+# Test-suite snapshots — repo root, not nested under agent-service/, since
+# a snapshot bundles content from both agent-service/ and tests/.
+/archive/
