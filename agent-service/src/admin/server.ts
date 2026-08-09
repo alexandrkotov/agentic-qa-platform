@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
-import { deployTarget, undeployTarget } from '../bootstrap/deployTarget.ts';
+import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames } from '../bootstrap/deployTarget.ts';
 import { runCommand } from '../util/runCommand.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
@@ -239,6 +239,23 @@ function findDockerComposeComponent(descriptor: SystemDescriptor): DockerCompose
   return found;
 }
 
+// Backs two separate UI moments off the same signal (index.html): the
+// pre-deploy "leftover containers detected, they'll be removed" warning
+// (checked right before the Deploy confirm), and the Stop/Remove button's
+// own label + disabled state for whichever target is currently selected.
+// Queried by Compose's own project label, not by name-existence in
+// descriptors/ — deliberately doesn't require the descriptor to still have
+// a docker-compose component (or exist at all) so a target's containers
+// don't become unqueryable just because its descriptor was edited/deleted.
+app.get('/api/descriptors/:name/deploy/status', async (req, res) => {
+  try {
+    const containerNames = await getTargetContainerNames(req.params.name);
+    res.json({ containerNames });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/descriptors/:name/deploy', async (req, res) => {
   try {
     const name = req.params.name;
@@ -259,7 +276,14 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
         ports: result.ports,
       });
     } catch (err) {
-      send({ type: 'error', error: (err as Error).message });
+      if (err instanceof DeployCancelledError) {
+        // Distinct from a real failure — the UI shows this as "cancelled",
+        // not "failed", and the rollback progress leading up to it already
+        // streamed as ordinary `progress` events above.
+        send({ type: 'cancelled', message: err.message });
+      } else {
+        send({ type: 'error', error: (err as Error).message });
+      }
     }
     res.end();
   } catch (err) {
@@ -269,6 +293,20 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
     }
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
+});
+
+// Fire-and-forget: just signals bootstrap/deployTarget.ts's AbortController
+// for this name (if a deploy is actually in flight) and returns immediately
+// — the real rollback progress and final "cancelled" event stream through
+// the ORIGINAL /deploy request's still-open connection above, not this one.
+// Deliberately a separate route rather than reusing /undeploy: undeploy
+// tries to acquire the same in-process lock deployTarget() is already
+// holding and would just bounce off it with "already in progress", and
+// conflating "tear down a running stack" with "cancel one that's still
+// starting up" would make either code path harder to reason about.
+app.post('/api/descriptors/:name/deploy/cancel', (req, res) => {
+  const cancelled = cancelDeploy(req.params.name);
+  res.json({ cancelled });
 });
 
 app.post('/api/descriptors/:name/undeploy', async (req, res) => {

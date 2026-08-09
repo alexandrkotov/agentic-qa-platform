@@ -25,6 +25,28 @@ import type { DockerComposeComponent } from '../descriptor/schema.ts';
 
 class DeployTargetError extends Error {}
 
+/** Thrown (not a subclass of DeployTargetError — callers need to tell "user cancelled" apart from "genuinely failed") when a deploy's AbortSignal fires. */
+export class DeployCancelledError extends Error {}
+
+function checkCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DeployCancelledError('Deploy cancelled by user');
+}
+
+/** Abort-aware `setTimeout` — resolves immediately on cancellation instead of making the caller wait out the full delay before its own `checkCancelled()` can run. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolveSleep) => {
+    if (signal?.aborted) {
+      resolveSleep();
+      return;
+    }
+    const timer = setTimeout(resolveSleep, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolveSleep();
+    }, { once: true });
+  });
+}
+
 async function assertMirroredMount(): Promise<string> {
   const hostRoot = process.env.HOST_PROJECT_ROOT;
   if (!hostRoot) {
@@ -157,6 +179,7 @@ async function cloneOrUpdateRepo(
   ref: string | undefined,
   repoDir: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const onLine = (line: string) => onProgress?.(line);
 
@@ -168,7 +191,9 @@ async function cloneOrUpdateRepo(
       process.cwd(),
       process.env,
       onLine,
+      signal,
     );
+    checkCancelled(signal);
     if (code !== 0) {
       throw new DeployTargetError(`git clone failed (exit ${code}): ${output.slice(-800)}`);
     }
@@ -182,7 +207,9 @@ async function cloneOrUpdateRepo(
     repoDir,
     process.env,
     onLine,
+    signal,
   );
+  checkCancelled(signal);
   if (fetch.code !== 0) {
     throw new DeployTargetError(`git fetch failed (exit ${fetch.code}): ${fetch.output.slice(-800)}`);
   }
@@ -194,7 +221,9 @@ async function cloneOrUpdateRepo(
     repoDir,
     process.env,
     onLine,
+    signal,
   );
+  checkCancelled(signal);
   if (reset.code !== 0) {
     throw new DeployTargetError(`git reset failed (exit ${reset.code}): ${reset.output.slice(-800)}`);
   }
@@ -216,11 +245,102 @@ function projectNameFor(name: string): string {
   return `aqap-target-${name}`;
 }
 
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Existing/leftover containers — queried by Compose's own project label
+// (`com.docker.compose.project`, set on every container it creates)
+// rather than by re-deriving from resolved.json, so this works even when
+// that file is stale, missing, or was never written (containers left over
+// from an interrupted deploy, a crashed workbench container that lost its
+// own in-memory `activeDeploys` state, etc.). Backs both the pre-deploy
+// "detected a leftover, will be cleaned up" warning (admin/server.ts's own
+// GET .../deploy/status route) and the Stop/Remove button's label — same
+// signal, two different UI moments.
+// ---------------------------------------------------------------------------
+
+export async function getTargetContainerNames(name: string): Promise<string[]> {
+  const projectName = projectNameFor(name);
+  const { code, output } = await runCommand(
+    'docker',
+    ['ps', '-a', '--filter', `label=com.docker.compose.project=${projectName}`, '--format', '{{.Names}}'],
+    process.cwd(),
+    process.env,
+  );
+  if (code !== 0) return [];
+  return output.split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Self-healing, unconditional first step of every deploy — not just a
+ * client-side confirm gate. A no-op (fast `docker ps`, nothing else) when
+ * the target really is a clean slate, which is the common case. When
+ * something IS found, prefers `docker compose down` against whatever
+ * resolved.json a previous deploy left on disk (cleans up the network
+ * too, not just containers); falls back to removing the containers
+ * directly plus a best-effort network cleanup when there's no usable
+ * resolved.json to work from (e.g. containers that exist for reasons
+ * outside this app's own bookkeeping).
+ */
+async function cleanupExistingContainers(
+  name: string,
+  paths: TargetPaths,
+  onProgress?: (message: string) => void,
+): Promise<void> {
+  const names = await getTargetContainerNames(name);
+  if (names.length === 0) return;
+
+  const projectName = projectNameFor(name);
+  onProgress?.(`Found ${names.length} existing container(s) for "${name}" already in Docker — removing them for a clean deploy: ${names.join(', ')}`);
+
+  let cleaned = false;
+  if (await fileExists(paths.resolvedConfigPath)) {
+    const down = await runCommand(
+      'docker',
+      ['compose', '-f', paths.resolvedConfigPath, '-p', projectName, 'down'],
+      process.cwd(),
+      process.env,
+      (line) => onProgress?.(line),
+    );
+    cleaned = down.code === 0;
+    if (!cleaned) {
+      onProgress?.(`"docker compose down" against the previous config failed (exit ${down.code}) — falling back to removing containers directly`);
+    }
+  }
+
+  if (!cleaned) {
+    const rm = await runCommand('docker', ['rm', '-f', ...names], process.cwd(), process.env, (line) => onProgress?.(line));
+    if (rm.code !== 0) {
+      onProgress?.(`Warning: "docker rm -f" exited ${rm.code}: ${rm.output.slice(-400)}`);
+    }
+    const netList = await runCommand(
+      'docker',
+      ['network', 'ls', '--filter', `label=com.docker.compose.project=${projectName}`, '-q'],
+      process.cwd(),
+      process.env,
+    );
+    const netIds = netList.output.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (netIds.length > 0) {
+      await runCommand('docker', ['network', 'rm', ...netIds], process.cwd(), process.env, (line) => onProgress?.(line));
+    }
+  }
+
+  onProgress?.('Clean slate confirmed — proceeding with a fresh deploy.');
+}
+
 async function flattenComposeConfig(
   component: DockerComposeComponent,
   repoDir: string,
   name: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const composeFile = component.composeFile ?? 'docker-compose.yml';
   const composeFilePath = join(repoDir, composeFile);
@@ -245,7 +365,9 @@ async function flattenComposeConfig(
       // "progress", only genuine diagnostic lines (warnings, etc.).
       if (!line.trim().startsWith('{')) onProgress?.(line);
     },
+    signal,
   );
+  checkCancelled(signal);
   if (code !== 0) {
     throw new DeployTargetError(`docker compose config failed (exit ${code}): ${output.slice(-1200)}`);
   }
@@ -275,6 +397,7 @@ export async function flattenTarget(
   component: DockerComposeComponent,
   name: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<FlattenResult> {
   const targetsDir = await assertMirroredMount();
   const paths = resolveTargetPaths(targetsDir, name);
@@ -282,11 +405,20 @@ export async function flattenTarget(
   await mkdir(paths.repoDir, { recursive: true });
   await mkdir(paths.aqapDir, { recursive: true });
 
+  checkCancelled(signal);
+  // Deliberately NOT signal-gated — once cleanup actually starts (i.e.
+  // something was found to remove), letting it run to completion is safer
+  // than a cancel leaving a half-torn-down project behind. The
+  // checkCancelled() calls right before and right after it are enough to
+  // still honor a cancel that lands outside that narrow window.
+  await cleanupExistingContainers(name, paths, onProgress);
+  checkCancelled(signal);
+
   onProgress?.(`Cloning ${component.repoUrl}${component.ref ? `@${component.ref}` : ''} into ${paths.repoDir}`);
-  await cloneOrUpdateRepo(component.repoUrl, component.ref, paths.repoDir, onProgress);
+  await cloneOrUpdateRepo(component.repoUrl, component.ref, paths.repoDir, onProgress, signal);
 
   onProgress?.('Resolving compose configuration');
-  const resolved = await flattenComposeConfig(component, paths.repoDir, name, onProgress);
+  const resolved = await flattenComposeConfig(component, paths.repoDir, name, onProgress, signal);
 
   await writeFile(paths.resolvedConfigPath, JSON.stringify(resolved, null, 2), 'utf-8');
   onProgress?.(`Resolved config written to ${paths.resolvedConfigPath}`);
@@ -448,14 +580,11 @@ function isPortConflictError(output: string): boolean {
   return /port is already allocated|address already in use/i.test(output);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 async function runComposeUp(
   resolvedConfigPath: string,
   projectName: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<{ code: number; output: string }> {
   onProgress?.(`$ docker compose --ansi never -f ${resolvedConfigPath} -p ${projectName} up -d`);
   return runCommand(
@@ -467,6 +596,7 @@ async function runComposeUp(
     process.cwd(),
     process.env,
     (line) => onProgress?.(line),
+    signal,
   );
 }
 
@@ -482,19 +612,23 @@ async function runPostUpExec(
   resolvedConfigPath: string,
   projectName: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   for (const entry of component.postUpExec ?? []) {
     onProgress?.(`Running on "${entry.service}": ${entry.command.join(' ')}`);
     let lastCode = 1;
     let lastOutput = '';
     for (let attempt = 1; attempt <= POST_UP_EXEC_ATTEMPTS; attempt++) {
+      checkCancelled(signal);
       const result = await runCommand(
         'docker',
         ['compose', '-f', resolvedConfigPath, '-p', projectName, 'exec', '-T', entry.service, ...entry.command],
         process.cwd(),
         process.env,
         (line) => onProgress?.(line),
+        signal,
       );
+      checkCancelled(signal);
       lastCode = result.code;
       lastOutput = result.output;
       if (result.code === 0) break;
@@ -502,7 +636,8 @@ async function runPostUpExec(
         onProgress?.(
           `Attempt ${attempt}/${POST_UP_EXEC_ATTEMPTS} failed (exit ${result.code}) — retrying in ${POST_UP_EXEC_DELAY_MS / 1000}s (the service may still be starting up)`,
         );
-        await sleep(POST_UP_EXEC_DELAY_MS);
+        await sleep(POST_UP_EXEC_DELAY_MS, signal);
+        checkCancelled(signal);
       }
     }
     if (lastCode !== 0) {
@@ -547,44 +682,102 @@ export interface DeployResult {
   ports: PortMapping[];
 }
 
+// ---------------------------------------------------------------------------
+// Cancellation — keyed by descriptor name so the Stop button's own
+// fire-and-forget /deploy/cancel route (admin/server.ts) can reach the
+// *specific* deploy an admin/server.ts route handler is awaiting, without
+// either side needing to share anything beyond the name. Registered for the
+// duration of deployTarget()'s own call (inside withLock, so there's at
+// most one entry per name at a time by construction) — a Stop click after
+// the deploy has already finished just finds nothing to cancel and no-ops.
+// ---------------------------------------------------------------------------
+
+const activeDeploys = new Map<string, AbortController>();
+
+/** True if a deploy for `name` was actually in flight and got signalled; false if there was nothing to cancel (already finished, or never started). */
+export function cancelDeploy(name: string): boolean {
+  const controller = activeDeploys.get(name);
+  if (!controller) return false;
+  controller.abort();
+  return true;
+}
+
 export async function deployTarget(
   component: DockerComposeComponent,
   name: string,
   onProgress?: (message: string) => void,
 ): Promise<DeployResult> {
   return withLock(name, async () => {
-    const { paths, projectName, resolved } = await flattenTarget(component, name, onProgress);
-    const config = resolved as ComposeConfig;
-    const previous = await readState(paths.statePath);
+    const controller = new AbortController();
+    activeDeploys.set(name, controller);
+    const signal = controller.signal;
+    try {
+      const { paths, projectName, resolved } = await flattenTarget(component, name, onProgress, signal);
+      const config = resolved as ComposeConfig;
+      const previous = await readState(paths.statePath);
 
-    const excluded = new Set<number>();
-    let mappings: PortMapping[] = [];
+      const excluded = new Set<number>();
+      let mappings: PortMapping[] = [];
 
-    for (let attempt = 1; attempt <= UP_RETRY_ATTEMPTS; attempt++) {
-      onProgress?.(`Allocating ports (attempt ${attempt}/${UP_RETRY_ATTEMPTS})`);
-      mappings = await assignPorts(config, attempt === 1 ? previous : null, excluded, onProgress);
-      await writeFile(paths.resolvedConfigPath, JSON.stringify(config, null, 2), 'utf-8');
+      for (let attempt = 1; attempt <= UP_RETRY_ATTEMPTS; attempt++) {
+        checkCancelled(signal);
+        onProgress?.(`Allocating ports (attempt ${attempt}/${UP_RETRY_ATTEMPTS})`);
+        mappings = await assignPorts(config, attempt === 1 ? previous : null, excluded, onProgress);
+        await writeFile(paths.resolvedConfigPath, JSON.stringify(config, null, 2), 'utf-8');
 
-      const up = await runComposeUp(paths.resolvedConfigPath, projectName, onProgress);
-      if (up.code === 0) break;
+        checkCancelled(signal);
+        const up = await runComposeUp(paths.resolvedConfigPath, projectName, onProgress, signal);
+        checkCancelled(signal);
+        if (up.code === 0) break;
 
-      for (const m of mappings) excluded.add(m.publishedPort);
+        for (const m of mappings) excluded.add(m.publishedPort);
 
-      if (attempt === UP_RETRY_ATTEMPTS || !isPortConflictError(up.output)) {
-        throw new DeployTargetError(`docker compose up failed (exit ${up.code}): ${up.output.slice(-1200)}`);
+        if (attempt === UP_RETRY_ATTEMPTS || !isPortConflictError(up.output)) {
+          throw new DeployTargetError(`docker compose up failed (exit ${up.code}): ${up.output.slice(-1200)}`);
+        }
+        onProgress?.(`Port conflict on attempt ${attempt}/${UP_RETRY_ATTEMPTS} — reallocating and retrying`);
       }
-      onProgress?.(`Port conflict on attempt ${attempt}/${UP_RETRY_ATTEMPTS} — reallocating and retrying`);
+
+      if (component.postUpExec && component.postUpExec.length > 0) {
+        await runPostUpExec(component, paths.resolvedConfigPath, projectName, onProgress, signal);
+      }
+
+      const state: DeployState = { deployedAt: new Date().toISOString(), projectName, ports: mappings };
+      await writeFile(paths.statePath, JSON.stringify(state, null, 2), 'utf-8');
+      onProgress?.(`Deployed. Port map: ${JSON.stringify(Object.fromEntries(mappings.map((m) => [`${m.service}:${m.containerPort}`, m.publishedPort])))}`);
+
+      return { paths, projectName, ports: mappings };
+    } catch (err) {
+      if (err instanceof DeployCancelledError) {
+        onProgress?.('Cancelled — rolling back any containers already created…');
+        const targetsDir = await assertMirroredMount().catch(() => null);
+        if (targetsDir) {
+          const paths = resolveTargetPaths(targetsDir, name);
+          const projectName = projectNameFor(name);
+          // Best-effort, deliberately NOT itself cancellable — a partial
+          // rollback would leave orphaned containers behind, which is
+          // exactly the "clean up the garbage in Docker" outcome this whole
+          // path exists to avoid. If resolved.json was never written yet
+          // (cancelled during clone, before `up` ever ran) this just fails
+          // fast with "no such file" — fine, there's nothing to tear down.
+          const down = await runCommand(
+            'docker',
+            ['compose', '-f', paths.resolvedConfigPath, '-p', projectName, 'down'],
+            process.cwd(),
+            process.env,
+            (line) => onProgress?.(line),
+          );
+          if (down.code === 0) {
+            onProgress?.('Rolled back — no containers left running for this attempt.');
+          } else {
+            onProgress?.(`Rollback's "docker compose down" exited ${down.code} (fine if there was nothing to tear down yet): ${down.output.slice(-400)}`);
+          }
+        }
+      }
+      throw err;
+    } finally {
+      activeDeploys.delete(name);
     }
-
-    if (component.postUpExec && component.postUpExec.length > 0) {
-      await runPostUpExec(component, paths.resolvedConfigPath, projectName, onProgress);
-    }
-
-    const state: DeployState = { deployedAt: new Date().toISOString(), projectName, ports: mappings };
-    await writeFile(paths.statePath, JSON.stringify(state, null, 2), 'utf-8');
-    onProgress?.(`Deployed. Port map: ${JSON.stringify(Object.fromEntries(mappings.map((m) => [`${m.service}:${m.containerPort}`, m.publishedPort])))}`);
-
-    return { paths, projectName, ports: mappings };
   });
 }
 

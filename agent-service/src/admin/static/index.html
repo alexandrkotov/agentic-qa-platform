@@ -62,16 +62,20 @@
     width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.45rem 0.6rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
   }
-  #discovery-status { font-size: 0.78rem; line-height: 1.4; word-break: break-word; }
-  #discovery-status.ok { color: #2f8f5b; }
-  #discovery-status.err { color: var(--danger); }
-  /* Live progress feed while discovery's own long tool-using agent call runs — same look as generate.html's .gen-log. */
+  #operation-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; margin-top: 0.3rem; }
+  #operation-status.ok { color: #2f8f5b; }
+  #operation-status.err { color: var(--danger); }
+  /* Live progress feed while Deploy/Stop or Discovery's own long call runs — same look as generate.html's .gen-log. */
   .gen-log {
     width: 100%; margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; max-height: 11rem; overflow-y: auto;
     background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
     font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.72rem;
     color: var(--text-mute); white-space: pre-wrap; line-height: 1.5; box-sizing: border-box;
   }
+  /* #operation-log specifically (not generate.html's own .gen-log uses)
+     gets the full height <main> can spare — it's the one case on this page
+     where the log IS the content, not a small addendum under a form. */
+  #operation-log { max-height: calc(100vh - 14rem); }
   #descriptor-list {
     list-style: none; margin: 0; padding: 0;
     border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
@@ -274,10 +278,8 @@
              until loadList()'s first pass resolves and corrects it, rather
              than flashing enabled-then-disabled on load. -->
         <button class="primary" id="deploy-btn" disabled>Deploy</button>
-        <button class="primary" id="undeploy-btn" disabled>Stop</button>
+        <button class="primary" id="undeploy-btn" disabled>Remove</button>
       </div>
-      <div id="deploy-status"></div>
-      <pre id="deploy-log" class="gen-log" style="display:none"></pre>
     </div>
 
     <div class="side-tile">
@@ -287,12 +289,21 @@
       </div>
       <select id="discovery-descriptor-select"></select>
       <button class="primary" id="run-discovery-btn">Run discovery</button>
-      <div id="discovery-status"></div>
-      <pre id="discovery-log" class="gen-log" style="display:none"></pre>
     </div>
   </aside>
   <main>
     <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
+    <!-- Shared by Deploy/Stop AND Run Discovery — whichever one is
+         currently running (or most recently ran) owns this panel; showing
+         it means #editor/#empty are hidden, see showMainView(). Previously
+         each tile had its own tiny status+log squeezed into the 260px
+         sidebar column; a live terminal-style feed deserves the same room
+         the descriptor editor gets. -->
+    <div id="operation-panel" style="display:none">
+      <h2 id="operation-title"></h2>
+      <div id="operation-status"></div>
+      <pre id="operation-log" class="gen-log"></pre>
+    </div>
     <div id="editor" style="display:none">
       <h2 id="editor-title"></h2>
       <div class="field">
@@ -427,6 +438,27 @@ const state = { names: [], current: null, components: [] };
 // clobbering it.
 let deployTargetsAvailable = false;
 let deployActionBusy = false;
+
+// Which deploy-tile action is currently in flight, and which target it's
+// running against — read by the Stop button's own onclick to decide
+// whether a click means "tear down a running stack" (normal) or "cancel
+// this in-progress deploy and roll back" (only when a deploy specifically
+// is what's running). `activeDeployName` is captured at the moment the
+// action starts rather than re-read from the select at click time — the
+// select isn't disabled while an action runs, so re-reading it could name
+// the WRONG target if it's been changed in the meantime.
+let activeDeployAction = null; // 'deploy' | 'undeploy' | null
+let activeDeployName = null;
+
+// Exactly one of #empty / #editor / #operation-panel is ever visible —
+// main is a single-focus viewport, not a place where a live Deploy/
+// Discovery log and the descriptor editor could both show at once and
+// leave it ambiguous which one "the selected block" even means.
+function showMainView(view) {
+  document.getElementById('empty').style.display = view === 'empty' ? 'block' : 'none';
+  document.getElementById('editor').style.display = view === 'editor' ? 'block' : 'none';
+  document.getElementById('operation-panel').style.display = view === 'operation' ? 'block' : 'none';
+}
 
 // JSON snapshot of {components, extraInstructions} as of the last time the
 // editor's content matched the server — right after a descriptor is loaded,
@@ -574,18 +606,53 @@ async function loadList() {
   deploySelect.innerHTML = deployNames.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (deployNames.includes(previousDeploy)) deploySelect.value = previousDeploy;
 
-  // Empty select + both buttons disabled when no descriptor has a
-  // docker-compose component left (e.g. the last one was deleted or
-  // edited to drop it); re-enabled the moment one exists again. Skipped
-  // while a deploy/undeploy is actually running (deployActionBusy) —
-  // that action's own `finally` block is what re-derives the right
-  // disabled state once it finishes, so this doesn't fight it mid-flight.
+  // Empty select + Deploy disabled when no descriptor has a docker-compose
+  // component left (e.g. the last one was deleted or edited to drop it);
+  // re-enabled the moment one exists again. Skipped while a deploy/undeploy
+  // is actually running (deployActionBusy) — that action's own `finally`
+  // block is what re-derives the right disabled state once it finishes, so
+  // this doesn't fight it mid-flight. Stop/Remove's own disabled state (and
+  // its label) depends on real Docker state, not just list membership —
+  // see updateDeployRemoveLabel().
   deployTargetsAvailable = deployNames.length > 0;
   if (!deployActionBusy) {
     document.getElementById('deploy-btn').disabled = !deployTargetsAvailable;
-    document.getElementById('undeploy-btn').disabled = !deployTargetsAvailable;
+  }
+  await updateDeployRemoveLabel();
+}
+
+// Whichever target the deploy-select currently names: "Remove" + enabled
+// enabled ("Remove") whenever Docker already has ANY containers for it
+// (running or stopped leftovers — same signal the pre-deploy warning in
+// deploy-btn's onclick checks), disabled (still labeled "Remove" — always
+// this word outside an active deploy, see runDeployAction's own "Cancel"
+// override for that one exception) when it's a genuine clean slate with
+// nothing to act on yet. "Stop" was dropped entirely: it undersold what a
+// click always actually does (a full teardown, not a pause), and having
+// three different labels across three states (Stop/Remove/Cancel) said
+// less than two — Cancel means "a deploy is actively running right now",
+// Remove means "something exists to tear down" — a real, honest verb for
+// each of the only two situations that are ever actually different.
+// Called after loadList() repopulates the select, whenever the select's
+// own value changes, and from runDeployAction's `finally` once an action
+// completes and Docker's real state has actually moved.
+async function updateDeployRemoveLabel() {
+  const undeployBtn = document.getElementById('undeploy-btn');
+  if (deployActionBusy) return; // runDeployAction's own finally re-derives this once it's done, not mid-flight
+  undeployBtn.textContent = 'Remove';
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (!deployTargetsAvailable || !name) {
+    undeployBtn.disabled = true;
+    return;
+  }
+  try {
+    const status = await api('/api/descriptors/' + encodeURIComponent(name) + '/deploy/status');
+    undeployBtn.disabled = status.containerNames.length === 0;
+  } catch {
+    // best-effort — a transient fetch failure just leaves the previous disabled state in place
   }
 }
+document.getElementById('deploy-descriptor-select').addEventListener('change', updateDeployRemoveLabel);
 
 async function deleteDescriptor(name) {
   if (!(await confirmModal(`Delete descriptor "${name}"? This permanently removes its JSON file (and any saved corrections).`, 'danger'))) return;
@@ -594,8 +661,7 @@ async function deleteDescriptor(name) {
     if (state.current === name) {
       state.current = null;
       state.components = [];
-      document.getElementById('editor').style.display = 'none';
-      document.getElementById('empty').style.display = 'block';
+      showMainView('empty');
       updateSaveUndoDisabled();
     }
     await loadList();
@@ -608,8 +674,7 @@ async function selectDescriptor(name) {
   const descriptor = await api('/api/descriptors/' + encodeURIComponent(name));
   state.current = name;
   state.components = descriptor.components || [];
-  document.getElementById('empty').style.display = 'none';
-  document.getElementById('editor').style.display = 'block';
+  showMainView('editor');
   document.getElementById('editor-title').textContent = name + '.json';
   document.getElementById('extra-instructions').value = descriptor.extraInstructions || '';
   // Baseline captured now, from what the server actually just returned —
@@ -1068,16 +1133,17 @@ function hideIssues() { document.getElementById('issues').classList.remove('show
 
 document.getElementById('run-discovery-btn').onclick = async () => {
   const name = document.getElementById('discovery-descriptor-select').value;
-  const statusEl = document.getElementById('discovery-status');
+  const statusEl = document.getElementById('operation-status');
   const btn = document.getElementById('run-discovery-btn');
   if (!name) return;
   if (!(await confirmModal(`Run discovery on "${name}"? This calls Claude and costs real money, and can take a few minutes.`))) return;
   btn.disabled = true;
+  showMainView('operation');
+  document.getElementById('operation-title').textContent = `Discovery — ${name}`;
   statusEl.className = '';
   statusEl.textContent = `Running discovery on "${name}" — calling Claude, this can take a few minutes…`;
-  const logEl = document.getElementById('discovery-log');
+  const logEl = document.getElementById('operation-log');
   logEl.textContent = '';
-  logEl.style.display = '';
   try {
     let doneEvent = null;
     let errorMessage = null;
@@ -1107,11 +1173,15 @@ document.getElementById('run-discovery-btn').onclick = async () => {
   }
 };
 
-// Deploy/Stop share one status line + log pane, and both disable BOTH
-// buttons while running — deploying and stopping the same target at the
-// same time is exactly what the server's own in-process lock
-// (bootstrap/deployTarget.ts's withLock) rejects, so mirroring that here
-// avoids sending a request that's just going to bounce.
+// Deploy/Stop share one status line + log pane (now in the main
+// operation panel, not the sidebar tile — see showMainView()).
+// `kind` ('deploy' | 'undeploy') controls what stays clickable while this
+// runs: Deploy always locks itself out mid-action, but Stop stays enabled
+// during a DEPLOY specifically (see undeploy-btn's onclick below — a click
+// there while `activeDeployAction === 'deploy'` cancels+rolls back instead
+// of starting a fresh /undeploy, which the server's own in-process lock
+// would just reject anyway while deployTarget() still holds it). Stop
+// disables itself during its OWN run — nothing to cancel about a stop.
 //
 // `triggerBtn` gets a plain `.acting` class, not just left to native
 // :focus — a disabled button can't hold focus at all (confirmed live: it
@@ -1121,24 +1191,37 @@ document.getElementById('run-discovery-btn').onclick = async () => {
 // actually render for the one case it exists for. A manually-toggled
 // class isn't affected by :disabled the way native focus is, and gets
 // removed itself once the action finishes either way.
-async function runDeployAction(triggerBtn, path, busyMessage, formatDone) {
+async function runDeployAction(triggerBtn, path, busyMessage, formatDone, kind, titleVerb) {
   const name = document.getElementById('deploy-descriptor-select').value;
-  const statusEl = document.getElementById('deploy-status');
+  const statusEl = document.getElementById('operation-status');
   const deployBtn = document.getElementById('deploy-btn');
   const undeployBtn = document.getElementById('undeploy-btn');
   if (!name) return;
   deployActionBusy = true;
+  activeDeployAction = kind;
+  activeDeployName = name;
   deployBtn.disabled = true;
-  undeployBtn.disabled = true;
+  undeployBtn.disabled = kind === 'undeploy';
+  // "Remove" (whatever it said before this click, reflecting Docker state
+  // as of a moment ago) goes stale the instant a deploy starts doing its
+  // own self-healing cleanup — "Cancel" is the only word that's actually
+  // true of what a click does for the whole time a deploy is running,
+  // regardless of what existed beforehand. updateDeployRemoveLabel() in
+  // the `finally` below sets it back to "Remove" once this settles.
+  // Untouched during an `undeploy` run — it's already disabled then
+  // (nothing to cancel about a removal already in progress).
+  if (kind === 'deploy') undeployBtn.textContent = 'Cancel';
   triggerBtn.classList.add('acting');
+  showMainView('operation');
+  document.getElementById('operation-title').textContent = `${titleVerb} — ${name}`;
   statusEl.className = '';
   statusEl.textContent = busyMessage(name);
-  const logEl = document.getElementById('deploy-log');
+  const logEl = document.getElementById('operation-log');
   logEl.textContent = '';
-  logEl.style.display = '';
   try {
     let doneEvent = null;
     let errorMessage = null;
+    let cancelledMessage = null;
     await streamNdjson(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1150,24 +1233,40 @@ async function runDeployAction(triggerBtn, path, busyMessage, formatDone) {
         doneEvent = evt;
       } else if (evt.type === 'error') {
         errorMessage = evt.error;
+      } else if (evt.type === 'cancelled') {
+        cancelledMessage = evt.message;
       }
     });
-    if (errorMessage) throw new Error(errorMessage);
-    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
-    statusEl.className = 'ok';
-    statusEl.textContent = formatDone(doneEvent);
+    if (cancelledMessage) {
+      // Not styled as an error — cancelling on request is the button
+      // working as intended, not a failure.
+      statusEl.className = '';
+      statusEl.textContent = cancelledMessage;
+    } else {
+      if (errorMessage) throw new Error(errorMessage);
+      if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+      statusEl.className = 'ok';
+      // innerHTML, not textContent, ONLY here — formatDone's own port-map
+      // line (deploy-btn's onclick below) embeds a real clickable <a> to
+      // each published port. Nothing else in this status ever needs
+      // markup, and doneEvent's fields are this app's own server response,
+      // not user-controlled input.
+      statusEl.innerHTML = formatDone(doneEvent);
+    }
   } catch (e) {
     statusEl.className = 'err';
     statusEl.textContent = 'Failed: ' + e.message;
   } finally {
     deployActionBusy = false;
+    activeDeployAction = null;
+    activeDeployName = null;
     // Not unconditionally `false` — if the descriptor list changed while
     // this action was running (e.g. the target descriptor got deleted out
     // from under it), re-derive from the latest deployTargetsAvailable
     // rather than blindly re-enabling.
     deployBtn.disabled = !deployTargetsAvailable;
-    undeployBtn.disabled = !deployTargetsAvailable;
     triggerBtn.classList.remove('acting');
+    await updateDeployRemoveLabel();
   }
 }
 
@@ -1175,25 +1274,85 @@ document.getElementById('deploy-btn').onclick = async () => {
   const btn = document.getElementById('deploy-btn');
   const name = document.getElementById('deploy-descriptor-select').value;
   if (!name) return;
-  if (!(await confirmModal(`Deploy "${name}" from its own docker-compose.yml? This clones the repo (if not already cloned) and starts real containers via the Docker socket — no Claude call, but can take a few minutes on the first image pull.`, 'time'))) return;
+
+  // Always check real Docker state first — deployTarget() itself always
+  // does a clean-slate cleanup as its own first step regardless (self-
+  // healing, see bootstrap/deployTarget.ts's cleanupExistingContainers),
+  // but the human deserves to know that's about to happen before it does,
+  // not just find out from a "removing…" line buried partway down the log.
+  let status;
+  try {
+    status = await api('/api/descriptors/' + encodeURIComponent(name) + '/deploy/status');
+  } catch (e) {
+    alert('Failed to check for existing containers: ' + e.message);
+    return;
+  }
+  const hasLeftovers = status.containerNames.length > 0;
+  const message = hasLeftovers
+    ? `Found ${status.containerNames.length} existing container(s) for "${name}" already in Docker (running, or leftover from a previous deploy: ${status.containerNames.join(', ')}). They will be removed and the deploy will start from a clean slate. Continue?`
+    : `Deploy "${name}" from its own docker-compose.yml? This clones the repo (if not already cloned) and starts real containers via the Docker socket — no Claude call, but can take a few minutes on the first image pull.`;
+  if (!(await confirmModal(message, hasLeftovers ? 'danger' : 'time'))) return;
+
   await runDeployAction(
     btn,
     `/api/descriptors/${encodeURIComponent(name)}/deploy`,
     (n) => `Deploying "${n}"…`,
-    (evt) => 'Deployed. Ports: ' + evt.ports.map((p) => `${p.service}:${p.containerPort} → host.docker.internal:${p.publishedPort}`).join(', '),
+    // localhost:PORT, not host.docker.internal:PORT, is the clickable
+    // target — host.docker.internal only resolves from inside a
+    // container (workbench's own network); a human's own browser needs
+    // the plain host-published port instead. The label keeps
+    // host.docker.internal in the *text* (that's the address other
+    // components/agents inside this stack would actually use), only the
+    // href points at the real, human-openable address.
+    (evt) => 'Deployed. Ports: ' + evt.ports.map((p) =>
+      `${p.service}:${p.containerPort} → <a href="http://localhost:${p.publishedPort}" target="_blank" rel="noopener">host.docker.internal:${p.publishedPort}</a>`
+    ).join(', '),
+    'deploy',
+    'Deploy',
   );
 };
 
 document.getElementById('undeploy-btn').onclick = async () => {
   const btn = document.getElementById('undeploy-btn');
+
+  // A deploy is actively running right now — Stop means "cancel it and
+  // roll back", not "start a separate teardown" (the server's own
+  // in-process lock would just reject that anyway while deployTarget()
+  // still holds it for `activeDeployName`). The real rollback progress
+  // and final status stream through the ORIGINAL Deploy call's still-open
+  // connection (runDeployAction above, still awaiting streamNdjson) —
+  // this click only has to signal it.
+  if (activeDeployAction === 'deploy') {
+    const targetName = activeDeployName;
+    if (!(await confirmModal(`Cancel the in-progress deploy of "${targetName}"? Any containers it already created will be rolled back.`, 'danger'))) return;
+    btn.classList.add('acting');
+    try {
+      await api(`/api/descriptors/${encodeURIComponent(targetName)}/deploy/cancel`, { method: 'POST' });
+      const logEl = document.getElementById('operation-log');
+      logEl.textContent += '\n[cancel requested — waiting for rollback]\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    } catch (e) {
+      alert('Failed to cancel: ' + e.message);
+    } finally {
+      btn.classList.remove('acting');
+    }
+    return;
+  }
+
   const name = document.getElementById('deploy-descriptor-select').value;
   if (!name) return;
-  if (!(await confirmModal(`Stop "${name}"? This tears down its running containers (volumes are kept, so the next deploy picks up where this one left off).`, 'time'))) return;
+  // Reachable only when the button reads "Remove" — "Cancel" (an active
+  // deploy) is handled entirely by the branch above and returns before
+  // reaching here, and it's disabled the rest of the time — so there's
+  // only one real word for this whole branch now.
+  if (!(await confirmModal(`Remove "${name}"? This tears down its containers (volumes are kept, so the next deploy picks up where this one left off).`, 'time'))) return;
   await runDeployAction(
     btn,
     `/api/descriptors/${encodeURIComponent(name)}/undeploy`,
-    (n) => `Stopping "${n}"…`,
-    () => 'Stopped.',
+    (n) => `Removing "${n}"…`,
+    () => 'Removed.',
+    'undeploy',
+    'Remove',
   );
 };
 
