@@ -308,7 +308,7 @@
 
       <div class="save-bar">
         <button class="primary" id="save-btn">Save</button>
-        <button class="primary" id="cancel-btn" title="Delete this descriptor entirely — for undoing an accidental or mis-configured creation.">Cancel</button>
+        <button class="primary" id="undo-btn" title="Discard unsaved changes and revert to the last saved version of this descriptor.">Undo</button>
         <span id="status"></span>
       </div>
       <div id="issues"></div>
@@ -992,11 +992,19 @@ document.getElementById('save-btn').onclick = async () => {
   }
 };
 
-// Right next to Save, not just the small "×" in the list — undoes an
-// accidental or mis-configured creation (the wizard included) without
-// having to go find it in System Descriptors first. Reuses
-// deleteDescriptor() verbatim, including its own confirm modal.
-document.getElementById('cancel-btn').onclick = () => deleteDescriptor(state.current);
+// Discards whatever's been typed/toggled in the form since the last Save
+// (or since it was opened, if never saved) — NOT a delete. Deleting the
+// descriptor entirely is the small "×" in the System Descriptors list
+// only, with its own confirm modal; this button used to alias
+// deleteDescriptor() and pop that same "permanently removes its JSON
+// file" prompt, which was surprising for what reads as a plain "undo my
+// edits" action. Reverting is just re-fetching the saved copy from the
+// server and re-rendering — the same path selectDescriptor() already
+// uses when a descriptor is first opened.
+document.getElementById('undo-btn').onclick = async () => {
+  if (!state.current) return;
+  await selectDescriptor(state.current);
+};
 
 function setStatus(text, kind) {
   const el = document.getElementById('status');
