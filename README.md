@@ -205,6 +205,7 @@ validated with zod) describing a target system as a list of typed components:
 | `web-ui` | `baseUrl`, `routes` | Live browser navigation, via Playwright MCP |
 | `kafka` | `brokers`, optional `sasl`/`tls` | Whole-broker exploration — topics, configs, sample messages, consumer groups, via [`tuannvm/kafka-mcp-server`](https://github.com/tuannvm/kafka-mcp-server) |
 | `kafka-consumer` | `brokers`, `topic`, optional `sampleSize` | One named topic only — message count, inferred payload shape, anomalies (same MCP server, narrower prompt) |
+| `docker-compose` | `repoUrl`, optional `ref`/`composeFile`/`postUpExec` | Nothing — deployment provenance only, see below |
 
 A [`registry`](agent-service/src/descriptor/registry.ts) maps each component type to a **builder**
 ([`agent-service/src/descriptor/components/`](agent-service/src/descriptor/components/)) — which
@@ -213,18 +214,34 @@ for each component type stays small, explicit, and visible, rather than folded i
 discovery prompt. Adding a new target system means writing a descriptor JSON, not touching code;
 adding a new *kind* of component means one new builder file plus one line in the registry.
 
-Three descriptors exist today, all under
+Four descriptors exist today, all under
 [`agent-service/descriptors/`](agent-service/descriptors/): `orderflow.json` (this app — postgres +
 rest-api + web-ui + a `kafka-consumer` watching the `orders.status-changed` topic),
 `kafka-demo.json` (a bare Kafka broker, nothing else — whole-broker exploration via the plain
-`kafka` component), and `kafka-consumer-demo.json` (the same broker, narrowed to one topic) — proof
-that the descriptor genuinely describes an arbitrary system, not just this one. Point discovery at
-any of them with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag defaults to
-`orderflow.json`, so `pnpm discovery` behaves exactly as before.
+`kafka` component), `kafka-consumer-demo.json` (the same broker, narrowed to one topic), and
+`wger.json` (a real, unrelated open-source app this project has never seen before, deployed via its
+own `docker-compose` component — see above) — proof that the descriptor genuinely describes an
+arbitrary system, not just this one. Point discovery at any of them with
+`pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag defaults to `orderflow.json`,
+so `pnpm discovery` behaves exactly as before.
 
 `orderflow.json` also carries an optional `cleanupSql: string[]` — raw SQL run afterward through a
 direct, write-capable Postgres connection the LLM never sees, since the agent's own `postgres`
 tool is deliberately read-only and can't remove the test fixtures its write-scenario creates.
+
+A `docker-compose` component is different in kind from the others above: it's not something the
+Discovery Agent explores at all, only a record of where the descriptor's *other* components came
+from. It names a repo that ships its own `docker-compose.yml` (e.g. a self-hostable open-source
+app's deploy manifest) — the Workbench's "Deploy target" action
+([`agent-service/src/bootstrap/deployTarget.ts`](agent-service/src/bootstrap/deployTarget.ts))
+clones it and runs that compose file for real, via the same Docker socket
+`descriptor/components/kafka.ts` already uses for its own sibling MCP container, reusing the
+target's own declared host ports where they're free and remapping only on a real conflict. Once a
+deploy is up, a human adds the resulting real components (their now-reachable
+`host.docker.internal:<port>` URLs, reported back by the deploy) to the same descriptor by hand,
+same as writing any other descriptor — Discovery/Generate/E2E after that point are entirely
+unmodified. Proven end to end against [wger](https://github.com/wger-project/wger), a real,
+unrelated open-source app this project has never seen before.
 
 ### The Workbench
 
@@ -239,7 +256,10 @@ managing the QA framework's own configuration):
   back with the exact field-level error instead of silently writing an invalid file), plus a "Run
   discovery" button that runs the real System Discovery Agent against a chosen descriptor from the
   browser — a real, costed Claude call, with live progress streamed while the agentic tool-use loop
-  runs, not just a static spinner.
+  runs, not just a static spinner. A "Deploy target" tile does the same live-streamed thing for a
+  `docker-compose` component instead — no Claude call, but real containers, real image pulls, real
+  host ports — reporting back where each service actually ended up so the rest of the descriptor
+  can be filled in by hand.
 - **Analysis** (`/visualize.html`) — turns an approved discovery report into diagrams. Architecture
   and entity-relationship diagrams are fully deterministic (instant, free, no LLM call — rendered
   straight from the report's own component list). UI inventory, cross-component sequence flow, and

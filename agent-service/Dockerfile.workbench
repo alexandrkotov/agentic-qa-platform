@@ -3,8 +3,25 @@
 # admin.volumes), the same "docker-outside-of-docker" pattern the Kafka MCP
 # server itself already relies on (descriptor/components/kafka.ts spawns it
 # via `docker run --network=host ...`). Multi-stage so the final image
-# doesn't carry anything else from this one.
-FROM docker:27-cli AS docker-cli
+# doesn't carry anything else from this one. Bumped from 27 to 29 to match
+# the host's own Engine version (confirmed live: 29.6.2) — the `docker-compose`
+# component type (descriptor/components/dockerCompose.ts) deploys arbitrary
+# third-party compose files that may use current Compose-spec features like
+# `include:`, so an old CLI talking to a new daemon is worth avoiding here.
+FROM docker:29-cli AS docker-cli
+
+# The `docker` CLI has no built-in `compose` subcommand of its own — that's
+# a separate plugin binary Docker's own CLI-plugin mechanism looks for at
+# /usr/local/lib/docker/cli-plugins/docker-compose. docker:29-cli does NOT
+# ship it (only the bare `docker` binary — confirmed by inspecting the image
+# directly, not assumed), so it's pulled from the plugin's own dedicated
+# distribution image instead, which publishes just one file at the image
+# root: /docker-compose (verified by extracting docker/compose-bin's own
+# layer, not by guessing from its Dockerfile's multi-arch release stage
+# naming). Pinned to v5.3.1 to match the host's own installed Compose
+# version exactly (confirmed live) — compose is a client-side orchestrator,
+# so version skew here isn't fatal, but there's no reason to introduce any.
+FROM docker/compose-bin:v5.3.1 AS compose-cli
 
 # Debian ("bookworm-slim"), not Alpine: Playwright's browser builds are not
 # supported on musl libc (Alpine) — this is a compatibility requirement, not
@@ -16,6 +33,22 @@ FROM node:22-bookworm-slim
 WORKDIR /usr/src/app
 
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=compose-cli /docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+RUN chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# git: the docker-compose component type (bootstrap/deployTarget.ts) clones
+# an arbitrary target repo (e.g. wger's own deploy manifest repo) before
+# handing its compose file to the daemon — bookworm-slim has no git by
+# default. ca-certificates alongside it is NOT optional, confirmed the hard
+# way: git's own HTTPS backend fails every clone with "server certificate
+# verification failed. CAfile: none CRLfile: none" without it — apt doesn't
+# pull it in as a dependency of git itself on this slim base, and node:22's
+# own base image apparently doesn't ship a trust store either. --no-install-recommends
+# + the apt-lists cleanup keep this from reintroducing the image-bloat
+# concern the Debian-over-Alpine comment above already accepts a trade-off
+# on for Chromium.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Installs from the real package.json rather than a hand-picked package list,
 # and copies the whole src/ tree rather than a hand-picked file list. The

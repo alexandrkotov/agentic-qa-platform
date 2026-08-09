@@ -130,6 +130,23 @@ services:
   # network namespace, so it reaches the real host-published broker port
   # (`localhost:9094`) regardless of which network *this* container is on.
   #
+  # A `docker-compose` component (descriptor/components/dockerCompose.ts)
+  # is a third case, closer to Kafka's than to postgres/rest-api/web-ui's:
+  # bootstrap/deployTarget.ts clones the target's own repo and runs its
+  # compose file for real, over this same mounted socket, then reports back
+  # `host.docker.internal:<port>` URLs — never `localhost:PORT` — so they
+  # never enter admin/server.ts's rewrite map at all (the loopback-only gate
+  # there, LOOPBACK_HOSTNAMES, exists specifically so a hand-written
+  # external-target URL is never mistaken for this fixed sample app's own
+  # `localhost` convention and silently clobbered into pointing at
+  # db/app/frontend instead). Reaching those published ports from *this*
+  # bridge-networked container needs `extra_hosts: host.docker.internal`
+  # below — Docker Desktop provides that name automatically, plain Engine
+  # does not. See the `targets` volume's own comment further down for the
+  # bigger gotcha this same deploy mechanism runs into: making a *cloned
+  # repo's* relative bind-mount paths resolve correctly against the host's
+  # filesystem, not this container's.
+  #
   # /var/run/docker.sock: see above — needed to launch that sibling
   # container at all.
   #
@@ -146,6 +163,24 @@ services:
     env_file:
       - path: ./agent-service/.env
         required: false
+    # HOST_PROJECT_ROOT + the targets/ mount below are a matched pair — see
+    # that mount's own comment for why the value has to be this repo's own
+    # absolute host path, not any arbitrary string. ${PWD} here means the
+    # directory `docker compose` itself is invoked from on the HOST, which
+    # is why this project's convention (deploy from the main checkout, not
+    # a worktree) matters more than usual for this one variable specifically.
+    environment:
+      HOST_PROJECT_ROOT: ${PWD}
+    # host.docker.internal isn't automatic outside Docker Desktop — this
+    # `host-gateway` sentinel (Engine 20.10+) is what makes it resolve on
+    # plain Docker Engine too. Needed so this container can reach ports a
+    # docker-compose-deployed target publishes on the HOST (see
+    # descriptor/components/dockerCompose.ts) — this container itself sits
+    # on its own bridge network below, not host networking, so it can't
+    # just say "localhost" for those ports the way a process on the host
+    # itself could.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # tests/ is a separate package with its own @playwright/test version, so
     # it needs its own browser binary — the one the Dockerfile installs at
     # build time is for agent-service's own @playwright/mcp dependency, a
@@ -184,6 +219,24 @@ services:
       # own ephemeral filesystem and vanish the next time this container is
       # recreated.
       - ./archive:/usr/src/app/archive
+      # Repo clones for the docker-compose component type
+      # (descriptor/components/dockerCompose.ts) — deliberately mounted at
+      # an IDENTICAL absolute path on both sides (${PWD}/targets, not
+      # ./targets:/usr/src/app/targets the way archive/reports above do),
+      # because this one has to survive a second hop this container makes
+      # through the mounted docker.sock below: when bootstrap/deployTarget.ts
+      # asks the HOST's own daemon to `docker compose up` a cloned target
+      # repo, the daemon resolves that repo's own relative bind-mount paths
+      # (e.g. wger's `./config/nginx.conf`) against ITS OWN filesystem, not
+      # this container's. If the two paths ever differ, Docker doesn't
+      # error — it silently creates an empty directory where the real file
+      # should be, and whatever service reads it fails confusingly instead.
+      # Mirroring the path turns that failure mode into "the file's just
+      # there" instead of something to debug. HOST_PROJECT_ROOT above lets
+      # the app construct this same absolute path itself; deployTarget.ts
+      # also verifies the mirror actually holds via `docker inspect` before
+      # trusting it, rather than assuming this comment stayed accurate.
+      - ${PWD}/targets:${PWD}/targets
       # Stage 3 (render) writes .feature/.steps.ts here, and "Run tests"
       # executes the suite from here — without this mount, either action
       # would only touch the container's own ephemeral filesystem, never

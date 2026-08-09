@@ -57,11 +57,67 @@ const WebUiComponentSchema = z.object({
   routes: z.array(z.string()).min(1),
 });
 
+/**
+ * Deployment provenance, not something to explore — a target system that
+ * ships its own docker-compose.yml (e.g. wger's separate deploy-manifest
+ * repo) gets cloned and deployed via the Docker socket already mounted
+ * into the `workbench` container (see bootstrap/deployTarget.ts), *before*
+ * any real components are added by hand with their now-live URLs. This
+ * component's own registry builder (descriptor/components/dockerCompose.ts)
+ * contributes no MCP servers/tools; it only documents where the rest of
+ * the descriptor's components came from.
+ *
+ * Stays part of the discriminated union rather than a separate top-level
+ * field: the natural intermediate state (a descriptor that only describes
+ * a pending deployment, nothing else yet) needs `components.min(1)` below
+ * to accept it, which union membership gives for free.
+ */
+const DockerComposeComponentSchema = z.object({
+  type: z.literal('docker-compose'),
+  name: z.string().optional(),
+  /** Clone URL for the repo containing the target's own compose file — http(s) only, not e.g. a `--upload-pack=` flag smuggled in as a fake "url" (this becomes a `git clone` argument). */
+  repoUrl: z
+    .string()
+    .url()
+    .refine((u) => ['http:', 'https:'].includes(new URL(u).protocol), {
+      message: 'repoUrl must be an http(s) clone URL',
+    }),
+  /** Branch/tag/commit to pin the clone to — reproducibility across redeploys; omitted means the repo's own default branch. */
+  ref: z.string().optional(),
+  /**
+   * Path to the compose file within the clone, relative to the repo root.
+   * Deliberately NOT `.default('docker-compose.yml')`: `PUT /api/descriptors/:name`
+   * round-trips this schema over the user's own saved JSON, so a zod
+   * default would get silently materialized into their file on every save
+   * — unlike every other optional field here. Apply the `docker-compose.yml`
+   * fallback at the call site (deployTarget.ts) instead. Guarded against
+   * absolute paths and `..` segments since it ends up joined into a `-f`
+   * argument — same defense-in-depth spirit as resolveDescriptorFile's
+   * NAME_PATTERN in admin/server.ts.
+   */
+  composeFile: z
+    .string()
+    .refine((p) => !p.startsWith('/') && !p.split('/').includes('..'), {
+      message: 'composeFile must be a relative path with no ".." segments',
+    })
+    .optional(),
+  /** Commands run once via `docker compose exec -T <service> <command...>` after `up` succeeds, before the target is considered ready (e.g. wger's `web ./manage.py setup-powersync-storage`). */
+  postUpExec: z
+    .array(
+      z.object({
+        service: z.string(),
+        command: z.array(z.string()).min(1),
+      }),
+    )
+    .optional(),
+});
+
 export type PostgresComponent = z.infer<typeof PostgresComponentSchema>;
 export type RestApiComponent = z.infer<typeof RestApiComponentSchema>;
 export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
 export type KafkaConsumerComponent = z.infer<typeof KafkaConsumerComponentSchema>;
 export type WebUiComponent = z.infer<typeof WebUiComponentSchema>;
+export type DockerComposeComponent = z.infer<typeof DockerComposeComponentSchema>;
 
 const SystemComponentSchema = z.discriminatedUnion('type', [
   PostgresComponentSchema,
@@ -69,6 +125,7 @@ const SystemComponentSchema = z.discriminatedUnion('type', [
   KafkaComponentSchema,
   KafkaConsumerComponentSchema,
   WebUiComponentSchema,
+  DockerComposeComponentSchema,
 ]);
 
 export const SystemDescriptorSchema = z

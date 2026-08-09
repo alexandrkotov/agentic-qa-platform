@@ -9,3 +9,7 @@ agent-service/.playwright-mcp/
 # Test-suite snapshots — repo root, not nested under agent-service/, since
 # a snapshot bundles content from both agent-service/ and tests/.
 /archive/
+# Clones of external target repos (docker-compose component type) — repo
+# root, mounted at an identical absolute path on both host and container
+# sides; see docker-compose.yml's own comment on this mount for why.
+/targets/

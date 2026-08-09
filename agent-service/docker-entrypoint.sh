@@ -8,6 +8,21 @@
 # breaking the host user's own CLI against those same files with EACCES.
 set -e
 
+# /home/node/.cache itself (not the ms-playwright volume mounted inside it —
+# that one's already node-owned) comes out root-owned: Docker creates
+# missing parent directories for a volume mount as root, before this
+# entrypoint ever runs, the same class of bug documented for bind-mounted
+# host directories above. Harmless as long as nothing needs to create a
+# NEW sibling directory directly under .cache — until playwright-mcp's own
+# browser session tried to, and failed outright with "EACCES: permission
+# denied, mkdir '/home/node/.cache/ms-playwright-mcp'" on every single
+# tool call (confirmed live, 2026-08-09, running Discovery against a
+# docker-compose-deployed target). A plain chown (not -R — the ms-playwright
+# subtree is already correctly owned and can be large) is enough.
+if [ -d /home/node/.cache ]; then
+  chown node:node /home/node/.cache
+fi
+
 # /var/run/docker.sock is bind-mounted from the host (docker-compose.yml) so
 # this container can run real `docker`/`docker compose` commands against the
 # host's own daemon -- see Dockerfile.workbench's "docker-cli" build stage.

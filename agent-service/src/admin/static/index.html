@@ -245,6 +245,24 @@
       <div id="discovery-status"></div>
       <pre id="discovery-log" class="gen-log" style="display:none"></pre>
     </div>
+
+    <!-- For a descriptor whose only component (so far) is `docker-compose`
+         (see FIELD_DEFS above) — clones that repo and runs its own compose
+         file for real, via the Docker socket. Free (no Claude call) but not
+         quick: real image pulls, real containers. Deploy first here, then
+         hand-add the real components (their now-live URLs reported in the
+         status line below) before Run Discovery above has anything to do. -->
+    <div class="side-tile">
+      <div>
+        <h2>Deploy target</h2>
+        <div class="subtitle">Spin up (or stop) a descriptor's own docker-compose.yml — free, but can take a few minutes on first pull</div>
+      </div>
+      <select id="deploy-descriptor-select"></select>
+      <button class="primary" id="deploy-btn">Deploy</button>
+      <button class="ghost" id="undeploy-btn">Stop</button>
+      <div id="deploy-status"></div>
+      <pre id="deploy-log" class="gen-log" style="display:none"></pre>
+    </div>
   </aside>
   <main>
     <div id="empty" class="empty">Select a descriptor on the left, or create a new one.</div>
@@ -391,6 +409,16 @@ const FIELD_DEFS = {
     { key: 'topic', label: 'Topic', type: 'text', placeholder: 'orders.status-changed' },
     { key: 'sampleSize', label: 'Sample size (optional)', type: 'number', placeholder: '5' },
   ],
+  // postUpExec (an array of {service, command[]} objects) isn't covered by
+  // any FIELD_DEFS "type" below (text/lines/number) — deliberately left out
+  // of this editor rather than building a bespoke array-of-objects widget
+  // for one field; edit it directly in the descriptor's JSON file instead.
+  // See the "Deploy target" sidebar tile for actually running this.
+  'docker-compose': [
+    { key: 'repoUrl', label: 'Repo URL', type: 'text', placeholder: 'https://github.com/org/repo' },
+    { key: 'ref', label: 'Branch / tag / commit (optional)', type: 'text', placeholder: 'main' },
+    { key: 'composeFile', label: 'Compose file path (optional)', type: 'text', placeholder: 'docker-compose.yml' },
+  ],
 };
 
 async function api(path, opts) {
@@ -461,6 +489,16 @@ async function loadList() {
   const previous = discoverySelect.value;
   discoverySelect.innerHTML = state.names.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (state.names.includes(previous)) discoverySelect.value = previous;
+
+  // Lists every descriptor, same as discoverySelect above — not filtered to
+  // ones that already have a docker-compose component, matching how this
+  // page never pre-validates a select's contents against what the button
+  // will actually do (the route itself returns a clear 400 if there's
+  // nothing to deploy, surfaced the same way any other failure is below).
+  const deploySelect = document.getElementById('deploy-descriptor-select');
+  const previousDeploy = deploySelect.value;
+  deploySelect.innerHTML = state.names.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (state.names.includes(previousDeploy)) deploySelect.value = previousDeploy;
 }
 
 async function deleteDescriptor(name) {
@@ -952,6 +990,75 @@ document.getElementById('run-discovery-btn').onclick = async () => {
   } finally {
     btn.disabled = false;
   }
+};
+
+// Deploy/Stop share one status line + log pane, and both disable BOTH
+// buttons while running — deploying and stopping the same target at the
+// same time is exactly what the server's own in-process lock
+// (bootstrap/deployTarget.ts's withLock) rejects, so mirroring that here
+// avoids sending a request that's just going to bounce.
+async function runDeployAction(path, busyMessage, formatDone) {
+  const name = document.getElementById('deploy-descriptor-select').value;
+  const statusEl = document.getElementById('deploy-status');
+  const deployBtn = document.getElementById('deploy-btn');
+  const undeployBtn = document.getElementById('undeploy-btn');
+  if (!name) return;
+  deployBtn.disabled = true;
+  undeployBtn.disabled = true;
+  statusEl.className = '';
+  statusEl.textContent = busyMessage(name);
+  const logEl = document.getElementById('deploy-log');
+  logEl.textContent = '';
+  logEl.style.display = '';
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    statusEl.className = 'ok';
+    statusEl.textContent = formatDone(doneEvent);
+  } catch (e) {
+    statusEl.className = 'err';
+    statusEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    deployBtn.disabled = false;
+    undeployBtn.disabled = false;
+  }
+}
+
+document.getElementById('deploy-btn').onclick = async () => {
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (!name) return;
+  if (!(await confirmModal(`Deploy "${name}" from its own docker-compose.yml? This clones the repo (if not already cloned) and starts real containers via the Docker socket — no Claude call, but can take a few minutes on the first image pull.`, 'time'))) return;
+  await runDeployAction(
+    `/api/descriptors/${encodeURIComponent(name)}/deploy`,
+    (n) => `Deploying "${n}"…`,
+    (evt) => 'Deployed. Ports: ' + evt.ports.map((p) => `${p.service}:${p.containerPort} → host.docker.internal:${p.publishedPort}`).join(', '),
+  );
+};
+
+document.getElementById('undeploy-btn').onclick = async () => {
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (!name) return;
+  if (!(await confirmModal(`Stop "${name}"? This tears down its running containers (volumes are kept, so the next deploy picks up where this one left off).`, 'time'))) return;
+  await runDeployAction(
+    `/api/descriptors/${encodeURIComponent(name)}/undeploy`,
+    (n) => `Stopping "${n}"…`,
+    () => 'Stopped.',
+  );
 };
 
 loadList();

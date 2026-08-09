@@ -1,13 +1,14 @@
 import express from 'express';
 import { readFile, writeFile, readdir, mkdir, unlink, cp } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { lookup } from 'node:dns/promises';
 import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
-import type { SystemDescriptor, SystemComponent } from '../descriptor/schema.ts';
+import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
+import { deployTarget, undeployTarget } from '../bootstrap/deployTarget.ts';
+import { runCommand } from '../util/runCommand.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
@@ -213,6 +214,92 @@ app.delete('/api/descriptors/:name', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Deploy — spins up a target described only by a `docker-compose` component
+// (see descriptor/components/dockerCompose.ts) from its own repo, via the
+// Docker socket already mounted into this container (docker-compose.yml's
+// own comment on that mount has the full DooD-mirroring story). Root-equivalent
+// on the HOST, triggered from an unauthenticated local UI: this route clones
+// an arbitrary git repo named in the descriptor and runs whatever compose
+// file it contains against the host's real Docker daemon. Acceptable here
+// because this whole admin server is already a local, single-user dev tool
+// with no auth of its own (same trust boundary as /api/tests/run spawning
+// arbitrary local processes) — but worth stating plainly, not left implicit,
+// given what this specific route actually does.
+//
+// Deliberately NOT part of /api/discovery/run's own flow — deploy has to
+// finish and be reachable *before* a human can even write real component
+// URLs into the rest of the descriptor, so it's its own explicit action.
+// ---------------------------------------------------------------------------
+
+function findDockerComposeComponent(descriptor: SystemDescriptor): DockerComposeComponent {
+  const found = descriptor.components.find((c): c is DockerComposeComponent => c.type === 'docker-compose');
+  if (!found) {
+    throw Object.assign(new Error('Descriptor has no "docker-compose" component to deploy'), { status: 400 });
+  }
+  return found;
+}
+
+app.post('/api/descriptors/:name/deploy', async (req, res) => {
+  try {
+    const name = req.params.name;
+    const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
+    const component = findDockerComposeComponent(descriptor);
+
+    // Long-running (clone + potentially several GB of image pulls) with
+    // previously zero feedback beyond a static "deploying…" status —
+    // stream NDJSON the same way Discovery/Generate's own long calls do.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    try {
+      const result = await deployTarget(component, name, (message) => send({ type: 'progress', message }));
+      send({
+        type: 'done',
+        projectName: result.projectName,
+        ports: result.ports,
+      });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No descriptor named "${req.params.name}"` });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/descriptors/:name/undeploy', async (req, res) => {
+  try {
+    const name = req.params.name;
+    // Confirms this descriptor really does describe a docker-compose deploy
+    // before touching anything — same shape check as the deploy route,
+    // even though undeployTarget() itself only needs the plain name.
+    const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
+    findDockerComposeComponent(descriptor);
+
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    try {
+      await undeployTarget(name, (message) => send({ type: 'progress', message }));
+      send({ type: 'done' });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No descriptor named "${req.params.name}"` });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Discovery — runs the same agent `pnpm discovery` does, from a descriptor
 // already sitting in descriptors/. A real, costed, long-running Claude call
 // (up to 60 tool-use iterations) — like /api/generate/spec below, not
@@ -244,22 +331,45 @@ function rewriteHost(url: string, host: string): string {
   return parsed.toString();
 }
 
-/** Returns a copy of the descriptor with postgres/rest-api/web-ui URLs pointed at this compose network's service names instead of "localhost". */
+// A hand-written external-target URL (e.g. a docker-compose-deployed
+// target's own "http://host.docker.internal:<port>", per
+// bootstrap/deployTarget.ts) is not this fixed sample app's own
+// localhost:PORT convention — rewriting it too would silently clobber it
+// into pointing at this project's own db/app/frontend instead of the real
+// target, and Discovery would produce a plausible-looking report about the
+// wrong system entirely. Every URL in this project's own existing
+// descriptors (orderflow.json, kafka-demo.json, kafka-consumer-demo.json)
+// uses "localhost", so gating on it is behavior-preserving for them.
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+function isLoopbackUrl(url: string): boolean {
+  try {
+    return LOOPBACK_HOSTNAMES.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function rewriteHostIfLoopback(url: string, host: string): string {
+  return isLoopbackUrl(url) ? rewriteHost(url, host) : url;
+}
+
+/** Returns a copy of the descriptor with postgres/rest-api/web-ui URLs pointed at this compose network's service names instead of "localhost" — but only the ones that were actually "localhost" to begin with, see rewriteHostIfLoopback. */
 function rewriteForContainerNetwork(descriptor: SystemDescriptor): SystemDescriptor {
   const components: SystemComponent[] = descriptor.components.map((component) => {
     const host = CONTAINER_NETWORK_HOSTS[component.type];
     if (!host) return component;
     switch (component.type) {
       case 'postgres':
-        return { ...component, connectionString: rewriteHost(component.connectionString, host) };
+        return { ...component, connectionString: rewriteHostIfLoopback(component.connectionString, host) };
       case 'rest-api':
         return {
           ...component,
-          swaggerUrl: rewriteHost(component.swaggerUrl, host),
-          baseUrl: component.baseUrl ? rewriteHost(component.baseUrl, host) : component.baseUrl,
+          swaggerUrl: rewriteHostIfLoopback(component.swaggerUrl, host),
+          baseUrl: component.baseUrl ? rewriteHostIfLoopback(component.baseUrl, host) : component.baseUrl,
         };
       case 'web-ui':
-        return { ...component, baseUrl: rewriteHost(component.baseUrl, host) };
+        return { ...component, baseUrl: rewriteHostIfLoopback(component.baseUrl, host) };
       default:
         return component;
     }
@@ -345,6 +455,20 @@ app.post('/api/discovery/run', async (req, res) => {
     }
     const path = descriptorPath(name);
     const descriptor = parseSystemDescriptor(JSON.parse(await readFile(path, 'utf-8')));
+
+    // A descriptor that's only ever had its docker-compose component added
+    // (see /api/descriptors/:name/deploy) has nothing to explore yet — the
+    // human still needs to deploy, then hand-add the real components with
+    // their now-live URLs. Catching this here (free) avoids a wasted paid
+    // Claude call for a run that could never produce anything but an empty
+    // report.
+    if (descriptor.components.every((c) => c.type === 'docker-compose')) {
+      res.status(400).json({
+        error: 'This descriptor only describes a deployment (docker-compose component) — deploy it, then add the components you want to explore before running discovery.',
+      });
+      return;
+    }
+
     const rewritten = rewriteForContainerNetwork(descriptor);
 
     const hasWebUi = descriptor.components.some((c) => c.type === 'web-ui');
@@ -1277,44 +1401,6 @@ app.post('/api/generate/snapshot', async (req, res) => {
   }
 });
 
-/**
- * Runs a command to completion, resolving with its exit code and combined
- * stdout+stderr regardless of that code — a failing test run is a normal,
- * expected *result* to report back to the caller, not a server error. Only
- * rejects if the process itself can't be spawned at all.
- *
- * `onLine`, if given, fires once per complete line of combined stdout+stderr
- * AS IT ARRIVES (plus once more for any trailing partial line once the
- * process exits) — `npx bddgen && npx playwright test` can run for minutes
- * with nothing but a static "running…" status otherwise; this is what lets a
- * caller stream that instead.
- */
-function runCommand(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, onLine?: (line: string) => void): Promise<{ code: number; output: string }> {
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn(cmd, args, { cwd, env });
-    let output = '';
-    let lineBuffer = '';
-    const handleChunk = (chunk: Buffer) => {
-      const text = chunk.toString();
-      output += text;
-      if (!onLine) return;
-      lineBuffer += text;
-      let newlineIndex;
-      while ((newlineIndex = lineBuffer.indexOf('\n')) >= 0) {
-        onLine(lineBuffer.slice(0, newlineIndex));
-        lineBuffer = lineBuffer.slice(newlineIndex + 1);
-      }
-    };
-    child.stdout.on('data', handleChunk);
-    child.stderr.on('data', handleChunk);
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (onLine && lineBuffer) onLine(lineBuffer);
-      resolvePromise({ code: code ?? 1, output });
-    });
-  });
-}
-
 app.post('/api/tests/run', async (req, res) => {
   try {
     const testEnv = TEST_RUN_ENV;
@@ -1476,7 +1562,7 @@ app.post('/api/e2e/apply/preview', async (req, res) => {
     // "Not applicable" (already applied, application_bug, no structuredFix,
     // etc.) is a normal, expected result to show the user inline — not a
     // server error. Same "expected failure is data, not a 500" philosophy
-    // documented on runCommand() above for /api/tests/run.
+    // documented on runCommand() (util/runCommand.ts) for /api/tests/run.
     if (!result.ok) {
       res.json({ applicable: false, outcome: result.outcome, reason: result.reason });
       return;
