@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { connect } from 'node:net';
@@ -63,12 +63,44 @@ async function assertMirroredMount(): Promise<string> {
         `"\${PWD}/targets:\${PWD}/targets" mount is missing or HOST_PROJECT_ROOT doesn't match how this container was actually started`,
     );
   }
-  if (targetsMount.Source !== targetsMount.Destination) {
-    throw new DeployTargetError(
-      `targets/ is mounted from "${targetsMount.Source}" but expected to match its own destination ` +
-        `"${targetsMount.Destination}" — the mirrored-path assumption bootstrap/deployTarget.ts depends on ` +
-        `does not hold, deploying would silently create empty directories instead of finding the real clone`,
+
+  // NOT a `targetsMount.Source === targetsMount.Destination` string check —
+  // confirmed live (2026-08-10) that Docker Desktop's own WSL2 backend can
+  // report Source as ITS OWN internal
+  // /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/<id> path instead
+  // of the raw host path, even while the underlying mount is genuinely,
+  // provably correct (real content was served through this exact mount
+  // moments before this same check would have failed a plain string
+  // comparison). A string-equality check produces a false-positive
+  // "mismatch" on exactly the platform this whole mechanism most needs to
+  // work on. Prove it empirically instead: write a uniquely-named marker
+  // file at this path from inside THIS container, then ask the HOST DAEMON
+  // itself — a fresh, throwaway sibling container, the same "peer of the
+  // daemon" trick descriptor/components/kafka.ts already relies on — to
+  // mount the identical absolute path and look for that marker. That's the
+  // actual thing that matters (does the daemon resolve this same string to
+  // the same real directory this container just wrote to), not what
+  // `docker inspect` happens to print for Source.
+  await mkdir(targetsDir, { recursive: true });
+  const marker = join(targetsDir, `.mirror-check-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  await writeFile(marker, '');
+  try {
+    const check = await runCommand(
+      'docker',
+      ['run', '--rm', '-v', `${targetsDir}:${targetsDir}:ro`, 'node:22-bookworm-slim', 'test', '-f', marker],
+      process.cwd(),
+      process.env,
     );
+    if (check.code !== 0) {
+      throw new DeployTargetError(
+        `mirrored-path check failed: a marker file just written to ${targetsDir} from inside this ` +
+          `container was not visible when the HOST daemon mounted that same absolute path — deploying ` +
+          `would silently create empty directories instead of finding the real clone (docker inspect's ` +
+          `own reported Source was "${targetsMount.Source}")`,
+      );
+    }
+  } finally {
+    await unlink(marker).catch(() => {});
   }
 
   return targetsDir;
