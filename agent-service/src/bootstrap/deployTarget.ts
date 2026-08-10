@@ -21,6 +21,11 @@ import type { DockerComposeComponent } from '../descriptor/schema.ts';
 // so `assertMirroredMount()` below checks this container's own mounts via
 // `docker inspect` before trusting HOST_PROJECT_ROOT at all, rather than
 // assuming the comment above stayed accurate.
+//
+// `bootstrap/probeTarget.ts` (step 4 — post-deploy probe-and-propose)
+// leans on this same HOST_PROJECT_ROOT-derived targets/ path for its own
+// sqlite-file directory scan, but doesn't re-run the mount assertion
+// itself — see that file's own comment for why it doesn't need to.
 // ---------------------------------------------------------------------------
 
 class DeployTargetError extends Error {}

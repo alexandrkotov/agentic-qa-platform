@@ -12,6 +12,7 @@
     --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
     --accent: #3a63d8; --accent-bg: #e8edfc;
     --danger: #b3261e; --danger-bg: #fbe9e7;
+    --warn: #9a6700; --warn-bg: #fff3d6;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -19,6 +20,7 @@
       --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
       --accent: #7c9bef; --accent-bg: #232c47;
       --danger: #f0847c; --danger-bg: #3a1f1e;
+      --warn: #e0b04d; --warn-bg: #332a10;
     }
   }
   * { box-sizing: border-box; }
@@ -71,6 +73,24 @@
     background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
     font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.72rem;
     color: var(--text-mute); white-space: pre-wrap; line-height: 1.5; box-sizing: border-box;
+  }
+  /* "Propose components" results — same neutral box language as
+     .gen-log above (this app has no separate "informational" color token),
+     deliberately not the red #issues styling since neither a found
+     candidate nor an unclassified note is an error. */
+  #probe-results {
+    margin: 0 0 1rem; padding: 0.6rem 0.8rem; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 6px; font-size: 0.8rem; line-height: 1.5;
+  }
+  #probe-results .probe-line { color: var(--text-mute); }
+  #probe-results .probe-line + .probe-line { margin-top: 0.3rem; }
+  /* Same pill shape/colors as generate.html's .gen-badge-unconfirmed — this
+     app's one established "heads up" badge pattern, reused rather than
+     invented fresh. Shown next to "Propose components" when the currently
+     selected target has no running containers yet. */
+  .badge-warn {
+    display: inline-block; background: var(--warn-bg); color: var(--warn);
+    border-radius: 999px; padding: 0.12rem 0.6rem; font-size: 0.7rem; font-weight: 700;
   }
   /* #operation-log specifically (not generate.html's own .gen-log uses)
      gets the full height <main> can spare — it's the one case on this page
@@ -280,6 +300,15 @@
         <button class="primary" id="deploy-btn" disabled>Deploy</button>
         <button class="primary" id="undeploy-btn" disabled>Remove</button>
       </div>
+      <!-- Same "has real running containers" signal undeploy-btn's own
+           enabled state already checks — proposing needs a live deploy
+           to read, same as removing needs one to tear down. Deliberately
+           NOT a "click offers to deploy first" button (an earlier version
+           of this worked that way) — the user's own call: predictable
+           and simple beats one button quietly doing two different things
+           depending on state. The badge just explains why it's disabled. -->
+      <button class="primary" id="probe-btn" disabled>Propose components</button>
+      <span id="probe-badge" class="badge-warn" style="display:none" title="This target has no running containers yet — deploy it first.">Not deployed yet</span>
     </div>
 
     <div class="side-tile">
@@ -310,6 +339,14 @@
         <label>Extra instructions <span class="hint">(optional — free text spliced into the discovery prompt)</span></label>
         <textarea id="extra-instructions" rows="4" placeholder="System-specific verification steps that don't generalize to other targets…"></textarea>
       </div>
+
+      <!-- "Propose components" writes here — a plain, dismissible
+           summary of what it just did to the cards below (evidence per
+           candidate) plus anything it genuinely couldn't classify. Neutral
+           styling on purpose: this isn't an error, and candidates are
+           already ordinary editable cards by the time this renders — this
+           block is transparency about *why*, not a second UI to act on. -->
+      <div id="probe-results" style="display:none"></div>
 
       <div class="components-head">
         <h3>Components</h3>
@@ -651,18 +688,30 @@ async function loadList() {
 // completes and Docker's real state has actually moved.
 async function updateDeployRemoveLabel() {
   const undeployBtn = document.getElementById('undeploy-btn');
+  const probeBtn = document.getElementById('probe-btn');
+  const probeBadge = document.getElementById('probe-badge');
   if (deployActionBusy) return; // runDeployAction's own finally re-derives this once it's done, not mid-flight
   undeployBtn.textContent = 'Remove';
   const name = document.getElementById('deploy-descriptor-select').value;
   if (!deployTargetsAvailable || !name) {
     undeployBtn.disabled = true;
+    probeBtn.disabled = true;
+    probeBadge.style.display = 'none';
     return;
   }
   try {
     const status = await api('/api/descriptors/' + encodeURIComponent(name) + '/deploy/status');
-    undeployBtn.disabled = status.containerNames.length === 0;
+    const hasContainers = status.containerNames.length > 0;
+    // Same real-containers-exist signal for both — Remove needs something
+    // to tear down, Propose needs a live deploy to actually read. The
+    // badge (same condition, deliberately) is what explains *why* it's
+    // disabled — the user's own call: simpler and more predictable than
+    // an earlier version where this button offered to deploy on click.
+    undeployBtn.disabled = !hasContainers;
+    probeBtn.disabled = !hasContainers;
+    probeBadge.style.display = hasContainers ? 'none' : 'inline-block';
   } catch {
-    // best-effort — a transient fetch failure just leaves the previous disabled state in place
+    // best-effort — a transient fetch failure just leaves the previous disabled/badge state in place
   }
 }
 document.getElementById('deploy-descriptor-select').addEventListener('change', updateDeployRemoveLabel);
@@ -690,6 +739,9 @@ async function selectDescriptor(name) {
   showMainView('editor');
   document.getElementById('editor-title').textContent = name + '.json';
   document.getElementById('extra-instructions').value = descriptor.extraInstructions || '';
+  // Stale results from probing a DIFFERENT descriptor shouldn't linger
+  // visible once the editor switches to this one.
+  document.getElementById('probe-results').style.display = 'none';
   // Baseline captured now, from what the server actually just returned —
   // before renderComponents() below, whose own updateSaveUndoDisabled()
   // call needs this in place already to correctly read "not dirty".
@@ -1260,10 +1312,10 @@ async function runDeployAction(triggerBtn, path, busyMessage, formatDone, kind, 
       if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
       statusEl.className = 'ok';
       // innerHTML, not textContent, ONLY here — formatDone's own port-map
-      // line (deploy-btn's onclick below) embeds a real clickable <a> to
-      // each published port. Nothing else in this status ever needs
-      // markup, and doneEvent's fields are this app's own server response,
-      // not user-controlled input.
+      // line (deployCurrentTarget's own formatDone below) embeds a real
+      // clickable <a> to each published port. Nothing else in this status
+      // ever needs markup, and doneEvent's fields are this app's own
+      // server response, not user-controlled input.
       statusEl.innerHTML = formatDone(doneEvent);
     }
   } catch (e) {
@@ -1283,8 +1335,7 @@ async function runDeployAction(triggerBtn, path, busyMessage, formatDone, kind, 
   }
 }
 
-document.getElementById('deploy-btn').onclick = async () => {
-  const btn = document.getElementById('deploy-btn');
+async function deployCurrentTarget(triggerBtn) {
   const name = document.getElementById('deploy-descriptor-select').value;
   if (!name) return;
 
@@ -1307,7 +1358,7 @@ document.getElementById('deploy-btn').onclick = async () => {
   if (!(await confirmModal(message, hasLeftovers ? 'danger' : 'time'))) return;
 
   await runDeployAction(
-    btn,
+    triggerBtn,
     `/api/descriptors/${encodeURIComponent(name)}/deploy`,
     (n) => `Deploying "${n}"…`,
     // localhost:PORT, not host.docker.internal:PORT, is the clickable
@@ -1323,7 +1374,9 @@ document.getElementById('deploy-btn').onclick = async () => {
     'deploy',
     'Deploy',
   );
-};
+}
+
+document.getElementById('deploy-btn').onclick = () => deployCurrentTarget(document.getElementById('deploy-btn'));
 
 document.getElementById('undeploy-btn').onclick = async () => {
   const btn = document.getElementById('undeploy-btn');
@@ -1367,6 +1420,74 @@ document.getElementById('undeploy-btn').onclick = async () => {
     'undeploy',
     'Remove',
   );
+};
+
+// Step (4) of the "External Target Onboarding" initiative — mechanical,
+// no Claude call, resolves in seconds, so unlike Deploy/Remove this is a
+// plain fetch+render, no NDJSON streaming, no confirm dialog (nothing
+// destructive happens — candidates only ever land in the editor's own
+// in-memory state, same as clicking "+ Add component" repeatedly;
+// nothing is written to disk until the human clicks the existing Save
+// button). Deliberately disabled (see the button's own HTML comment)
+// rather than offering to deploy on click — an earlier version of this
+// did that; the user's own call to simplify back to one predictable
+// thing per button.
+function renderProbeResults({ candidates, unclassified }) {
+  const el = document.getElementById('probe-results');
+  if (candidates.length === 0 && unclassified.length === 0) {
+    el.textContent = 'Probe found nothing new — every published port was already accounted for, or nothing responded.';
+    el.style.display = 'block';
+    return;
+  }
+  const lines = [];
+  if (candidates.length > 0) {
+    lines.push(`<div class="probe-line"><strong>Added ${candidates.length} candidate component(s) below</strong> — review and click Save when ready:</div>`);
+    for (const c of candidates) {
+      const label = c.component.name ? `${c.component.type} (${c.component.name})` : c.component.type;
+      lines.push(`<div class="probe-line">&middot; <strong>${label}</strong> — ${c.evidence}</div>`);
+    }
+  }
+  if (unclassified.length > 0) {
+    lines.push(`<div class="probe-line"><strong>Couldn't auto-classify ${unclassified.length} item(s):</strong></div>`);
+    for (const u of unclassified) {
+      lines.push(`<div class="probe-line">&middot; <strong>${u.label}</strong> — ${u.reason}</div>`);
+    }
+  }
+  el.innerHTML = lines.join('');
+  el.style.display = 'block';
+}
+
+document.getElementById('probe-btn').onclick = async () => {
+  const btn = document.getElementById('probe-btn');
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (!name) return;
+  btn.disabled = true;
+  try {
+    const result = await api(`/api/descriptors/${encodeURIComponent(name)}/probe`, { method: 'POST' });
+    // Land results somewhere visible. Two cases, not one: a different (or
+    // no) descriptor open needs the real switch selectDescriptor() does
+    // (state.components, savedSnapshot, editor-title, all of it); the
+    // SAME descriptor already open still needs showMainView('editor')
+    // explicitly — a plain Deploy click just before this one leaves the
+    // view on the operation panel (its own "Deployed. Ports: ..." status)
+    // and nothing else ever switches it back, so without this the new
+    // cards below would render into a hidden #editor behind that stale
+    // status instead of anywhere visible.
+    if (state.current !== name) {
+      await selectDescriptor(name);
+    } else {
+      showMainView('editor');
+    }
+    for (const candidate of result.candidates) {
+      state.components.push(candidate.component);
+    }
+    renderComponents(); // same mechanism #add-component's own onclick uses — cards render editable, nothing saved yet
+    renderProbeResults(result);
+  } catch (e) {
+    alert('Propose failed: ' + e.message);
+  } finally {
+    await updateDeployRemoveLabel(); // re-derives probe-btn's own disabled state, not just a blind re-enable
+  }
 };
 
 loadList();

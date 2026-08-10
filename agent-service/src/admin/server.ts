@@ -8,6 +8,7 @@ import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/sch
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames } from '../bootstrap/deployTarget.ts';
+import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { runCommand } from '../util/runCommand.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
@@ -335,6 +336,28 @@ app.post('/api/descriptors/:name/undeploy', async (req, res) => {
       return;
     }
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Post-deploy probe-and-propose (step 4 of the "External Target Onboarding"
+// initiative) — entirely mechanical, no Claude call, resolves in seconds
+// (a bit of JSON parsing plus a handful of real HTTP requests), so unlike
+// Discovery/Deploy above this is a plain JSON response, not NDJSON-streamed.
+// See bootstrap/probeTarget.ts's own module comment for the full design and
+// the real, verified-live facts (published-port dependency, sqlite files
+// never being named in the compose config, etc.) that shaped it.
+// ---------------------------------------------------------------------------
+
+app.post('/api/descriptors/:name/probe', async (req, res) => {
+  try {
+    res.json(await probeTarget(req.params.name));
+  } catch (err) {
+    if (err instanceof ProbeTargetError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

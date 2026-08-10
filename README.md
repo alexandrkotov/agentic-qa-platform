@@ -237,11 +237,17 @@ app's deploy manifest) — the Workbench's "Deploy target" action
 clones it and runs that compose file for real, via the same Docker socket
 `descriptor/components/kafka.ts` already uses for its own sibling MCP container, reusing the
 target's own declared host ports where they're free and remapping only on a real conflict. Once a
-deploy is up, a human adds the resulting real components (their now-reachable
-`host.docker.internal:<port>` URLs, reported back by the deploy) to the same descriptor by hand,
-same as writing any other descriptor — Discovery/Generate/E2E after that point are entirely
-unmodified. Proven end to end against [wger](https://github.com/wger-project/wger), a real,
-unrelated open-source app this project has never seen before.
+deploy is up, a "Propose components" button
+([`agent-service/src/bootstrap/probeTarget.ts`](agent-service/src/bootstrap/probeTarget.ts))
+mechanically inspects the running stack — the same flattened compose config and port map the deploy
+already wrote to disk, plus a handful of real HTTP requests — and drops candidate `web-ui`/
+`rest-api`/`sqlite`/`postgres` components straight into the descriptor editor, pre-filled and ready
+to review. No Claude call here either; a database whose port was never published to the host, or an
+engine this app has no component type for yet, is reported honestly as "couldn't auto-detect" rather
+than guessed at. A human still reviews, edits, and saves — same propose-then-confirm shape as every
+other agent output in this app, just entirely mechanical this time. Proven end to end against
+[wger](https://github.com/wger-project/wger) and [Uptime Kuma](https://github.com/louislam/uptime-kuma),
+two real, unrelated open-source apps this project has never seen before.
 
 ### The Workbench
 
@@ -258,8 +264,9 @@ managing the QA framework's own configuration):
   browser — a real, costed Claude call, with live progress streamed while the agentic tool-use loop
   runs, not just a static spinner. A "Deploy target" tile does the same live-streamed thing for a
   `docker-compose` component instead — no Claude call, but real containers, real image pulls, real
-  host ports — reporting back where each service actually ended up so the rest of the descriptor
-  can be filled in by hand.
+  host ports — reporting back where each service actually ended up. A "Propose components"
+  button then mechanically drafts the rest of the descriptor from that same running stack, so it's
+  no longer entirely by hand.
 - **Analysis** (`/visualize.html`) — turns an approved discovery report into diagrams. Architecture
   and entity-relationship diagrams are fully deterministic (instant, free, no LLM call — rendered
   straight from the report's own component list). UI inventory, cross-component sequence flow, and
