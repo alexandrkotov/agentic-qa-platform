@@ -1247,12 +1247,20 @@ const APP_ARCHIVE_DIR = join(APP_ROOT, 'archive');
  * these (rather than a code literal) without colliding with the host-mode
  * values living right next to them in the same file.
  */
-const BASE_TEST_RUN_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
+// Split out from BASE_TEST_RUN_ENV below so the snapshot route can build a
+// small, secret-free "what was actually used" file (resolveTestEnvForSnapshot)
+// without ever touching the full ...process.env spread — that spread carries
+// ANTHROPIC_API_KEY/OPENAI_API_KEY, which must never land in archive/.
+const CONTAINER_ENV_DEFAULTS: Record<string, string> = {
   BACKEND_URL: process.env.CONTAINER_BACKEND_URL ?? 'http://app:3000',
   FRONTEND_URL: process.env.CONTAINER_FRONTEND_URL ?? 'http://frontend:5173',
   DATABASE_URL: process.env.CONTAINER_DATABASE_URL ?? 'postgres://user:pass@db:5432/testdb',
   KAFKA_BROKERS: process.env.CONTAINER_KAFKA_BROKERS ?? 'kafka:9092',
+};
+
+const BASE_TEST_RUN_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  ...CONTAINER_ENV_DEFAULTS,
 };
 
 /**
@@ -1267,6 +1275,24 @@ async function buildTestRunEnv(descriptor?: string): Promise<NodeJS.ProcessEnv> 
   if (!descriptor) return BASE_TEST_RUN_ENV;
   const overrides = await loadTestEnvOverrides(descriptorPath(descriptor));
   return { ...BASE_TEST_RUN_ENV, ...overrides };
+}
+
+/**
+ * The snapshot's own "what env was really used" file — deliberately NOT a
+ * copy of the raw descriptors/<name>.env sidecar (that file doesn't exist
+ * at all for orderflow/kafka-demo, which rely purely on CONTAINER_ENV_DEFAULTS
+ * with no sidecar of their own), and deliberately NOT the full resolved
+ * process.env (that would leak ANTHROPIC_API_KEY/OPENAI_API_KEY straight
+ * into archive/, which is only .gitignored — not actually safe to treat as
+ * secret-free). Just the same two layers buildTestRunEnv() itself applies —
+ * base container defaults, then a descriptor's own overrides on top —
+ * flattened to plain KEY=VALUE text. A target with neither still gets a
+ * real, honest file (the base defaults), not an absent one.
+ */
+async function resolveTestEnvForSnapshot(descriptor: string): Promise<string> {
+  const overrides = await loadTestEnvOverrides(descriptorPath(descriptor));
+  const resolved: Record<string, string> = { ...CONTAINER_ENV_DEFAULTS, ...overrides };
+  return Object.entries(resolved).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
 }
 
 app.post('/api/generate/spec', async (req, res) => {
@@ -1499,10 +1525,13 @@ app.post('/api/generate/snapshot', async (req, res) => {
     await cp(descriptorPath(descriptor), join(snapshotDir, 'descriptor.json')).catch(() => {});
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.corrections.json'), join(snapshotDir, 'corrections.json')).catch(() => {});
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.uat.md'), join(snapshotDir, 'uat.md')).catch(() => {});
-    // The env overrides that were actually in effect for this descriptor's
-    // test runs (see testEnv.ts) — same no-op-if-missing shape as corrections/
-    // uat above (most descriptors, e.g. orderflow, have no overrides at all).
-    await cp(descriptorPath(descriptor).replace(/\.json$/, '.env'), join(snapshotDir, 'test-env.env')).catch(() => {});
+    // The env that was ACTUALLY in effect for this descriptor's test runs —
+    // resolved (base container defaults + this descriptor's own overrides,
+    // see resolveTestEnvForSnapshot's own comment), not a raw copy of the
+    // sidecar file. A descriptor with no sidecar of its own (orderflow,
+    // kafka-demo) still gets a real, honest file here — the shared base
+    // defaults it actually ran against — rather than nothing at all.
+    await writeFile(join(snapshotDir, 'test-env.env'), await resolveTestEnvForSnapshot(descriptor), 'utf-8').catch(() => {});
 
     // The exact recipe that produced THIS generation — not every
     // historical discovery report/grouping ever run for this descriptor;
