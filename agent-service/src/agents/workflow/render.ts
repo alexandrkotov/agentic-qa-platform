@@ -253,11 +253,17 @@ export function renderApiInventoryDiagram(report: DiscoveryReport): string | nul
   let i = 0;
   for (const [resource, group] of byResource) {
     const id = `r${i++}_${sanitizeId(resource)}`;
+    // <b> on just the method+path (not the description) so each entry's own
+    // start is visually distinct even once Mermaid line-wraps a long
+    // description — a plain <br/>-joined list of same-weight text reads as
+    // one continuous paragraph with no way to tell where one endpoint's
+    // wrapped description ends and the next one begins. A blank line
+    // (double <br/>) between entries reinforces that same separation.
     const rows = group.map((e) => {
       const desc = e.description ? ` — ${sanitizeLabel(e.description)}` : '';
-      return `${sanitizeLabel(e.method.toUpperCase())} ${sanitizeLabel(e.path)}${desc}`;
+      return `<b>${sanitizeLabel(e.method.toUpperCase())} ${sanitizeLabel(e.path)}</b>${desc}`;
     });
-    const label = `<b>${sanitizeLabel(resource)}</b><br/>${rows.join('<br/>')}`;
+    const label = `<b>${sanitizeLabel(resource)}</b><br/><br/>${rows.join('<br/><br/>')}`;
     lines.push(`    ${id}["${label}"]`);
   }
   return lines.join('\n');
