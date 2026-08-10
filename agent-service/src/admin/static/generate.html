@@ -400,6 +400,22 @@
       <button class="primary" id="render-btn" style="display:none">Write files</button>
       <span id="render-status"></span>
     </div>
+
+    <!-- Independent of the corrections/UAT dirty-tracking above — this is
+         edited far less often (typically once, when a new externally
+         deployed target is first wired up) so its own explicit Save button
+         is enough; no shared undo needed. -->
+    <div class="corrections-block">
+      <h2>Test-run environment overrides <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(optional — KEY=value lines overlaid on FRONTEND_URL/BACKEND_URL/etc. when tests run for this descriptor; needed for any externally deployed target)</span></h2>
+      <div class="row">
+        <textarea id="test-env-text" rows="4" style="width:100%; font-family:monospace" placeholder="FRONTEND_URL=http://host.docker.internal:3001&#10;UPTIME_KUMA_PASSWORD=..."></textarea>
+      </div>
+      <div class="row">
+        <button class="primary" id="save-test-env-btn">Save overrides</button>
+        <span id="test-env-status"></span>
+      </div>
+    </div>
+
     <div class="row">
       <button class="primary" id="run-tests-btn">Run tests</button>
       <span id="run-tests-status"></span>
@@ -452,6 +468,9 @@ function showStage(name) {
     const descriptor = document.getElementById('descriptor-name').value;
     loadCorrectionsIfNeeded(descriptor);
     loadUatIfNeeded(descriptor);
+  }
+  if (name === 'render') {
+    loadTestEnvIfNeeded(document.getElementById('descriptor-name').value);
   }
 }
 for (const s of STAGE_NAMES) {
@@ -1385,16 +1404,21 @@ document.getElementById('run-tests-btn').onclick = async () => {
   try {
     let doneEvent = null;
     let errorMessage = null;
-    await streamNdjson('/api/tests/run', { method: 'POST' }, (evt) => {
-      if (evt.type === 'progress') {
-        logEl.textContent += evt.message + '\n';
-        logEl.scrollTop = logEl.scrollHeight;
-      } else if (evt.type === 'done') {
-        doneEvent = evt;
-      } else if (evt.type === 'error') {
-        errorMessage = evt.error;
-      }
-    });
+    const descriptor = document.getElementById('descriptor-name').value || undefined;
+    await streamNdjson(
+      '/api/tests/run',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ descriptor }) },
+      (evt) => {
+        if (evt.type === 'progress') {
+          logEl.textContent += evt.message + '\n';
+          logEl.scrollTop = logEl.scrollHeight;
+        } else if (evt.type === 'done') {
+          doneEvent = evt;
+        } else if (evt.type === 'error') {
+          errorMessage = evt.error;
+        }
+      },
+    );
     if (errorMessage) throw new Error(errorMessage);
     if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
     const summary = doneEvent.testsPassed ? 'All tests passed.' : `Tests finished with failures (exit code ${doneEvent.testsExitCode}).`;
@@ -1728,6 +1752,46 @@ async function loadUatIfNeeded(descriptor) {
     setStage2GatedButtonsDisabled(!document.getElementById('spec-grouping-select').value);
   }
 }
+
+// Test-run environment overrides — deliberately its own small, independent
+// load/save pair rather than folded into the corrections/UAT dirty-tracking
+// above: this is edited far less often (typically once, when a new
+// externally deployed target is first wired up) and lives in a different
+// stage tab (render, not corrections), so a shared undo stack across both
+// would mostly just add risk for no real benefit.
+let testEnvLoadedForDescriptor = null;
+
+async function loadTestEnvIfNeeded(descriptor) {
+  if (!descriptor || descriptor === testEnvLoadedForDescriptor) return;
+  try {
+    const { text } = await api('/api/generate/env/' + encodeURIComponent(descriptor));
+    document.getElementById('test-env-text').value = text;
+    testEnvLoadedForDescriptor = descriptor;
+  } catch (e) {
+    setStatus(document.getElementById('test-env-status'), 'Failed to load: ' + e.message, 'err');
+  }
+}
+
+document.getElementById('save-test-env-btn').onclick = async () => {
+  const descriptor = document.getElementById('descriptor-name').value;
+  if (!descriptor) return;
+  const btn = document.getElementById('save-test-env-btn');
+  const statusEl = document.getElementById('test-env-status');
+  btn.disabled = true;
+  try {
+    await api('/api/generate/env/' + encodeURIComponent(descriptor), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: document.getElementById('test-env-text').value }),
+    });
+    testEnvLoadedForDescriptor = descriptor;
+    setStatus(statusEl, 'Saved.', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 // Appends onto whatever's already in the textarea instead of replacing it
 // — the whole point being that a file batch, then another file batch, then

@@ -25,6 +25,7 @@ import {
 } from '../agents/generate/contract.ts';
 import { loadCorrections, saveCorrections } from '../agents/generate/corrections.ts';
 import { loadUatContext, saveUatContext } from '../agents/generate/uat.ts';
+import { loadTestEnvOverrides, loadTestEnvText, saveTestEnvText } from '../agents/generate/testEnv.ts';
 import { extractTextFromFile, extractTextFromGoogleUrl } from '../agents/generate/uatExtract.ts';
 import multer from 'multer';
 import { proposeWorkflow } from '../agents/workflow/propose.ts';
@@ -968,6 +969,33 @@ app.put('/api/generate/uat/:descriptorName', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Test-run environment overrides — plain dotenv text (see testEnv.ts's own
+// comment for why). GET/PUT mirror the UAT pair above exactly.
+// ---------------------------------------------------------------------------
+
+app.get('/api/generate/env/:descriptorName', async (req, res) => {
+  try {
+    res.json({ text: await loadTestEnvText(descriptorPath(req.params.descriptorName)) });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/generate/env/:descriptorName', async (req, res) => {
+  try {
+    const { text } = req.body as { text?: string };
+    if (typeof text !== 'string') {
+      res.status(400).json({ error: '"text" is required' });
+      return;
+    }
+    await saveTestEnvText(descriptorPath(req.params.descriptorName), text);
+    res.json({ text });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 // Memory storage (not disk) — the extracted text is all that ever needs to
 // survive past this one request; nothing here writes the uploaded file
 // itself anywhere. Capped at 10 files per request — plenty for a UAT
@@ -1198,14 +1226,37 @@ const APP_ARCHIVE_DIR = join(APP_ROOT, 'archive');
  * /api/tests/run and every /api/e2e/* route that spawns bddgen/playwright —
  * confirmed live (see /api/tests/run's original comment) that every
  * scenario fails with ECONNREFUSED ::1:3000 without this override.
+ *
+ * This base is specific to THIS project's own orderflow compose network —
+ * wrong for any externally deployed target (a docker-compose component only
+ * reachable via host.docker.internal:<port>, e.g. Uptime Kuma). Overlaying a
+ * descriptor's own testEnv.ts overrides (see buildTestRunEnv below) is what
+ * makes an external target's own FRONTEND_URL/credentials actually take
+ * effect instead of silently falling back to these orderflow defaults —
+ * live-verified: without it, every scenario against Uptime Kuma failed with
+ * ERR_CONNECTION_REFUSED at http://frontend:5173.
  */
-const TEST_RUN_ENV: NodeJS.ProcessEnv = {
+const BASE_TEST_RUN_ENV: NodeJS.ProcessEnv = {
   ...process.env,
   BACKEND_URL: 'http://app:3000',
   FRONTEND_URL: 'http://frontend:5173',
   DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
   KAFKA_BROKERS: 'kafka:9092',
 };
+
+/**
+ * descriptor omitted (or no .env sidecar on disk yet) -> exactly
+ * BASE_TEST_RUN_ENV, unchanged from before this function existed — every
+ * existing orderflow/kafka-demo caller keeps working with zero behavior
+ * change. A descriptor with its own descriptors/<name>.env overlays those
+ * keys on top (loadTestEnvOverrides() itself already returns {} on a
+ * missing file, so a target with no overrides yet is the same no-op path).
+ */
+async function buildTestRunEnv(descriptor?: string): Promise<NodeJS.ProcessEnv> {
+  if (!descriptor) return BASE_TEST_RUN_ENV;
+  const overrides = await loadTestEnvOverrides(descriptorPath(descriptor));
+  return { ...BASE_TEST_RUN_ENV, ...overrides };
+}
 
 app.post('/api/generate/spec', async (req, res) => {
   try {
@@ -1379,6 +1430,20 @@ app.post('/api/generate/render', async (req, res) => {
 // about where a snapshot actually lands.
 // ---------------------------------------------------------------------------
 
+/** Same "newest file whose sourceReportPath matches" scan as /api/workflow/for-report
+ *  and its ui-flow/sequence-flow siblings above, factored out so the snapshot route
+ *  below can reuse it for all three approved-artifact kinds without repeating the loop. */
+async function findLatestApprovedArtifactPath(namePattern: RegExp, targetReportPath: string): Promise<string | null> {
+  const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+  const candidates = files.filter((f) => namePattern.test(f)).sort();
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const candidatePath = join(config.reportsDir, candidates[i]);
+    const raw = JSON.parse(await readFile(candidatePath, 'utf-8'));
+    if (raw.sourceReportPath === targetReportPath) return candidatePath;
+  }
+  return null;
+}
+
 async function resolveSnapshotContext(specName: string): Promise<{ descriptor: string; groupingPath: string; reportPath: string }> {
   const generation = ApprovedGenerationSchema.parse(JSON.parse(await readFile(specFilePath(specName), 'utf-8')));
   const groupingName = generation.sourceGroupingPath.split('/').pop()!;
@@ -1423,6 +1488,10 @@ app.post('/api/generate/snapshot', async (req, res) => {
     await cp(descriptorPath(descriptor), join(snapshotDir, 'descriptor.json')).catch(() => {});
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.corrections.json'), join(snapshotDir, 'corrections.json')).catch(() => {});
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.uat.md'), join(snapshotDir, 'uat.md')).catch(() => {});
+    // The env overrides that were actually in effect for this descriptor's
+    // test runs (see testEnv.ts) — same no-op-if-missing shape as corrections/
+    // uat above (most descriptors, e.g. orderflow, have no overrides at all).
+    await cp(descriptorPath(descriptor).replace(/\.json$/, '.env'), join(snapshotDir, 'test-env.env')).catch(() => {});
 
     // The exact recipe that produced THIS generation — not every
     // historical discovery report/grouping ever run for this descriptor;
@@ -1433,6 +1502,18 @@ app.post('/api/generate/snapshot', async (req, res) => {
     await cp(groupingPath, join(snapshotDir, 'grouping.json')).catch(() => {});
     await cp(specFilePath(specName), join(snapshotDir, 'approved-spec.json')).catch(() => {});
 
+    // Analysis-tab artifacts for this same discovery report, if any exist —
+    // only the three paid/approved ones (business workflow, UI flow,
+    // sequence flow). Architecture/ER/API Inventory are purely mechanical
+    // renders off discovery-report.json (already snapshotted above), so
+    // there's nothing separate to persist for those.
+    const workflowPath = await findLatestApprovedArtifactPath(WORKFLOW_APPROVED_NAME_PATTERN, reportPath);
+    if (workflowPath) await cp(workflowPath, join(snapshotDir, 'analytics-workflow.json')).catch(() => {});
+    const uiFlowPath = await findLatestApprovedArtifactPath(UI_FLOW_APPROVED_NAME_PATTERN, reportPath);
+    if (uiFlowPath) await cp(uiFlowPath, join(snapshotDir, 'analytics-ui-flow.json')).catch(() => {});
+    const sequencePath = await findLatestApprovedArtifactPath(SEQUENCE_APPROVED_NAME_PATTERN, reportPath);
+    if (sequencePath) await cp(sequencePath, join(snapshotDir, 'analytics-sequence-flow.json')).catch(() => {});
+
     res.json({ path: `archive/bdd-test-suite-${descriptor}-${timestamp}` });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
@@ -1441,7 +1522,13 @@ app.post('/api/generate/snapshot', async (req, res) => {
 
 app.post('/api/tests/run', async (req, res) => {
   try {
-    const testEnv = TEST_RUN_ENV;
+    // Optional — whatever's currently rendered into tests/ is what actually
+    // runs regardless; this is purely so an externally deployed target's own
+    // FRONTEND_URL/credentials (descriptors/<name>.env) overlay the
+    // orderflow-network defaults instead of silently falling back to them.
+    // Omit it and behavior is unchanged from before this field existed.
+    const { descriptor } = req.body as { descriptor?: string };
+    const testEnv = await buildTestRunEnv(descriptor);
     // bddgen + the real Playwright/Cucumber suite can run for minutes with
     // nothing but a static "running…" status otherwise — stream NDJSON
     // progress (one line of real command output per event), the same
@@ -1530,12 +1617,13 @@ app.post('/api/e2e/run', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     const provider = new ClaudeProvider();
+    const testEnv = await buildTestRunEnv(descriptor);
     try {
       const reports = [];
       for (const scenario of scenariosToRun) {
         send({ type: 'scenario-start', scenarioId: scenario.id, scenarioTitle: scenario.title });
         const { report, reportPath } = await runOneScenario(provider, 'claude', scenario, TESTS_ROOT, {
-          env: TEST_RUN_ENV,
+          env: testEnv,
           onProgress: (message) => send({ type: 'progress', message }),
           descriptor,
         });
@@ -1620,7 +1708,12 @@ app.post('/api/e2e/apply/preview', async (req, res) => {
 
 app.post('/api/e2e/apply/confirm', async (req, res) => {
   try {
-    const { report: reportName } = req.body as { report?: string };
+    // descriptor isn't persisted on the report itself (see runOneScenario's
+    // own opts) so, unlike /api/tests/run and /api/e2e/run, there's nothing
+    // to fall back on here — a caller re-verifying a fix against an
+    // externally deployed target has to pass it explicitly, same optional/
+    // backward-compatible shape as the other two routes otherwise.
+    const { report: reportName, descriptor } = req.body as { report?: string; descriptor?: string };
     if (!reportName) {
       res.status(400).json({ error: '"report" is required' });
       return;
@@ -1644,7 +1737,7 @@ app.post('/api/e2e/apply/confirm', async (req, res) => {
     try {
       const startedAt = new Date().toISOString();
       const report = await performApply(reportPath, TESTS_ROOT, result.preview, startedAt, {
-        env: TEST_RUN_ENV,
+        env: await buildTestRunEnv(descriptor),
         onProgress: (message) => send({ type: 'progress', message }),
       });
       send({ type: 'done', report });
