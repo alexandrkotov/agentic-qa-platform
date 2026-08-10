@@ -389,16 +389,21 @@
   </section>
 
   <section id="stage-render" hidden>
-    <h2>Write &amp; Run</h2>
-    <div class="row">
-      <span class="field-pair">
-        <label title="Scoped to Generate's currently selected grouping — switch that first if you don't see the round you're after. A large grouping is often approved across several separate rounds (e.g. retrying just the groups that failed last time), each covering only its own groups — pick one here and write it, then repeat for any other round, to get the complete suite on disk.">Approved spec ⓘ</label>
-        <select id="render-spec-select" style="min-width:22rem"></select>
-      </span>
-    </div>
-    <div class="row">
-      <button class="primary" id="render-btn" style="display:none">Write files</button>
-      <span id="render-status"></span>
+    <!-- Four equal-weight cards, same visual language as the Corrections
+         tab's own paired cards — deliberately NOT one flowing section like
+         this used to be. Each card is a distinct step: pick+write a spec,
+         optionally override test-run env, run the suite, view the report. -->
+    <div class="corrections-block">
+      <div class="row">
+        <span class="field-pair">
+          <label title="Scoped to Generate's currently selected grouping — switch that first if you don't see the round you're after. A large grouping is often approved across several separate rounds (e.g. retrying just the groups that failed last time), each covering only its own groups — pick one here and write it, then repeat for any other round, to get the complete suite on disk.">Approved spec ⓘ</label>
+          <select id="render-spec-select" style="min-width:22rem"></select>
+        </span>
+      </div>
+      <div class="row">
+        <button class="primary" id="render-btn" style="display:none">Write files</button>
+        <span id="render-status"></span>
+      </div>
     </div>
 
     <!-- Independent of the corrections/UAT dirty-tracking above — this is
@@ -406,28 +411,35 @@
          deployed target is first wired up) so its own explicit Save button
          is enough; no shared undo needed. -->
     <div class="corrections-block">
-      <h2>Test-run environment overrides <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(optional — KEY=value lines overlaid on FRONTEND_URL/BACKEND_URL/etc. when tests run for this descriptor; needed for any externally deployed target)</span></h2>
+      <h2>Test-run environment overrides</h2>
+      <p style="margin:0 0 0.75rem; color:var(--text-mute); font-size:0.78rem">optional — KEY=value lines overlaid on FRONTEND_URL/BACKEND_URL/etc. when tests run for this descriptor; needed for any externally deployed target</p>
       <div class="row">
         <textarea id="test-env-text" rows="4" style="width:100%; font-family:monospace" placeholder="FRONTEND_URL=http://host.docker.internal:3001&#10;UPTIME_KUMA_PASSWORD=..."></textarea>
       </div>
       <div class="row">
-        <button class="primary" id="save-test-env-btn">Save overrides</button>
+        <button class="primary" id="save-test-env-btn" disabled>Save</button>
+        <button class="primary" id="undo-test-env-btn" disabled title="Revert to the last loaded/saved overrides.">Undo</button>
         <span id="test-env-status"></span>
       </div>
     </div>
 
-    <div class="row">
-      <button class="primary" id="run-tests-btn">Run tests</button>
-      <span id="run-tests-status"></span>
+    <div class="corrections-block">
+      <div class="row">
+        <button class="primary" id="run-tests-btn">Run tests</button>
+        <span id="run-tests-status"></span>
+      </div>
+      <div class="row" id="run-tests-log-row" style="display:none">
+        <pre id="run-tests-log" class="gen-log"></pre>
+      </div>
+      <div class="row" id="run-tests-e2e-row" style="display:none">
+        <a href="/e2e.html" id="run-tests-e2e-link" class="link accent"></a>
+      </div>
     </div>
-    <div class="row" id="run-tests-log-row" style="display:none">
-      <pre id="run-tests-log" class="gen-log"></pre>
-    </div>
-    <div class="row" id="run-tests-e2e-row" style="display:none">
-      <a href="/e2e.html" id="run-tests-e2e-link" class="link accent"></a>
-    </div>
-    <div class="row">
-      <a class="primary" href="http://localhost:8080/" target="_blank" rel="noopener">Show Cucumber test report</a>
+
+    <div class="corrections-block">
+      <div class="row">
+        <a class="primary" href="http://localhost:8080/" target="_blank" rel="noopener">Show Cucumber test report</a>
+      </div>
     </div>
   </section>
 </main>
@@ -1792,23 +1804,40 @@ async function loadUatIfNeeded(descriptor) {
 }
 
 // Test-run environment overrides — deliberately its own small, independent
-// load/save pair rather than folded into the corrections/UAT dirty-tracking
+// load/save/undo rather than folded into the corrections/UAT dirty-tracking
 // above: this is edited far less often (typically once, when a new
 // externally deployed target is first wired up) and lives in a different
-// stage tab (render, not corrections), so a shared undo stack across both
-// would mostly just add risk for no real benefit.
+// stage tab (render, not corrections), so sharing that stack (multi-level,
+// typing-session-coalesced, tracks two fields at once) would mostly just add
+// risk for no real benefit. This is one plain textarea, so its own "dirty"
+// state is just "does it currently equal the last loaded/saved text" —
+// Undo here is a single revert-to-baseline, not a multi-step history.
 let testEnvLoadedForDescriptor = null;
+let testEnvBaseline = '';
+
+function updateTestEnvButtonsState() {
+  var dirty = document.getElementById('test-env-text').value !== testEnvBaseline;
+  var saveBtn = document.getElementById('save-test-env-btn');
+  var undoBtn = document.getElementById('undo-test-env-btn');
+  saveBtn.disabled = !dirty;
+  saveBtn.title = dirty ? '' : 'No changes to save yet.';
+  undoBtn.disabled = !dirty;
+}
 
 async function loadTestEnvIfNeeded(descriptor) {
   if (!descriptor || descriptor === testEnvLoadedForDescriptor) return;
   try {
     const { text } = await api('/api/generate/env/' + encodeURIComponent(descriptor));
     document.getElementById('test-env-text').value = text;
+    testEnvBaseline = text;
     testEnvLoadedForDescriptor = descriptor;
+    updateTestEnvButtonsState();
   } catch (e) {
     setStatus(document.getElementById('test-env-status'), 'Failed to load: ' + e.message, 'err');
   }
 }
+
+document.getElementById('test-env-text').addEventListener('input', updateTestEnvButtonsState);
 
 document.getElementById('save-test-env-btn').onclick = async () => {
   const descriptor = document.getElementById('descriptor-name').value;
@@ -1817,18 +1846,28 @@ document.getElementById('save-test-env-btn').onclick = async () => {
   const statusEl = document.getElementById('test-env-status');
   btn.disabled = true;
   try {
+    const text = document.getElementById('test-env-text').value;
     await api('/api/generate/env/' + encodeURIComponent(descriptor), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: document.getElementById('test-env-text').value }),
+      body: JSON.stringify({ text }),
     });
     testEnvLoadedForDescriptor = descriptor;
+    testEnvBaseline = text;
     setStatus(statusEl, 'Saved.', 'ok');
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
   } finally {
-    btn.disabled = false;
+    // Not a blind re-enable — a failed save leaves real unsaved changes
+    // sitting in the textarea, dirty either way this resolves.
+    updateTestEnvButtonsState();
   }
+};
+
+document.getElementById('undo-test-env-btn').onclick = () => {
+  document.getElementById('test-env-text').value = testEnvBaseline;
+  updateTestEnvButtonsState();
+  setStatus(document.getElementById('test-env-status'), '', '');
 };
 
 // Appends onto whatever's already in the textarea instead of replacing it
