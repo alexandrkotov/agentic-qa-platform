@@ -563,7 +563,13 @@ const modalTitle2 = document.getElementById('diagram-modal-title-2');
 const modalScroll2 = document.getElementById('diagram-modal-scroll-2');
 const zoomLevelEl = document.getElementById('diagram-zoom-level');
 const ZOOM_MIN = 0.4;
-const ZOOM_MAX = 4;
+// Raised from 4 (400%) — a real 23-table ER diagram (Uptime Kuma) still had
+// individual column text too small to read at the old ceiling, confirmed by
+// the user hitting the disabled + button with real content on screen, not a
+// hypothetical. 12 gives enough headroom for a dense diagram's own inner
+// text without needing to raise this again for a "normal"-sized one, since
+// zoom is relative to the diagram's natural size either way.
+const ZOOM_MAX = 12;
 const ZOOM_STEP = 0.2;
 let zoomLevel = 1;
 
