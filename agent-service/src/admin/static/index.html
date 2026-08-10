@@ -487,9 +487,16 @@ const FIELD_DEFS = {
   'postgres': [
     { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'postgresql://user:pass@host:5432/db' },
   ],
+  // knownEndpoints (an array of {method, path, description?} objects) isn't
+  // covered by any FIELD_DEFS "type" below — same reasoning as
+  // docker-compose's postUpExec: left out of this editor rather than
+  // building a bespoke array-of-objects widget for one field; edit it
+  // directly in the descriptor's JSON file. It's the alternative to
+  // swaggerUrl for a real API with no OpenAPI/Swagger spec — see
+  // descriptor/components/restApi.ts's own comment.
   'rest-api': [
-    { key: 'swaggerUrl', label: 'Swagger / OpenAPI URL', type: 'text', placeholder: 'http://localhost:3000/docs-json' },
-    { key: 'baseUrl', label: 'Base URL (optional)', type: 'text', placeholder: 'defaults to swagger URL origin' },
+    { key: 'swaggerUrl', label: 'Swagger / OpenAPI URL (optional if using knownEndpoints)', type: 'text', placeholder: 'http://localhost:3000/docs-json' },
+    { key: 'baseUrl', label: 'Base URL (required if using knownEndpoints)', type: 'text', placeholder: 'defaults to swagger URL origin' },
   ],
   'web-ui': [
     { key: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'http://localhost:5173' },

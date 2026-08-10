@@ -16,9 +16,34 @@ const PostgresComponentSchema = z.object({
 const RestApiComponentSchema = z.object({
   type: z.literal('rest-api'),
   name: z.string().optional(),
-  swaggerUrl: z.string().url(),
-  /** Base URL for calls made while verifying behavior; defaults to swaggerUrl's origin. */
+  /** Optional now — see knownEndpoints below for the no-spec-exists case. */
+  swaggerUrl: z.string().url().optional(),
+  /** Base URL for calls made while verifying behavior; defaults to swaggerUrl's origin
+   *  when swaggerUrl is set. Required when using knownEndpoints instead — there's no
+   *  swagger response to derive an origin from in that case. */
   baseUrl: z.string().url().optional(),
+  /**
+   * Alternative to swaggerUrl for a real API with no OpenAPI/Swagger spec
+   * (confirmed live for Uptime Kuma — every /swagger.json-style path just
+   * returns its SPA's own index.html, not a real spec) — a hand-verified
+   * list of genuine endpoints for the agent to probe directly via real HTTP
+   * requests instead of trusting a machine-readable spec that doesn't
+   * exist. Exactly one of swaggerUrl/knownEndpoints should be set; enforced
+   * in registry.ts's restApiBuilder at the point this is actually consumed
+   * (throws before any paid call starts), not here — same reasoning as
+   * sqlite.ts's resolveSafePath check living at execute-time rather than in
+   * this schema.
+   */
+  knownEndpoints: z
+    .array(
+      z.object({
+        method: z.string(),
+        path: z.string(),
+        description: z.string().optional(),
+      }),
+    )
+    .min(1)
+    .optional(),
 });
 
 const KafkaComponentSchema = z.object({

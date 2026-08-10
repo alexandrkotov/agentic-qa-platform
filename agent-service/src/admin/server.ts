@@ -404,7 +404,7 @@ function rewriteForContainerNetwork(descriptor: SystemDescriptor): SystemDescrip
       case 'rest-api':
         return {
           ...component,
-          swaggerUrl: rewriteHostIfLoopback(component.swaggerUrl, host),
+          swaggerUrl: component.swaggerUrl ? rewriteHostIfLoopback(component.swaggerUrl, host) : component.swaggerUrl,
           baseUrl: component.baseUrl ? rewriteHostIfLoopback(component.baseUrl, host) : component.baseUrl,
         };
       case 'web-ui':
@@ -416,11 +416,12 @@ function rewriteForContainerNetwork(descriptor: SystemDescriptor): SystemDescrip
   return { ...descriptor, components };
 }
 
-/** Effective base origin a rest-api component's own tools/frontend would call — baseUrl if set, else the swagger URL's own origin (mirrors restApiBuilder's own doc comment). */
+/** Effective base origin a rest-api component's own tools/frontend would call — baseUrl if set, else the swagger URL's own origin (mirrors restApiBuilder's own doc comment). Null when neither is set — restApiBuilder itself throws on that combination before any call starts, but this function runs earlier (deciding whether a rewrite is even needed), so it has to tolerate a still-incomplete component rather than assume that guard already ran. */
 function restApiOrigin(descriptor: SystemDescriptor): string | null {
   const restApi = descriptor.components.find((c): c is Extract<SystemComponent, { type: 'rest-api' }> => c.type === 'rest-api');
   if (!restApi) return null;
-  return new URL(restApi.baseUrl ?? restApi.swaggerUrl).origin;
+  const origin = restApi.baseUrl ?? restApi.swaggerUrl;
+  return origin ? new URL(origin).origin : null;
 }
 
 /**
