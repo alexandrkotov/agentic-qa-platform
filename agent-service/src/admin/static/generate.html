@@ -1165,6 +1165,11 @@ function renderSpec() {
   const expandControls = document.getElementById('gen-expand-controls');
   approveBtn.style.display = generationState ? '' : 'none';
   approveBtn.disabled = !generationState || generationState.groups.length === 0;
+  // Every call here means a *new* (unapproved) generation just landed —
+  // reset the label back from "Approved" (see spec-approve-btn's own
+  // onclick) even if the human never re-generated after a real change,
+  // since this is also the point a whole fresh Generate tests round starts.
+  approveBtn.textContent = 'Approve generation';
   expandControls.style.display = generationState && generationState.groups.length > 0 ? '' : 'none';
   if (!generationState) { updateStageGating(); return; }
 
@@ -1301,7 +1306,28 @@ document.getElementById('spec-generate-btn').onclick = async () => {
 };
 
 document.getElementById('spec-approve-btn').onclick = async () => {
+  const btn = document.getElementById('spec-approve-btn');
   const statusEl = document.getElementById('spec-status');
+  // /api/generate/spec/approve is free (no LLM call), but nothing stopped
+  // a second click landing mid-request — confirmed live: each click writes
+  // its own generate-spec-approved-<timestamp>.json, so a few fast clicks
+  // leave several duplicate approved-spec files on disk (harmless content,
+  // real clutter). Same missing-disabled-state shape as the three paid
+  // "propose" buttons in Analysis, just on a free route.
+  //
+  // Re-enabling in `finally` (matching those three buttons) isn't actually
+  // right *here* — confirmed live this is what actually confused the user
+  // into clicking several times: the button going straight back to
+  // "Approve generation" and clickable the instant a request resolves,
+  // with only a small status span (visually far from this button, on the
+  // far side of every group's card) signaling success, gave no strong
+  // enough "this already saved" cue. On success this button now STAYS
+  // disabled and relabels to "Approved" — the only thing that makes it a
+  // real "Approve generation" again is a genuinely new, unapproved
+  // generation landing (renderSpec() resets both when that happens). A
+  // real failure still re-enables it immediately, since there's nothing to
+  // protect against retrying.
+  btn.disabled = true;
   try {
     const result = await api('/api/generate/spec/approve', {
       method: 'POST',
@@ -1309,10 +1335,12 @@ document.getElementById('spec-approve-btn').onclick = async () => {
       body: JSON.stringify(generationState),
     });
     setStatus(statusEl, 'Approved → ' + result.path, 'ok');
+    btn.textContent = 'Approved';
     updateStageGating();
     refreshRenderSpecOptions(); // this round's file should show up immediately, not just after switching tabs
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+    btn.disabled = false;
   }
 };
 
