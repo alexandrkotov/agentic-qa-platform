@@ -372,47 +372,58 @@ function renderHtml(entries: UsageLogEntry[]): string {
       // runs, not just once — #controls' entire innerHTML (including these
       // very elements) gets replaced wholesale on every 5s poll swap below,
       // so any listener/value from a previous pass is gone along with it.
-      function applyFilters() {
+      // controlsChanged (default true) says whether #controls' own DOM nodes
+      // were actually just replaced (fresh page load, or a poll that swapped
+      // them). false means the SAME nodes as last time are still live — skip
+      // re-running their one-time setup (restoring .value from localStorage,
+      // attaching listeners), or every poll would pile up another duplicate
+      // listener on top of whatever's already there and re-stamp a value
+      // over whatever the user is mid-typing. formatTimestamps()/filterRows()
+      // still run either way — those act on #results, which always does get
+      // freshly swapped.
+      function applyFilters(controlsChanged) {
         formatTimestamps();
 
         var summaryEl = document.getElementById('summary');
         if (summaryEl) originalSummaryHtml = summaryEl.innerHTML;
 
-        var checkbox = document.getElementById('show-failed');
-        if (checkbox) {
-          var show = localStorage.getItem(SHOW_FAILED_KEY) === '1';
-          checkbox.checked = show;
-          document.body.classList.toggle('show-failed', show);
-          checkbox.addEventListener('change', function () {
-            localStorage.setItem(SHOW_FAILED_KEY, checkbox.checked ? '1' : '0');
-            document.body.classList.toggle('show-failed', checkbox.checked);
-            updateSummaryForFilter();
-          });
-        }
+        if (controlsChanged !== false) {
+          var checkbox = document.getElementById('show-failed');
+          if (checkbox) {
+            var show = localStorage.getItem(SHOW_FAILED_KEY) === '1';
+            checkbox.checked = show;
+            document.body.classList.toggle('show-failed', show);
+            checkbox.addEventListener('change', function () {
+              localStorage.setItem(SHOW_FAILED_KEY, checkbox.checked ? '1' : '0');
+              document.body.classList.toggle('show-failed', checkbox.checked);
+              updateSummaryForFilter();
+            });
+          }
 
-        var descriptorSel = document.getElementById('filter-descriptor');
-        if (descriptorSel) {
-          descriptorSel.value = localStorage.getItem(DESCRIPTOR_KEY) || '';
-          descriptorSel.addEventListener('change', function () {
-            localStorage.setItem(DESCRIPTOR_KEY, descriptorSel.value);
-            filterRows();
-          });
-        }
-        var fromInput = document.getElementById('filter-from');
-        if (fromInput) {
-          fromInput.value = localStorage.getItem(FROM_KEY) || '';
-          fromInput.addEventListener('input', function () {
-            localStorage.setItem(FROM_KEY, fromInput.value);
-            filterRows();
-          });
-        }
-        var toInput = document.getElementById('filter-to');
-        if (toInput) {
-          toInput.value = localStorage.getItem(TO_KEY) || '';
-          toInput.addEventListener('input', function () {
-            localStorage.setItem(TO_KEY, toInput.value);
-            filterRows();
-          });
+          var descriptorSel = document.getElementById('filter-descriptor');
+          if (descriptorSel) {
+            descriptorSel.value = localStorage.getItem(DESCRIPTOR_KEY) || '';
+            descriptorSel.addEventListener('change', function () {
+              localStorage.setItem(DESCRIPTOR_KEY, descriptorSel.value);
+              filterRows();
+            });
+          }
+          var fromInput = document.getElementById('filter-from');
+          if (fromInput) {
+            fromInput.value = localStorage.getItem(FROM_KEY) || '';
+            fromInput.addEventListener('input', function () {
+              localStorage.setItem(FROM_KEY, fromInput.value);
+              filterRows();
+            });
+          }
+          var toInput = document.getElementById('filter-to');
+          if (toInput) {
+            toInput.value = localStorage.getItem(TO_KEY) || '';
+            toInput.addEventListener('input', function () {
+              localStorage.setItem(TO_KEY, toInput.value);
+              filterRows();
+            });
+          }
         }
 
         filterRows();
@@ -429,10 +440,25 @@ function renderHtml(entries: UsageLogEntry[]): string {
           var res = await fetch(window.location.href, { cache: 'no-store' });
           var html = await res.text();
           var doc = new DOMParser().parseFromString(html, 'text/html');
-          ['subtitle', 'summary', 'note', 'controls', 'results'].forEach(function (id) {
+          // #controls' own innerHTML swap destroys and recreates every input
+          // inside it (the whole point of swap() being a blunt innerHTML
+          // replacement) — including whichever one a human is mid-interaction
+          // with. A <select>'s open dropdown or a <input type="datetime-local">'s
+          // native picker is anchored to that exact DOM node, so replacing it
+          // out from under an open picker closes it instantly — confirmed
+          // live: a poll landing mid-pick closed the calendar before a date
+          // could even be chosen. Skipping the controls swap for this one
+          // cycle (subtitle/summary/note/results still refresh normally)
+          // costs nothing but a few seconds' staleness on the descriptor
+          // list/failed-count, and the very next poll after focus moves on
+          // catches up.
+          var controlsEl = document.getElementById('controls');
+          var controlsFocused = !!(controlsEl && document.activeElement && controlsEl.contains(document.activeElement));
+          var ids = controlsFocused ? ['subtitle', 'summary', 'note', 'results'] : ['subtitle', 'summary', 'note', 'controls', 'results'];
+          ids.forEach(function (id) {
             swap(id, doc);
           });
-          applyFilters();
+          applyFilters(!controlsFocused);
         } catch (err) {
           console.warn('[usage-log] refresh failed', err);
         }
