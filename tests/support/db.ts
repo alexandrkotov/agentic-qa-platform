@@ -43,6 +43,19 @@ function bindPostgresStylePlaceholders(sql: string, params: unknown[]): string {
   return sql.replace(/\$(\d+)/g, (_, n) => sqlLiteral(params[Number(n) - 1]));
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The sqlite3 CLI is a fresh process per call with no shared connection pool
+// — under Playwright's default parallel workers, concurrent writer
+// invocations against the same file genuinely collide ("database is
+// locked"), confirmed live against Uptime Kuma's real db under 5 workers.
+// Postgres's own driver handles this itself; sqlite3 doesn't, so retry here
+// with a short backoff rather than push this into every step file that
+// happens to write.
+const SQLITE_BUSY_RETRIES = 5;
+
 async function sqliteQuery(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }> {
   const bound = bindPostgresStylePlaceholders(sql, params);
   // Deliberately NOT -readonly, unlike Discovery's own sqlite component
@@ -53,9 +66,17 @@ async function sqliteQuery(sql: string, params: unknown[]): Promise<{ rows: Reco
   // -readonly here made every write throw "attempt to write a readonly
   // database", the pg Client path across the same file never had this
   // restriction either.
-  const { stdout } = await execFileAsync('sqlite3', ['-json', SQLITE_DB_PATH!, bound]);
-  const rows = stdout.trim() ? JSON.parse(stdout) : [];
-  return { rows };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { stdout } = await execFileAsync('sqlite3', ['-json', SQLITE_DB_PATH!, bound]);
+      const rows = stdout.trim() ? JSON.parse(stdout) : [];
+      return { rows };
+    } catch (err) {
+      const locked = /database is locked/i.test((err as Error).message ?? '');
+      if (!locked || attempt >= SQLITE_BUSY_RETRIES) throw err;
+      await sleep(50 * 2 ** attempt); // 50, 100, 200, 400, 800ms
+    }
+  }
 }
 
 const pgClient = SQLITE_DB_PATH ? null : new Client({ connectionString: process.env.DATABASE_URL });

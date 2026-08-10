@@ -1,15 +1,42 @@
 Feature: security
 
   @security @security
-  Scenario: SQL Injection in customer email
-    Given I attempt to create a customer with SQL injection in the email field
-    When I submit the customer creation request
-    Then the customer creation should not execute arbitrary SQL
-    And the request should either fail validation or create a customer with the literal injection string
+  Scenario: Login with invalid credentials
+    Given I am on the Uptime Kuma login page for security testing
+    When I enter username "admin" for login attempt
+    And I enter an incorrect password "wrongpassword123"
+    And I click the login button
+    Then the login should fail with an error message
+    And no session should be created
 
   @security @security
-  Scenario: XSS in product name
-    Given I create a product with XSS payload in the name field
-    When I view the products page in the browser
-    Then the XSS payload should be escaped and displayed as text
-    And no script should execute on the page
+  Scenario: Access dashboard without authentication
+    Given I have no active session
+    When I attempt to navigate directly to the dashboard page
+    Then I should be redirected to the login page
+    And the dashboard content should not be accessible
+
+  @security @security
+  Scenario: Two-factor authentication setup
+    Given I am authenticated as admin for 2FA setup
+    When I navigate to the security settings for 2FA
+    And I initiate 2FA setup
+    Then the 2FA secret should be generated
+    And the twofa_status should be updated in the database
+
+  @happy_path @security
+  Scenario: Login with valid credentials
+    Given I am on the Uptime Kuma login page for valid login test
+    When I enter the admin username "admin"
+    And I enter the correct admin password
+    And I submit the login form
+    Then I should be redirected to the dashboard successfully
+    And my session should be active
+
+  @happy_path @security
+  Scenario: Create API key and test authentication
+    Given I am authenticated as admin for API key creation
+    When I navigate to the API keys settings
+    And I create a new API key with name "Test API Key"
+    Then the API key should appear in the api_key table
+    And the API key should be marked as active
