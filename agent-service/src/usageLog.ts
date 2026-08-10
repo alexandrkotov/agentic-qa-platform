@@ -178,8 +178,8 @@ function renderHtml(entries: UsageLogEntry[]): string {
     <label class="filter-field">Descriptor
       <select id="filter-descriptor"><option value="">All descriptors</option>${descriptorOptionsHtml}</select>
     </label>
-    <label class="filter-field">From (UTC) <input type="datetime-local" id="filter-from"></label>
-    <label class="filter-field">To (UTC) <input type="datetime-local" id="filter-to"></label>
+    <label class="filter-field">From <input type="datetime-local" id="filter-from"></label>
+    <label class="filter-field">To <input type="datetime-local" id="filter-to"></label>
   </div>`;
   const controlsHtml = filterHtml + failedToggleHtml;
 
@@ -276,25 +276,49 @@ function renderHtml(entries: UsageLogEntry[]): string {
         var fromInput = document.getElementById('filter-from');
         var toInput = document.getElementById('filter-to');
         var descriptor = descriptorSel ? descriptorSel.value : '';
-        var from = fromInput ? fromInput.value : '';
-        var to = toInput ? toInput.value : '';
+        // Real Date parsing, not a string comparison — a <datetime-local>
+        // value has no timezone of its own (the spec has the JS engine
+        // treat it as the BROWSER's own local time, same as the system
+        // clock a human is looking at), while data-timestamp is a real UTC
+        // ISO string (has a trailing "Z"). new Date(...) handles both
+        // correctly and gives back the same absolute instant
+        // either way — comparing .getTime() values is what actually makes
+        // "from"/"to" mean the same moment the user's own clock shows,
+        // regardless of which timezone that happens to be. A plain string
+        // comparison (the previous approach) silently assumed the human
+        // types UTC into the field, which nobody actually does by habit —
+        // confirmed live: a filter set to "now" by the system clock showed
+        // zero results, off by the local UTC offset.
+        var fromMs = fromInput && fromInput.value ? new Date(fromInput.value).getTime() : null;
+        var toMs = toInput && toInput.value ? new Date(toInput.value).getTime() : null;
         var rows = document.querySelectorAll('#results tr[data-timestamp]');
         rows.forEach(function (row) {
           var matches = true;
           if (descriptor && row.getAttribute('data-descriptor') !== descriptor) matches = false;
-          // YYYY-MM-DDTHH:mm prefix of an ISO 8601 UTC timestamp — matches
-          // <input type="datetime-local">'s own value format exactly (no
-          // seconds), so this is a plain string comparison, not a Date
-          // parse. The input's naive (timezone-less) value is treated as
-          // UTC here, same as the visible Timestamp column already is —
-          // labeled "(UTC)" on the field itself so that's not a silent
-          // assumption a non-UTC user would get wrong.
-          var timestamp = (row.getAttribute('data-timestamp') || '').slice(0, 16);
-          if (from && timestamp < from) matches = false;
-          if (to && timestamp > to) matches = false;
+          var rowMs = new Date(row.getAttribute('data-timestamp') || '').getTime();
+          if (fromMs !== null && rowMs < fromMs) matches = false;
+          if (toMs !== null && rowMs > toMs) matches = false;
           row.classList.toggle('filtered-out', !matches);
         });
         updateSummaryForFilter();
+      }
+
+      // The server bakes in the raw UTC ISO string (it doesn't know the
+      // viewer's timezone at render time) — swap each row's visible first
+      // cell for the SAME instant in the browser's own local time, so the
+      // Timestamp column actually matches what a human reads off their own
+      // system clock, same as the From/To filter above now does. Re-run
+      // after every 5s poll swap (not just once on load) since swap()
+      // replaces #results' innerHTML wholesale, wiping any earlier pass.
+      function formatTimestamps() {
+        document.querySelectorAll('#results tr[data-timestamp]').forEach(function (row) {
+          var iso = row.getAttribute('data-timestamp');
+          var cell = row.querySelector('td');
+          if (!iso || !cell) return;
+          var d = new Date(iso);
+          if (isNaN(d.getTime())) return;
+          cell.textContent = d.toLocaleString();
+        });
       }
 
       // Reuses the same #summary box a filter-free page already shows,
@@ -349,6 +373,8 @@ function renderHtml(entries: UsageLogEntry[]): string {
       // very elements) gets replaced wholesale on every 5s poll swap below,
       // so any listener/value from a previous pass is gone along with it.
       function applyFilters() {
+        formatTimestamps();
+
         var summaryEl = document.getElementById('summary');
         if (summaryEl) originalSummaryHtml = summaryEl.innerHTML;
 
