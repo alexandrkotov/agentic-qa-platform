@@ -45,7 +45,15 @@ function bindPostgresStylePlaceholders(sql: string, params: unknown[]): string {
 
 async function sqliteQuery(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }> {
   const bound = bindPostgresStylePlaceholders(sql, params);
-  const { stdout } = await execFileAsync('sqlite3', ['-readonly', '-json', SQLITE_DB_PATH!, bound]);
+  // Deliberately NOT -readonly, unlike Discovery's own sqlite component
+  // (descriptor/components/sqlite.ts) — that one stays read-only because
+  // exploration should never mutate a live target, but test fixture setup
+  // genuinely needs INSERT/UPDATE (e.g. a status_page created directly via
+  // SQL before a scenario verifies it through the UI/API). Confirmed live:
+  // -readonly here made every write throw "attempt to write a readonly
+  // database", the pg Client path across the same file never had this
+  // restriction either.
+  const { stdout } = await execFileAsync('sqlite3', ['-json', SQLITE_DB_PATH!, bound]);
   const rows = stdout.trim() ? JSON.parse(stdout) : [];
   return { rows };
 }
