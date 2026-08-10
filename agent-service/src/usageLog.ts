@@ -178,8 +178,8 @@ function renderHtml(entries: UsageLogEntry[]): string {
     <label class="filter-field">Descriptor
       <select id="filter-descriptor"><option value="">All descriptors</option>${descriptorOptionsHtml}</select>
     </label>
-    <label class="filter-field">From <input type="date" id="filter-from"></label>
-    <label class="filter-field">To <input type="date" id="filter-to"></label>
+    <label class="filter-field">From (UTC) <input type="datetime-local" id="filter-from"></label>
+    <label class="filter-field">To (UTC) <input type="datetime-local" id="filter-to"></label>
   </div>`;
   const controlsHtml = filterHtml + failedToggleHtml;
 
@@ -215,7 +215,7 @@ function renderHtml(entries: UsageLogEntry[]): string {
   .controls { margin-bottom: 1rem; }
   .filters { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-bottom: 0.75rem; }
   .filter-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: #8a8f98; text-transform: uppercase; letter-spacing: 0.03em; }
-  .filter-field select, .filter-field input[type="date"] {
+  .filter-field select, .filter-field input[type="datetime-local"] {
     font: inherit; text-transform: none; letter-spacing: normal; color: #e4e6eb;
     background: #1b1e27; border: 1px solid #2a2e3a; border-radius: 6px; padding: 0.35rem 0.5rem;
   }
@@ -282,9 +282,16 @@ function renderHtml(entries: UsageLogEntry[]): string {
         rows.forEach(function (row) {
           var matches = true;
           if (descriptor && row.getAttribute('data-descriptor') !== descriptor) matches = false;
-          var date = (row.getAttribute('data-timestamp') || '').slice(0, 10); // YYYY-MM-DD prefix of an ISO 8601 timestamp
-          if (from && date < from) matches = false;
-          if (to && date > to) matches = false;
+          // YYYY-MM-DDTHH:mm prefix of an ISO 8601 UTC timestamp — matches
+          // <input type="datetime-local">'s own value format exactly (no
+          // seconds), so this is a plain string comparison, not a Date
+          // parse. The input's naive (timezone-less) value is treated as
+          // UTC here, same as the visible Timestamp column already is —
+          // labeled "(UTC)" on the field itself so that's not a silent
+          // assumption a non-UTC user would get wrong.
+          var timestamp = (row.getAttribute('data-timestamp') || '').slice(0, 16);
+          if (from && timestamp < from) matches = false;
+          if (to && timestamp > to) matches = false;
           row.classList.toggle('filtered-out', !matches);
         });
         updateSummaryForFilter();
