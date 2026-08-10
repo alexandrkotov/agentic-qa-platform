@@ -116,7 +116,19 @@ export async function runDiscoveryForDescriptor(
     userMessage: USER_MESSAGE,
     mcpServers,
     tools,
-    maxIterations: 60,
+    // Raised from 60 -> 70 once a real descriptor (uptime-kuma) started
+    // carrying 3 explorable components (web-ui + sqlite + rest-api) instead
+    // of 1 — genuinely more exploration steps needed, not a runaway-loop
+    // symptom. This is a ceiling, not a fixed cost: the loop
+    // (ClaudeProvider.ts) exits the moment the model reaches end_turn, so
+    // most runs never get close to it — this only matters for a run that's
+    // currently hitting the cap and getting cut off mid-exploration. Cost
+    // does NOT scale linearly with the extra headroom, though: the full
+    // conversation gets resent every iteration, so the last iterations
+    // before whatever cap is hit are the most expensive ones, not the
+    // cheapest — confirmed live, a single-component discovery run already
+    // cost $8.99 at 1.76M input tokens before sqlite/rest-api existed.
+    maxIterations: 70,
     operation: 'discovery',
     descriptor: descriptorLabel,
     onProgress,
