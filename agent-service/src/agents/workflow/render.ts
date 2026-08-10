@@ -99,13 +99,25 @@ export function renderStateDiagram(entity: EntityWorkflow): RenderedEntityWorkfl
   return { name: entity.name, mermaid: lines.join('\n'), guards, invariants };
 }
 
+/** Strips separators/casing so "monitor_id"/"monitorId"/"MonitorID" all
+ *  collapse to the same key — lets the FK match below work regardless of
+ *  which naming convention a given system's schema actually uses. */
+function normalizeIdentifier(s: string): string {
+  return s.toLowerCase().replace(/_/g, '');
+}
+
 /**
  * Entirely mechanical, no LLM involvement at all: entities/columns come
  * straight from whichever components have `.tables[]` (never a hardcoded
  * component key — same shape-based convention agents/generate/group.ts
- * already uses), and foreign keys are inferred by the `<name>Id` naming
- * convention this system's own schema happens to follow, matched against
- * the other table names actually present in the same report.
+ * already uses), and foreign keys are inferred by an `<name>Id`/`<name>_id`
+ * naming convention, matched (case/separator-insensitively — see
+ * normalizeIdentifier) against the other table names actually present in
+ * the same report. Confirmed live this needs to cover BOTH conventions:
+ * orderflow's own Postgres schema uses camelCase (`customerId`), while a
+ * SQLite schema explored via the sqlite component type (e.g. Uptime Kuma's
+ * `monitor_id`, `user_id`) uses snake_case — a camelCase-only match against
+ * 22 of Kuma's 23 tables' real FK columns produced zero edges at all.
  *
  * Returns null when the report has no `.tables[]` anywhere (e.g. a
  * kafka-only descriptor) — there's nothing to draw, and an empty
@@ -114,7 +126,6 @@ export function renderStateDiagram(entity: EntityWorkflow): RenderedEntityWorkfl
 export function renderErDiagram(report: DiscoveryReport): string | null {
   const tables = Object.values(report.components).flatMap((c) => c.tables ?? []);
   if (tables.length === 0) return null;
-  const tableNames = new Set(tables.map((t) => t.name));
   const lines = ['erDiagram'];
 
   for (const table of tables) {
@@ -127,13 +138,16 @@ export function renderErDiagram(report: DiscoveryReport): string | null {
     lines.push('    }');
   }
 
+  const tableByNormalizedName = new Map<string, string>();
+  for (const t of tables) tableByNormalizedName.set(normalizeIdentifier(t.name), t.name);
+
   const seenEdges = new Set<string>();
   for (const table of tables) {
     for (const column of table.columns ?? []) {
-      const match = /^(.+)Id$/.exec(column.name);
+      const match = /^(.+?)(?:Id|_id)$/.exec(column.name);
       if (!match) continue;
-      const refName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-      if (refName === table.name || !tableNames.has(refName)) continue;
+      const refName = tableByNormalizedName.get(normalizeIdentifier(match[1]));
+      if (!refName || refName === table.name) continue;
       const edgeKey = `${refName}->${table.name}:${column.name}`;
       if (seenEdges.has(edgeKey)) continue;
       seenEdges.add(edgeKey);
