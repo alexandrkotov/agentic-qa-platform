@@ -77,6 +77,14 @@
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
   }
+  /* A plain <select> doesn't wrap its own displayed text — long option
+     labels (e.g. #render-spec-select's approved-spec list, joined group
+     names + timestamp) just render past the box's own edge instead,
+     confirmed live spilling down over the buttons in the row below.
+     Belt-and-suspenders alongside shortening the label text itself at the
+     JS call site: caps how wide any select on this page can ever grow and
+     ellipsis-truncates whatever still doesn't fit. */
+  select { max-width: 34rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   input[readonly] { background: var(--surface-2); color: var(--text-mute); cursor: default; }
   /* Tooltip-bearing labels/inputs/headers otherwise show whatever cursor the
      browser defaults to for that element type — arrow on some, text-caret on
@@ -1036,7 +1044,19 @@ async function refreshRenderSpecOptions() {
     for (const spec of specs) {
       const opt = document.createElement('option');
       opt.value = spec.name;
-      opt.textContent = `${spec.groups.join(', ')} — approved ${spec.approvedAt}`;
+      // A grouping with many groups (a large one approved across several
+      // rounds — see this function's own header comment) produces a
+      // group-list long enough to overflow a plain <select>, which doesn't
+      // wrap its own display text — confirmed live, the box's rendered
+      // text spilled down over the buttons below it. Truncate the VISIBLE
+      // label; the full list + exact timestamp still reach the human via
+      // `title` (a real native tooltip on hover), so nothing is actually
+      // lost, just not force-fit into one unbroken line.
+      const groupsLabel = spec.groups.length > 3
+        ? `${spec.groups.slice(0, 3).join(', ')} +${spec.groups.length - 3} more`
+        : spec.groups.join(', ');
+      opt.textContent = `${groupsLabel} — approved ${new Date(spec.approvedAt).toLocaleString()}`;
+      opt.title = `${spec.groups.join(', ')} — approved ${spec.approvedAt}`;
       select.appendChild(opt);
     }
     renderBtn.style.display = '';
