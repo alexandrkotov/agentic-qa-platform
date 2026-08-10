@@ -178,12 +178,8 @@ function renderHtml(entries: UsageLogEntry[]): string {
     <label class="filter-field">Descriptor
       <select id="filter-descriptor"><option value="">All descriptors</option>${descriptorOptionsHtml}</select>
     </label>
-    <label class="filter-field">From <span class="format-hint">(your local time — first segment is hours, second is minutes)</span>
-      <input type="datetime-local" id="filter-from">
-    </label>
-    <label class="filter-field">To <span class="format-hint">(your local time — first segment is hours, second is minutes)</span>
-      <input type="datetime-local" id="filter-to">
-    </label>
+    <label class="filter-field">From <input type="datetime-local" id="filter-from"></label>
+    <label class="filter-field">To <input type="datetime-local" id="filter-to"></label>
   </div>`;
   const controlsHtml = filterHtml + failedToggleHtml;
 
@@ -222,15 +218,6 @@ function renderHtml(entries: UsageLogEntry[]): string {
   .filter-field select, .filter-field input[type="datetime-local"] {
     font: inherit; text-transform: none; letter-spacing: normal; color: #e4e6eb;
     background: #1b1e27; border: 1px solid #2a2e3a; border-radius: 6px; padding: 0.35rem 0.5rem;
-  }
-  /* The picker itself is native browser/OS chrome — no way to label its
-     internal hour/minute segments from here at all, so this hint sits next
-     to the field instead. text-transform/letter-spacing reset back to
-     normal since .filter-field's own uppercase styling (meant for the short
-     "FROM"/"TO" label word) reads badly on a full sentence. */
-  .filter-field .format-hint {
-    text-transform: none; letter-spacing: normal; font-weight: 400;
-    color: #6b7280; font-size: 0.68rem;
   }
   tr.filtered-out { display: none !important; }
   .toggle { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: #8a8f98; cursor: pointer; user-select: none; }
