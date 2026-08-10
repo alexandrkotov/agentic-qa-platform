@@ -43,11 +43,15 @@ RUN chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 # way: git's own HTTPS backend fails every clone with "server certificate
 # verification failed. CAfile: none CRLfile: none" without it — apt doesn't
 # pull it in as a dependency of git itself on this slim base, and node:22's
-# own base image apparently doesn't ship a trust store either. --no-install-recommends
-# + the apt-lists cleanup keep this from reintroducing the image-bloat
-# concern the Debian-over-Alpine comment above already accepts a trade-off
-# on for Chromium.
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+# own base image apparently doesn't ship a trust store either. sqlite3: the
+# `sqlite` component type (descriptor/components/sqlite.ts) shells out to
+# the real CLI to run read-only queries against a docker-compose-deployed
+# target's own .db file — same reasoning as postgres's MCP server, just no
+# npm package exists for SQLite that's worth depending on here.
+# --no-install-recommends + the apt-lists cleanup keep this from
+# reintroducing the image-bloat concern the Debian-over-Alpine comment
+# above already accepts a trade-off on for Chromium.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Installs from the real package.json rather than a hand-picked package list,

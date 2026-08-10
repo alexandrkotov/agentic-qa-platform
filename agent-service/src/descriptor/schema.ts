@@ -58,6 +58,28 @@ const WebUiComponentSchema = z.object({
 });
 
 /**
+ * SQLite has no network protocol, so there's no connection string the way
+ * postgres has — this is a plain file read. Absolute-only + no ".."
+ * segments is the same defense-in-depth spirit as composeFile above; the
+ * builder (descriptor/components/sqlite.ts) additionally requires the
+ * resolved path to sit under this container's own mirrored targets/ mount
+ * before ever spawning sqlite3 against it, since a descriptor is a file a
+ * human hand-edits and this schema alone can't know what's actually safe
+ * to read on a given deployment.
+ */
+const SqliteComponentSchema = z.object({
+  type: z.literal('sqlite'),
+  name: z.string().optional(),
+  /** Path to the .db file as seen from inside the workbench container —
+   *  e.g. a docker-compose-deployed target's bind-mounted data dir (see
+   *  dockerCompose.ts's mirrored-mount comment for why that path is
+   *  directly visible here with no extra plumbing). */
+  path: z.string().refine((p) => p.startsWith('/') && !p.split('/').includes('..'), {
+    message: 'path must be an absolute path with no ".." segments',
+  }),
+});
+
+/**
  * Deployment provenance, not something to explore — a target system that
  * ships its own docker-compose.yml (e.g. wger's separate deploy-manifest
  * repo) gets cloned and deployed via the Docker socket already mounted
@@ -118,6 +140,7 @@ export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
 export type KafkaConsumerComponent = z.infer<typeof KafkaConsumerComponentSchema>;
 export type WebUiComponent = z.infer<typeof WebUiComponentSchema>;
 export type DockerComposeComponent = z.infer<typeof DockerComposeComponentSchema>;
+export type SqliteComponent = z.infer<typeof SqliteComponentSchema>;
 
 const SystemComponentSchema = z.discriminatedUnion('type', [
   PostgresComponentSchema,
@@ -126,6 +149,7 @@ const SystemComponentSchema = z.discriminatedUnion('type', [
   KafkaConsumerComponentSchema,
   WebUiComponentSchema,
   DockerComposeComponentSchema,
+  SqliteComponentSchema,
 ]);
 
 export const SystemDescriptorSchema = z

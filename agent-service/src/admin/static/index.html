@@ -514,6 +514,12 @@ const FIELD_DEFS = {
     { key: 'ref', label: 'Branch / tag / commit (optional)', type: 'text', placeholder: 'main' },
     { key: 'composeFile', label: 'Compose file path (optional)', type: 'text', placeholder: 'docker-compose.yml' },
   ],
+  // path must resolve under this container's own targets/ mount — see
+  // descriptor/components/sqlite.ts's resolveSafePath() for the actual
+  // check; this is just where a human types it, not where it's enforced.
+  'sqlite': [
+    { key: 'path', label: 'Path to .db file', type: 'text', placeholder: '/…/targets/<name>/repo/data/app.db' },
+  ],
 };
 
 async function api(path, opts) {
