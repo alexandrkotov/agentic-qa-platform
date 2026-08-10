@@ -1202,9 +1202,16 @@ function renderUiFlowEditor() {
 }
 
 document.getElementById('uf-propose-btn').onclick = async () => {
+  const btn = document.getElementById('uf-propose-btn');
   const statusEl = document.getElementById('uf-gen-status');
   const report = document.getElementById('report-select').value;
   if (!(await confirmModal(`Generate a UI inventory for "${report}"? This calls Claude and costs real money.`))) return;
+  // Confirming once isn't enough on its own to stop a second real (paid)
+  // call — nothing else here blocked another click landing mid-request.
+  // Disabled for the whole request, not just while the confirm dialog is
+  // open, and always re-enabled in `finally` so a failed call doesn't
+  // leave the button stuck.
+  btn.disabled = true;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.uiFlow = await api('/api/workflow/propose-ui-flow', {
@@ -1221,6 +1228,8 @@ document.getElementById('uf-propose-btn').onclick = async () => {
     );
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
   }
 };
 
@@ -1404,9 +1413,11 @@ function renderSequenceEditor() {
 }
 
 document.getElementById('seq-propose-btn').onclick = async () => {
+  const btn = document.getElementById('seq-propose-btn');
   const statusEl = document.getElementById('seq-gen-status');
   const report = document.getElementById('report-select').value;
   if (!(await confirmModal(`Generate a sequence flow model for "${report}"? This calls Claude and costs real money.`))) return;
+  btn.disabled = true;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.sequenceFlow = await api('/api/workflow/propose-sequence', {
@@ -1423,6 +1434,8 @@ document.getElementById('seq-propose-btn').onclick = async () => {
     );
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
   }
 };
 
@@ -1599,9 +1612,11 @@ function renderWorkflowEditor() {
 }
 
 document.getElementById('wf-propose-btn').onclick = async () => {
+  const btn = document.getElementById('wf-propose-btn');
   const statusEl = document.getElementById('wf-gen-status');
   const report = document.getElementById('report-select').value;
   if (!(await confirmModal(`Generate a workflow model for "${report}"? This calls Claude and costs real money.`))) return;
+  btn.disabled = true;
   setStatus(statusEl, 'Calling Claude — this costs money and may take a while…');
   try {
     state.workflow = await api('/api/workflow/propose', {
@@ -1618,6 +1633,8 @@ document.getElementById('wf-propose-btn').onclick = async () => {
     );
   } catch (e) {
     setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
   }
 };
 
