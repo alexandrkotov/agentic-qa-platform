@@ -102,6 +102,17 @@ export async function diagnoseFailure(
   testsRoot: string,
   scenario: E2EScenarioConfig,
   evidence: EvidenceBundle,
+  /** Which descriptor's tests/ tree this actually is, for the usage log
+   *  only — E2E still only ever runs against ONE tests/ tree at a time
+   *  (whatever's currently rendered there), it doesn't select between
+   *  several. Defaults to 'orderflow' (this project's own bundled target)
+   *  so every pre-existing caller that doesn't pass this keeps logging
+   *  exactly as it always has — callers driving E2E against a deployed
+   *  external target (see bootstrap/deployTarget.ts) should pass its real
+   *  descriptor name instead, or usage-log.jsonl misattributes real spend
+   *  to 'orderflow' (confirmed live: this happened for every e2e-diagnose
+   *  call made while testing against uptime-kuma). */
+  descriptor: string = 'orderflow',
 ): Promise<Diagnosis> {
   const sources: Record<string, string> = {};
   for (const relPath of [scenario.featurePath, ...scenario.stepsPaths]) {
@@ -119,11 +130,7 @@ export async function diagnoseFailure(
     tools: [],
     maxIterations: 5,
     operation: `e2e-diagnose:${scenario.id}`,
-    // E2E has no descriptor concept yet — it's hardcoded to one tests/
-    // tree (OrderFlow). Accurate today; revisit once E2E itself becomes
-    // multi-target (build-order steps 3/4 of the wizard initiative, not
-    // this one).
-    descriptor: 'orderflow',
+    descriptor,
   });
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);

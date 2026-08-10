@@ -19,6 +19,8 @@ export interface RunOneScenarioOpts {
    *  caller (e.g. the admin server, streaming NDJSON to a browser) can
    *  mirror that feedback live instead of only seeing it after the fact. */
   onProgress?: (message: string) => void;
+  /** Passed straight through to diagnoseFailure() for usage-log attribution — see its own comment for why this defaults to 'orderflow' rather than being required. */
+  descriptor?: string;
 }
 
 /**
@@ -37,7 +39,7 @@ export async function runOneScenario(
   testsRoot: string,
   opts: RunOneScenarioOpts = {},
 ): Promise<{ report: E2ERunReport; reportPath: string }> {
-  const { env, onProgress } = opts;
+  const { env, onProgress, descriptor } = opts;
   const progress = (message: string) => {
     console.log(message);
     onProgress?.(message);
@@ -54,7 +56,7 @@ export async function runOneScenario(
   let diagnosis = null;
   if (!passed) {
     progress('Scenario failed — running diagnosis (1 model call)');
-    diagnosis = await diagnoseFailure(provider, testsRoot, scenario, evidence);
+    diagnosis = await diagnoseFailure(provider, testsRoot, scenario, evidence, descriptor);
   } else {
     progress('Scenario passed — skipping diagnosis (no model call, no cost)');
   }
@@ -91,11 +93,15 @@ export async function runOneScenario(
  *   exact scenario id, an exact scenario title, or a tag (e.g. ['invalid-customer-id-in-api'],
  *   ['View order status history'], ['security'], ['WIP']). Resolved via
  *   resolveScenarioSelectors(). Omit to run every discovered scenario.
+ * @param descriptor Which descriptor's tests/ tree this run is actually against, for
+ *   usage-log.jsonl attribution only (see diagnoseFailure()'s own comment) — defaults
+ *   to 'orderflow' when omitted, same as every pre-existing caller already got.
  */
 export async function runE2EAgent(
   provider: AgentProvider,
   providerName: string,
   scenarioIds?: string[],
+  descriptor?: string,
 ): Promise<void> {
   console.log('\n=== Phase 4: E2E Agent (Suggest mode) ===\n');
 
@@ -121,7 +127,7 @@ export async function runE2EAgent(
 
   const reports: E2ERunReport[] = [];
   for (const scenario of scenariosToRun) {
-    const { report } = await runOneScenario(provider, providerName, scenario, TESTS_ROOT);
+    const { report } = await runOneScenario(provider, providerName, scenario, TESTS_ROOT, { descriptor });
     reports.push(report);
   }
 

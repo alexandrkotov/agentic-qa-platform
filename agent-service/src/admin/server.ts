@@ -1503,7 +1503,13 @@ app.get('/api/e2e/scenarios', async (_req, res) => {
 
 app.post('/api/e2e/run', async (req, res) => {
   try {
-    const { scenarioIds } = req.body as { scenarioIds?: string[] };
+    // Optional — E2E still only ever runs against ONE tests/ tree at a
+    // time (whatever's currently rendered there), not a per-request
+    // choice between several; this is purely for usage-log.jsonl
+    // attribution (see diagnoseFailure()'s own comment). Omit it and
+    // every diagnosis call still logs as 'orderflow', same as before this
+    // field existed.
+    const { scenarioIds, descriptor } = req.body as { scenarioIds?: string[]; descriptor?: string };
     const allScenarios = await discoverScenarios(TESTS_ROOT);
 
     let scenariosToRun;
@@ -1531,6 +1537,7 @@ app.post('/api/e2e/run', async (req, res) => {
         const { report, reportPath } = await runOneScenario(provider, 'claude', scenario, TESTS_ROOT, {
           env: TEST_RUN_ENV,
           onProgress: (message) => send({ type: 'progress', message }),
+          descriptor,
         });
         reports.push(report);
         // reportName (not the full path) is what /api/e2e/apply/preview and

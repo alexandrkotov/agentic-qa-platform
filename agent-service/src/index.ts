@@ -55,7 +55,7 @@ async function main() {
       await runDiscovery(createProvider(), descriptorArg || undefined);
       break;
     case 'e2e':
-      await runE2EAgent(createProvider(), providerName, scenarioArg ? scenarioArg.split(',') : undefined);
+      await runE2EAgent(createProvider(), providerName, scenarioArg ? scenarioArg.split(',') : undefined, descriptorArg || undefined);
       break;
     case 'apply-fix':
       if (!reportPathArg) {
