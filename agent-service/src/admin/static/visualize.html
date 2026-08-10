@@ -116,6 +116,29 @@
   #diagram-modal-scroll .row-rect-even path:first-of-type,
   #diagram-modal-scroll-2 .row-rect-even path:first-of-type { fill: var(--surface-2) !important; }
 
+  /* Same class of problem as the row-fill rule above, different element:
+     edge/relationship labels (an ER foreign-key name, an Architecture
+     "HTTP"/"SQL" hop, a state-diagram transition trigger) render at a fixed
+     14px Mermaid bakes into its own bundled stylesheet, ignoring
+     themeVariables.fontSize entirely — confirmed live via getComputedStyle,
+     14px on .edgeLabel text vs. the theme's actual 22px on the surrounding
+     node text in the very same modal render. Left uncorrected, a relation-
+     ship label stays visually tiny relative to everything else at any zoom
+     level, since zoom scales the whole rendered SVG uniformly rather than
+     fixing the underlying size mismatch. Matches BASE_FONT_SIZE/
+     MODAL_FONT_SIZE (see the JS constants of the same name) — kept as
+     literal values here since CSS can't read a JS const directly, same
+     duplication trade-off the rest of this file already accepts elsewhere. */
+  #arch-diagram .edgeLabel, #arch-diagram .edgeLabel p,
+  #arch-compare-diagram .edgeLabel, #arch-compare-diagram .edgeLabel p,
+  #er-diagram .edgeLabel, #er-diagram .edgeLabel p,
+  #er-compare-diagram .edgeLabel, #er-compare-diagram .edgeLabel p,
+  #uf-diagrams .edgeLabel, #uf-diagrams .edgeLabel p,
+  #seq-diagrams .edgeLabel, #seq-diagrams .edgeLabel p,
+  #wf-diagrams .edgeLabel, #wf-diagrams .edgeLabel p { font-size: 13px !important; }
+  #diagram-modal-scroll .edgeLabel, #diagram-modal-scroll .edgeLabel p,
+  #diagram-modal-scroll-2 .edgeLabel, #diagram-modal-scroll-2 .edgeLabel p { font-size: 22px !important; }
+
   .rule-section-label {
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--text-mute); margin: 0.75rem 0 0.35rem;
