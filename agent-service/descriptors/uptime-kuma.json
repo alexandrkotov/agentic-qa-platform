@@ -1,0 +1,63 @@
+{
+  "name": "uptime-kuma",
+  "components": [
+    {
+      "type": "docker-compose",
+      "repoUrl": "https://github.com/louislam/uptime-kuma",
+      "ref": "master",
+      "composeFile": "compose.yaml"
+    },
+    {
+      "type": "web-ui",
+      "baseUrl": "http://host.docker.internal:3001",
+      "routes": [
+        "/dashboard",
+        "/add",
+        "/settings"
+      ]
+    },
+    {
+      "type": "sqlite",
+      "name": "kuma_db",
+      "path": "/home/test/projects/agentic-qa-platform/targets/uptime-kuma/repo/data/kuma.db"
+    },
+    {
+      "type": "rest-api",
+      "name": "kuma_rest",
+      "baseUrl": "http://host.docker.internal:3001",
+      "knownEndpoints": [
+        {
+          "method": "GET",
+          "path": "/api/entry-page",
+          "description": "Which page the SPA should land on (status page vs. dashboard)."
+        },
+        {
+          "method": "GET",
+          "path": "/api/status-page/heartbeat/default",
+          "description": "Heartbeat/uptime data for the default status page."
+        },
+        {
+          "method": "GET",
+          "path": "/api/badge/1/status",
+          "description": "SVG status badge for monitor 1."
+        },
+        {
+          "method": "GET",
+          "path": "/api/badge/1/uptime",
+          "description": "SVG uptime badge for monitor 1."
+        },
+        {
+          "method": "GET",
+          "path": "/api/badge/1/ping",
+          "description": "SVG ping-time badge for monitor 1."
+        },
+        {
+          "method": "GET",
+          "path": "/api/push/testtoken",
+          "description": "Push-monitor heartbeat endpoint (real endpoint, 404 without a valid push token)."
+        }
+      ]
+    }
+  ],
+  "extraInstructions": "Log in first with username \"admin\" and password \"AqapDemo2026!\" (the login form is at /dashboard, unauthenticated visits redirect there). This is a lightweight self-hosted uptime-monitoring tool (Uptime Kuma) — a small single-page app, not a large multi-domain system like the other descriptors here. Keep exploration to the listed routes; adding a test monitor or two is fine, this is a private local instance."
+}
