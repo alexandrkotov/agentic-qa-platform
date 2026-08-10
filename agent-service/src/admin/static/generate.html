@@ -1085,6 +1085,16 @@ async function refreshRenderSpecOptions() {
   }
 }
 
+// "Wrote N file(s)" only describes whichever spec was selected at the
+// moment Write files last ran — confirmed live, it otherwise just sits
+// there unchanged after switching to a *different* round in this same
+// dropdown, reading as if that round had ALSO already been written when
+// nothing has happened for it yet. Clear it the instant the selection
+// itself changes, not just when a new Write files click resolves.
+document.getElementById('render-spec-select').addEventListener('change', () => {
+  setStatus(document.getElementById('render-status'), '');
+});
+
 async function onGroupingChanged() {
   const btn = document.getElementById('show-approved-spec-btn');
   btn.style.display = 'none';
