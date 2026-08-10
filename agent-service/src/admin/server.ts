@@ -1235,13 +1235,24 @@ const APP_ARCHIVE_DIR = join(APP_ROOT, 'archive');
  * effect instead of silently falling back to these orderflow defaults —
  * live-verified: without it, every scenario against Uptime Kuma failed with
  * ERR_CONNECTION_REFUSED at http://frontend:5173.
+ *
+ * These 4 keys deliberately do NOT come from process.env.BACKEND_URL etc.
+ * directly — agent-service/.env already defines those same names for a
+ * completely different purpose (host-mode `pnpm test`/`pnpm e2e`, run
+ * outside Docker, where localhost really is correct), and env_file already
+ * loads that .env into this container's own process.env before this file
+ * ever runs. Reusing the same keys here would silently break the
+ * ECONNREFUSED fix above the moment .env's host-mode values changed. A
+ * separate CONTAINER_* namespace lets .env be the one real place to edit
+ * these (rather than a code literal) without colliding with the host-mode
+ * values living right next to them in the same file.
  */
 const BASE_TEST_RUN_ENV: NodeJS.ProcessEnv = {
   ...process.env,
-  BACKEND_URL: 'http://app:3000',
-  FRONTEND_URL: 'http://frontend:5173',
-  DATABASE_URL: 'postgres://user:pass@db:5432/testdb',
-  KAFKA_BROKERS: 'kafka:9092',
+  BACKEND_URL: process.env.CONTAINER_BACKEND_URL ?? 'http://app:3000',
+  FRONTEND_URL: process.env.CONTAINER_FRONTEND_URL ?? 'http://frontend:5173',
+  DATABASE_URL: process.env.CONTAINER_DATABASE_URL ?? 'postgres://user:pass@db:5432/testdb',
+  KAFKA_BROKERS: process.env.CONTAINER_KAFKA_BROKERS ?? 'kafka:9092',
 };
 
 /**
