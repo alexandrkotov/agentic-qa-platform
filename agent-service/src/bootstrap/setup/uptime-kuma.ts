@@ -1,6 +1,13 @@
 import { chromium } from 'playwright';
+import type { SetupFn } from '../setupTarget.ts';
 
 /**
+ * File name IS the registration — setupTarget.ts's runSetup() dynamically
+ * imports `./setup/<descriptor-name>.ts` and calls its default export, so
+ * this file being named "uptime-kuma.ts" (matching descriptors/uptime-kuma.json
+ * exactly) is what wires it up; nothing else to edit. See setupTarget.ts's
+ * own top comment for the full convention (default export, SetupFn shape).
+ *
  * Uptime Kuma's own admin account can only be created via its real
  * browser-driven signup wizard — confirmed live, not assumed. No env var,
  * CLI flag, or REST endpoint pre-seeds it: two GitHub feature requests for
@@ -28,7 +35,7 @@ import { chromium } from 'playwright';
  * something that wasn't undeployed) is a fast no-op instead of trying to
  * re-run a wizard that no longer exists.
  */
-export async function setupUptimeKuma(env: Record<string, string>, onProgress?: (message: string) => void): Promise<void> {
+const setupUptimeKuma: SetupFn = async (env, onProgress) => {
   const baseUrl = env.FRONTEND_URL;
   if (!baseUrl) throw new Error('uptime-kuma setup needs FRONTEND_URL in descriptors/uptime-kuma.env');
   const password = env.UPTIME_KUMA_PASSWORD;
@@ -73,4 +80,6 @@ export async function setupUptimeKuma(env: Record<string, string>, onProgress?: 
   } finally {
     await browser.close();
   }
-}
+};
+
+export default setupUptimeKuma;

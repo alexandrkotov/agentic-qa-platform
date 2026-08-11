@@ -8,7 +8,7 @@ import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/sch
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames } from '../bootstrap/deployTarget.ts';
-import { hasSetup, runSetup } from '../bootstrap/setupTarget.ts';
+import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { runCommand } from '../util/runCommand.ts';
 import { expandHostProjectRoot } from '../util/expandHostProjectRoot.ts';
@@ -1608,6 +1608,15 @@ app.post('/api/generate/snapshot', async (req, res) => {
 
     await cp(descriptorPath(descriptor), join(snapshotDir, 'descriptor.json')).catch(() => {});
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.corrections.json'), join(snapshotDir, 'corrections.json')).catch(() => {});
+    // This descriptor's own first-run setup script (bootstrap/setupTarget.ts),
+    // if it has one — most don't (see that file's own comment for why). A
+    // snapshot without this would be silently incomplete for a target like
+    // uptime-kuma: everything needed to regenerate/rerun the suite would be
+    // there except the one piece of automation that makes a fresh deploy of
+    // THIS target actually reach a logged-in, testable state.
+    if (hasSetup(descriptor)) {
+      await cp(setupScriptPath(descriptor), join(snapshotDir, 'setup-script.ts')).catch(() => {});
+    }
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.uat.md'), join(snapshotDir, 'uat.md')).catch(() => {});
     // The env that was ACTUALLY in effect for this descriptor's test runs —
     // resolved (base container defaults + this descriptor's own overrides,

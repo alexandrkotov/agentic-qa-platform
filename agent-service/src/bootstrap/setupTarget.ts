@@ -1,38 +1,65 @@
-import { setupUptimeKuma } from './setup/uptimeKuma.ts';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
- * Per-descriptor one-time "first run" setup — the same shape as
- * descriptor/registry.ts's componentRegistry, but for a completely
- * different concern: a target whose own admin account/config doesn't
- * survive a fresh docker-compose deploy (its data lives outside git, in a
- * directory a bind mount only populates once the app has actually run and
- * a human has walked through its own first-run wizard). Most targets don't
- * need an entry here at all — either their setup was a one-time manual
- * step already done by hand (e.g. Snipe-IT's `.env` copy, nopCommerce's
- * install wizard — see project_external_target_demo_idea in memory) and
- * never needs redoing, or the target has no such wizard to begin with.
- * This exists specifically for the case CI hits every single run: Uptime
- * Kuma's own sqlite data (and therefore its admin account) is genuinely
- * ephemeral across a fresh deploy, so its setup has to be automated and
- * re-run, not just documented as a one-time human step.
+ * Per-descriptor one-time "first run" setup — a completely different
+ * concern from descriptor/registry.ts's componentRegistry (that one's a
+ * small, fixed set of hand-written component *types*; this is potentially
+ * one file per *target*, growing every time a new one needs it). Most
+ * targets don't need an entry here at all — either their setup was a
+ * one-time manual step already done by hand (e.g. Snipe-IT's `.env` copy,
+ * nopCommerce's install wizard — see project_external_target_demo_idea in
+ * memory) and never needs redoing, or the target has no such wizard to
+ * begin with. This exists specifically for the case CI hits every single
+ * run: a target whose own admin account/config doesn't survive a fresh
+ * docker-compose deploy (its data lives outside git, in a directory a bind
+ * mount only populates once the app has actually run and something has
+ * walked through its own first-run wizard) — Uptime Kuma is the first real
+ * example.
+ *
+ * Auto-discovered by filename, NOT a hand-maintained Record: a setup script
+ * for descriptor "foo" lives at `bootstrap/setup/foo.ts` (this file's own
+ * sibling directory) with a default export matching SetupFn — that's the
+ * entire registration. Add the file, name it right, done; nothing here
+ * needs editing for a new target to pick up its own setup script. (Contrast
+ * componentRegistry, which stays a hand-maintained Record on purpose —
+ * there will only ever be a handful of component *types*, each needing its
+ * own real prompt-engineering code, so a lookup-by-convention would buy
+ * nothing there.)
  */
 export type SetupFn = (env: Record<string, string>, onProgress?: (message: string) => void) => Promise<void>;
 
-const setupRegistry: Record<string, SetupFn> = {
-  'uptime-kuma': setupUptimeKuma,
-};
+const SETUP_DIR = join(dirname(fileURLToPath(import.meta.url)), 'setup');
+
+/** Exported so callers that just need to know/copy the file (e.g. the
+ *  snapshot route bundling a descriptor's own setup script alongside its
+ *  other sidecars) don't have to re-derive this convention themselves. */
+export function setupScriptPath(name: string): string {
+  return join(SETUP_DIR, `${name}.ts`);
+}
 
 export function hasSetup(name: string): boolean {
-  return name in setupRegistry;
+  return existsSync(setupScriptPath(name));
 }
 
 export async function runSetup(name: string, env: Record<string, string>, onProgress?: (message: string) => void): Promise<void> {
-  const fn = setupRegistry[name];
-  if (!fn) {
+  if (!hasSetup(name)) {
     throw Object.assign(
-      new Error(`No first-run setup script registered for "${name}" — most targets don't need one (see setupTarget.ts's own comment for why).`),
+      new Error(
+        `No first-run setup script registered for "${name}" — most targets don't need one (see this file's own top comment for why). ` +
+          `To add one: create bootstrap/setup/${name}.ts with a default export matching SetupFn — it's auto-discovered by that filename, nothing else to wire up.`,
+      ),
       { status: 400 },
     );
   }
-  await fn(env, onProgress);
+  // Dynamic import, not a static one: the whole point is that this module
+  // never needs to know the full list of descriptors with setup scripts
+  // ahead of time. hasSetup()'s existsSync check above already guarantees
+  // the file is there before this ever runs.
+  const mod = (await import(`./setup/${name}.ts`)) as { default?: SetupFn };
+  if (typeof mod.default !== 'function') {
+    throw new Error(`bootstrap/setup/${name}.ts must have a default export matching SetupFn's shape (env, onProgress?) => Promise<void>.`);
+  }
+  await mod.default(env, onProgress);
 }

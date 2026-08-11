@@ -201,7 +201,11 @@ validated with zod) describing a target system as a list of typed components:
 | Component | Fields | What it gets discovery access to |
 |---|---|---|
 | `postgres` | `connectionString` | Schema + sample rows, via `@modelcontextprotocol/server-postgres` |
-| `rest-api` | `swaggerUrl`, optional `baseUrl` | The full OpenAPI spec |
+| `mysql` | `connectionString` | Read-only `SELECT`/`SHOW`/`DESCRIBE` queries, via a hand-written tool (no official MCP server exists for MySQL/MariaDB) |
+| `mongo` | `connectionString` | Schema + sample docs, via the official `mongodb-mcp-server` |
+| `mssql` | `connectionString` | Read-only `SELECT` queries, via a hand-written tool (same reasoning as `mysql`) |
+| `sqlite` | `path` (a `.db` file, `${HOST_PROJECT_ROOT}`-relative — see below) | Read-only queries against a docker-compose-deployed target's own bind-mounted `.db` file, via the real `sqlite3` CLI |
+| `rest-api` | `swaggerUrl` (or `knownEndpoints` when no spec exists), optional `baseUrl` | The full OpenAPI spec, or a hand-verified endpoint list |
 | `web-ui` | `baseUrl`, `routes` | Live browser navigation, via Playwright MCP |
 | `kafka` | `brokers`, optional `sasl`/`tls` | Whole-broker exploration — topics, configs, sample messages, consumer groups, via [`tuannvm/kafka-mcp-server`](https://github.com/tuannvm/kafka-mcp-server) |
 | `kafka-consumer` | `brokers`, `topic`, optional `sampleSize` | One named topic only — message count, inferred payload shape, anomalies (same MCP server, narrower prompt) |
@@ -214,16 +218,19 @@ for each component type stays small, explicit, and visible, rather than folded i
 discovery prompt. Adding a new target system means writing a descriptor JSON, not touching code;
 adding a new *kind* of component means one new builder file plus one line in the registry.
 
-Four descriptors exist today, all under
+Eight descriptors exist today, all under
 [`agent-service/descriptors/`](agent-service/descriptors/): `orderflow.json` (this app — postgres +
 rest-api + web-ui + a `kafka-consumer` watching the `orders.status-changed` topic),
 `kafka-demo.json` (a bare Kafka broker, nothing else — whole-broker exploration via the plain
-`kafka` component), `kafka-consumer-demo.json` (the same broker, narrowed to one topic), and
-`wger.json` (a real, unrelated open-source app this project has never seen before, deployed via its
-own `docker-compose` component — see above) — proof that the descriptor genuinely describes an
-arbitrary system, not just this one. Point discovery at any of them with
-`pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag defaults to `orderflow.json`,
-so `pnpm discovery` behaves exactly as before.
+`kafka` component), `kafka-consumer-demo.json` (the same broker, narrowed to one topic), and five
+real, unrelated open-source apps this project has never seen before, each deployed via its own
+`docker-compose` component (see above) and each proving out a different `mysql`/`mongo`/`mssql`/
+`sqlite` component type against a real, independently-built database engine — not a mock:
+[wger](https://github.com/wger-project/wger) (postgres), `snipe-it.json` (mysql),
+`wekan.json` (mongo), `nopcommerce.json` (mssql), and `uptime-kuma.json` (sqlite — plus the only
+descriptor so far that also needs a first-run setup script, see "Adding a new target" below). Point
+discovery at any of them with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag
+defaults to `orderflow.json`, so `pnpm discovery` behaves exactly as before.
 
 `orderflow.json` also carries an optional `cleanupSql: string[]` — raw SQL run afterward through a
 direct, write-capable Postgres connection the LLM never sees, since the agent's own `postgres`
@@ -248,6 +255,62 @@ than guessed at. A human still reviews, edits, and saves — same propose-then-c
 other agent output in this app, just entirely mechanical this time. Proven end to end against
 [wger](https://github.com/wger-project/wger) and [Uptime Kuma](https://github.com/louislam/uptime-kuma),
 two real, unrelated open-source apps this project has never seen before.
+
+### Adding a new target
+
+Everything above composes into one path for onboarding a brand-new external target system so it
+just works end to end — including CI, with zero pipeline edits. Checklist, in order:
+
+1. **Descriptor + deploy.** Create `agent-service/descriptors/<name>.json` with a `docker-compose`
+   component pointing at the target's own deploy-manifest repo (see above), deploy it from the
+   Workbench, then use "Propose components" to mechanically draft the rest — currently proposes
+   `web-ui`/`rest-api`/`postgres`/`sqlite` components straight from the running stack. `mysql`/
+   `mongo`/`mssql` (newer engine types, added for Snipe-IT/Wekan/nopCommerce) aren't wired into
+   `probeTarget.ts`'s own detection yet — add those by hand for now (`connectionString`, same shape
+   as `postgres`).
+2. **Portable paths.** Any component field that names a file under this deployment's own mirrored
+   `targets/` mount (today, only `sqlite`'s `path`) must use the `${HOST_PROJECT_ROOT}` placeholder
+   — e.g. `"${HOST_PROJECT_ROOT}/targets/<name>/repo/data/foo.db"` — not a literal absolute prefix.
+   `descriptor/components/sqlite.ts`'s `resolveSafePath` expands it against this container's own
+   `HOST_PROJECT_ROOT` env var at read time. A hardcoded dev-machine path works by pure coincidence
+   on the machine it was written on and breaks everywhere else (this exact bug shipped once, real
+   symptom: `sqlite3` failing with "unable to open database file" on a CI runner whose checkout
+   lives at a different path than the author's laptop).
+3. **Env overrides, if needed.** A target only reachable via `host.docker.internal:<port>` (not this
+   project's own `app`/`frontend` compose network) needs `agent-service/descriptors/<name>.env` —
+   `FRONTEND_URL`/`BACKEND_URL`/credentials/etc., editable from the Workbench's Test Suite tab. See
+   `agent-service/src/agents/generate/testEnv.ts`'s own comment for the full mechanism.
+4. **Generate + write the suite.** Run Discovery → Generate → Write & Run as usual. Writing the
+   suite (`POST /api/generate/render`) automatically records which descriptor `tests/features/`/
+   `tests/steps/` now belong to, in `tests/.current-descriptor` — this is what lets CI (below) stay
+   descriptor-agnostic; nothing to edit by hand.
+5. **First-run setup, only if the target needs it.** Most targets don't — either a one-time manual
+   step already covers it (e.g. copying a `.env`, running an install wizard once against a target
+   whose data then persists in its own volume) or there's no such wizard at all. It's needed when a
+   target's own admin account/config does **not** survive a fresh `docker-compose` deploy (its data
+   lives outside git, in a directory the bind mount only populates once something has walked through
+   the app's own first-run wizard) — CI hits exactly this on every single run. When it applies,
+   create `agent-service/src/bootstrap/setup/<name>.ts` with a default export matching `SetupFn`
+   (`(env, onProgress?) => Promise<void>`) — the filename **is** the registration, matching the
+   descriptor's own name; nothing else to wire up (`bootstrap/setupTarget.ts`'s `hasSetup`/`runSetup`
+   discover it dynamically). Use real Playwright browser automation of the target's actual wizard,
+   not an undocumented internal API — see
+   [`agent-service/src/bootstrap/setup/uptime-kuma.ts`](agent-service/src/bootstrap/setup/uptime-kuma.ts)
+   as the reference example. Check whether setup is already done before doing anything (the target's
+   own "am I configured yet" endpoint, or equivalent) and return early if so — CI calls this
+   unconditionally on every run, so it has to be a safe no-op against an already-set-up instance, not
+   just a fresh one. A descriptor with no script here still gets a real HTTP 400 (not a silent skip)
+   if something explicitly calls `POST /api/descriptors/<name>/setup` for it — CI treats that 400 as
+   "nothing to do" and moves on.
+
+From here, CI just works: `.github/workflows/tests.yml`'s `e2e` job reads `tests/.current-descriptor`
+and drives the real Workbench over its own HTTP API — `/deploy` → `/setup` → `/tests/run` →
+`/undeploy` — the same routes a human already uses from the browser, not a separate reimplementation.
+Swapping which target's suite is checked into `tests/` (step 4 above, next time) is the only thing
+that changes what CI runs; the workflow file itself never needs touching again. A target's own setup
+script (if it has one) is also bundled automatically into every archive snapshot
+(`POST /api/generate/snapshot`) alongside its descriptor/corrections/env, so a snapshot stays
+self-contained enough to actually reproduce the target's tested state, not just its test code.
 
 ### The Workbench
 
@@ -281,7 +344,11 @@ managing the QA framework's own configuration):
   system's `*.corrections.json`. Write & Run renders the approved spec to real `.feature`/
   `.steps.ts` files under `tests/`, and its own "Run tests" button runs the real Playwright suite
   against the live app stack straight from the browser, live progress streamed the same way
-  Discovery's run does.
+  Discovery's run does. Write & Run itself offers a "Save snapshot" confirm step first — it copies
+  whatever's about to be overwritten (the current `tests/`, the descriptor and its sidecars
+  corrections/UAT/env/setup-script, and the discovery report/grouping/spec that produced them) into
+  a permanent, timestamped folder under [`archive/`](archive/), since Write & Run's own overwrite-
+  in-place otherwise leaves no history of a prior suite once a newer one is written.
 - **E2E** (`/e2e.html`) — the E2E Agent's two stages (below), from the browser instead of the CLI.
   Pick one or more scenarios and run them for real, live progress streamed the same way as
   Discovery/Test Suite; a failure shows Claude's classification, reasoning, and step-by-step
@@ -307,20 +374,38 @@ too, for iterating on the workbench's own code without rebuilding the image.)
 A standalone Playwright + `playwright-bdd` project generated by the `generate` agent above, then
 manually debugged to a stable, green state (locators, race conditions, duplicate step
 definitions — see [docs/phase2-status.md](docs/phase2-status.md) for the full list of what broke
-and why). 4 domains, 29 scenarios, all passing. Produces both a Playwright HTML report and a
-Cucumber-format HTML report (via `multiple-cucumber-html-reporter`), viewable through a small
-local `nginx` container. See [docs/phase3-status.md](docs/phase3-status.md) for the reporting/CI
-details. Path: [`tests/`](tests/).
+and why, using this app's own original OrderFlow suite as the example). Produces both a Playwright
+HTML report and a Cucumber-format HTML report (via `multiple-cucumber-html-reporter`), viewable
+through a small local `nginx` container. See [docs/phase3-status.md](docs/phase3-status.md) for the
+original reporting details. Path: [`tests/`](tests/).
+
+`tests/features/`/`tests/steps/` hold whichever *one* descriptor's suite was most recently written
+via "Write & Run" — not fixed to OrderFlow forever. `tests/.current-descriptor` names which one (see
+"Adding a new target" above); a suite generated for a different descriptor overwrites what's there,
+same as any other generated-code directory. Every past suite still has its own permanent, timestamped
+copy under [`archive/`](archive/) — the Test Suite tab's snapshot action (below) bundles the
+`.feature`/`.steps.ts` files alongside the descriptor/corrections/env/setup-script that produced
+them — so switching which suite is live in `tests/` never loses an earlier one.
 
 ### CI
 
-A GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) that
-builds the app stack, migrates the database, runs the full suite, and uploads the HTML reports as
-artifacts. **Verified green on a real GitHub-hosted runner** (2026-07-26), after fixing two
-environment-only bugs the first real run surfaced — a Prisma client never generated inside a fresh
-container, and the local-only report viewer container unintentionally starting in CI and leaving
-root-owned report directories behind. See [docs/phase3-status.md](docs/phase3-status.md) and
-[docs/phase4-status.md](docs/phase4-status.md) for the full writeup.
+A GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)),
+descriptor-agnostic: it reads `tests/.current-descriptor`, then drives the real `workbench`
+container over its own HTTP API — `/deploy` → `/setup` → `/tests/run` → `/undeploy`, the same
+routes a human already uses from the browser — rather than reimplementing deploy/run logic in YAML.
+Whichever descriptor's suite is currently checked into `tests/` is what CI deploys and tests; no
+workflow edit needed when that changes (see "Adding a new target" above). Uploads both HTML reports
+as artifacts regardless of pass/fail. **Verified green on a real GitHub-hosted runner**, most
+recently against the Uptime Kuma suite (2026-08-10) after this descriptor-agnostic rewrite — five
+real environment-only bugs surfaced and fixed along the way (lockfile drift; an npm-vs-pnpm phantom
+dependency; a Playwright browser-cache path mismatch; bind-mount ownership on a different runner
+uid, hit twice — `targets/`, then `tests/` — before being generalized to every bind-mounted write
+target in one pass; and the `${HOST_PROJECT_ROOT}`-placeholder fix mentioned above), none of them
+suite logic. The
+original OrderFlow-specific run (2026-07-26) is preserved for history in
+[docs/phase3-status.md](docs/phase3-status.md)/[docs/phase4-status.md](docs/phase4-status.md); its
+own two environment bugs from that run (an ungenerated Prisma client, a report-viewer container
+leaving root-owned directories behind) are unrelated to the rewrite and still accurate as written.
 
 ## Project status
 
