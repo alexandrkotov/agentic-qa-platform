@@ -58,37 +58,15 @@ explicit human `y` — then re-runs the real suite to confirm it's green. No aut
 
 ### How the pieces fit together
 
-For `orderflow.json` (this app — Postgres + REST API + web UI + one Kafka topic), start to finish:
+Start to finish — from onboarding a brand-new target system through to a self-healing test suite:
 
-```
-System Descriptor (JSON)
-        │
-        ▼
-System Discovery Agent  ──►  discovery report (JSON)
-                                     │
-                                     ▼
-                              Generate Agent  ──►  Playwright + BDD suite (committed)
-                                                          │
-                                                          ▼
-                                                  Real test run (Playwright)
-                                                     │           │
-                                                   pass         fail
-                                                     │           │
-                                                     │           ▼
-                                                     │   E2E Agent: diagnose (Claude, once)
-                                                     │           │
-                                                     │           ▼
-                                                     │     Human reviews and approves
-                                                     │           │
-                                                     │           ▼
-                                                     │   Guarded patch, one file only
-                                                     │           │
-                                                     ▼           ▼
-                                              Deterministic re-run confirms green
-```
+![Agentic QA Platform — end to end: Discovery, Analysis, Test Suite, and the E2E Agent's closed loop](docs/assets/architecture-overview.png)
 
-Discovery and Generate run once to bootstrap the suite (already committed — you don't need to
-re-run them); the E2E Agent runs against that suite for real, any time, on demand.
+Discovery and Generate run once to bootstrap a suite (already committed for every target this repo
+ships, e.g. OrderFlow and Uptime Kuma — you don't need to re-run them); the E2E Agent then runs
+against that suite for real, any time, on demand, closing the loop by re-verifying its own guarded
+patch actually fixed the failure. Analysis is optional and doesn't block anything downstream — it
+exists purely to help a human understand what Discovery found.
 
 ## What's in this repo
 
