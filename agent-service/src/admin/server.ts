@@ -8,6 +8,7 @@ import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/sch
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames } from '../bootstrap/deployTarget.ts';
+import { hasSetup, runSetup } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { runCommand } from '../util/runCommand.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
@@ -335,6 +336,40 @@ app.post('/api/descriptors/:name/undeploy', async (req, res) => {
       res.status(404).json({ error: `No descriptor named "${req.params.name}"` });
       return;
     }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// One-time "first run" setup for targets whose own admin account/config
+// doesn't survive a fresh docker-compose deploy — see
+// bootstrap/setupTarget.ts's own comment for which targets actually need
+// this and why. Mechanical (no LLM call), same NDJSON-progress shape as
+// /deploy above. hasSetup() is checked BEFORE the NDJSON headers go out
+// (unlike a mid-stream error) so a descriptor with no registered setup
+// script gets a real 400 status, not just an error line buried in an
+// otherwise-200 stream — CI can call this unconditionally for whatever
+// descriptor tests/.current-descriptor names and branch on the real HTTP
+// status, without special-casing which targets happen to need one.
+app.post('/api/descriptors/:name/setup', async (req, res) => {
+  try {
+    const name = req.params.name;
+    if (!hasSetup(name)) {
+      res.status(400).json({ error: `No first-run setup script registered for "${name}".` });
+      return;
+    }
+    const env = await loadTestEnvOverrides(descriptorPath(name));
+
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    try {
+      await runSetup(name, env, (message) => send({ type: 'progress', message }));
+      send({ type: 'done' });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
@@ -1467,6 +1502,19 @@ app.post('/api/generate/render', async (req, res) => {
     const generation = ApprovedGenerationSchema.parse(JSON.parse(await readFile(specFilePath(specName), 'utf-8')));
     const files = renderGeneration(generation);
     const written = await writeRenderedFiles(files, APP_ROOT);
+    // Records which descriptor the suite now sitting in tests/ actually
+    // belongs to — same descriptorForGroupingFile lookup
+    // resolveSnapshotContext (below) already uses, not new resolution
+    // logic. CI reads this file to know which target to deploy and test
+    // against, so a future suite swap (rendering a different descriptor's
+    // spec here) keeps CI correctly pointed without a separate manual edit
+    // anywhere. Best-effort: a descriptor that can't be resolved shouldn't
+    // block the render itself from succeeding.
+    const groupingName = generation.sourceGroupingPath.split('/').pop()!;
+    const descriptor = await descriptorForGroupingFile(groupingName);
+    if (descriptor) {
+      await writeFile(join(TESTS_ROOT, '.current-descriptor'), descriptor + '\n', 'utf-8').catch(() => {});
+    }
     res.json({ written });
   } catch (err) {
     if (err && typeof err === 'object' && 'issues' in err) {

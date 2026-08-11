@@ -4,22 +4,17 @@ on:
   push:
     branches: [main]
     paths:
-      - 'app/**'
-      - 'frontend/**'
+      - 'agent-service/**'
       - 'tests/**'
       - 'docker-compose.yml'
       - '.github/workflows/tests.yml'
   pull_request:
     paths:
-      - 'app/**'
-      - 'frontend/**'
+      - 'agent-service/**'
       - 'tests/**'
       - 'docker-compose.yml'
       - '.github/workflows/tests.yml'
   workflow_dispatch:
-
-env:
-  DATABASE_URL: postgresql://user:pass@localhost:5432/testdb
 
 jobs:
   e2e:
@@ -28,40 +23,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Start app stack (db, app, frontend)
-        run: docker compose up -d --build db app frontend
-
-      - name: Run Prisma migrations
-        run: |
-          for i in $(seq 1 15); do
-            if docker compose exec -T app npx prisma migrate deploy; then
-              break
-            fi
-            if [ "$i" -eq 15 ]; then
-              echo "Migrations did not succeed in time"
-              docker compose logs
-              exit 1
-            fi
-            sleep 2
-          done
-
-      - name: Wait for app and frontend to be ready
-        run: |
-          for target in http://localhost:3000/customers http://localhost:5173/; do
-            echo "Waiting for $target"
-            for i in $(seq 1 30); do
-              if curl -sf -o /dev/null "$target"; then
-                echo "$target is up"
-                break
-              fi
-              if [ "$i" -eq 30 ]; then
-                echo "$target did not become ready in time"
-                docker compose logs
-                exit 1
-              fi
-              sleep 2
-            done
-          done
+      # Descriptor-agnostic by design: tests/features/ can hold ANY
+      # descriptor's generated suite (the platform's own capability is
+      # generating+swapping these), and this job deploys+tests whichever one
+      # tests/.current-descriptor names — no target-specific step here.
+      # /api/generate/render (agent-service/src/admin/server.ts) keeps that
+      # file in sync automatically every time a suite gets rendered, so a
+      # future suite swap doesn't need a matching edit to this workflow.
+      - name: Read which descriptor the checked-in suite belongs to
+        id: descriptor
+        run: echo "name=$(cat tests/.current-descriptor)" >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -75,31 +46,130 @@ jobs:
           cache: pnpm
           cache-dependency-path: tests/pnpm-lock.yaml
 
+      # Populates tests/node_modules on the runner's own checkout — which is
+      # exactly what `workbench` below bind-mounts (docker-compose.yml),
+      # so this is what its own /api/tests/run route actually runs against.
       - name: Install test dependencies
         working-directory: tests
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        working-directory: tests
-        run: npx playwright install --with-deps chromium
+      # No `db`/`app`/`frontend` here anymore — this job's whole app-under-
+      # test is whatever `workbench` deploys below via its own docker-
+      # compose component (a real GitHub clone + `docker compose up`), the
+      # same machinery a human already drives interactively. `workbench`
+      # needs no other service running (no depends_on in docker-compose.yml)
+      # and no ANTHROPIC_API_KEY — /deploy, /setup, /tests/run, /undeploy are
+      # all mechanical, no Claude call involved.
+      - name: Start workbench
+        run: docker compose up -d --build workbench
 
-      - name: Sweep any leftover test data
-        working-directory: tests
-        run: pnpm run cleanup
+      - name: Wait for workbench to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:4400/api/descriptors; then
+              echo "workbench is up"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "workbench did not become ready in time"
+              docker compose logs workbench
+              exit 1
+            fi
+            sleep 2
+          done
 
+      # Same NDJSON-stream-then-check-the-last-line idiom used throughout
+      # this project's own interactive development (see
+      # bootstrap/deployTarget.ts's own callers) — the very last line is
+      # always {"type":"done",...} on success or {"type":"error",...} on
+      # failure, never a plain non-2xx status (the route opens the stream
+      # before anything can fail).
+      - name: Deploy the target
+        run: |
+          curl -s -N -X POST "http://localhost:4400/api/descriptors/${{ steps.descriptor.outputs.name }}/deploy" | tee deploy.log
+          if ! tail -1 deploy.log | grep -q '"type":"done"'; then
+            echo "Deploy failed"
+            docker compose logs workbench
+            exit 1
+          fi
+
+      # Deliberately NOT the descriptor's own FRONTEND_URL (descriptors/<name>.env)
+      # here — that value is written for use INSIDE workbench (which has its
+      # own `extra_hosts: host.docker.internal:host-gateway`); this step
+      # runs directly on the runner's own shell, which has no such mapping.
+      # The deploy step's own real port allocation (jq'd out of its final
+      # `{"type":"done",...}` line — the same live remap deployTarget.ts may
+      # have applied, e.g. on a port conflict) is the actually-correct,
+      # always-current source for a plain `localhost:<port>` check here.
+      - name: Wait for the deployed target to be ready
+        run: |
+          PORT=$(tail -1 deploy.log | jq -r '.ports[0].publishedPort')
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null "http://localhost:$PORT/"; then
+              echo "localhost:$PORT is up"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "localhost:$PORT did not become ready in time"
+              docker compose logs workbench
+              exit 1
+            fi
+            sleep 2
+          done
+
+      # Idempotent and safe to call unconditionally: a descriptor with no
+      # registered setup script (most of them — see
+      # agent-service/src/bootstrap/setupTarget.ts) gets a real 400, which
+      # this step treats as "nothing to do," not a failure. A descriptor
+      # that DOES have one but is already set up (its own first-run wizard
+      # already completed by the script itself) is a fast no-op too.
+      - name: Run the target's first-run setup, if it needs one
+        run: |
+          status=$(curl -s -o setup.log -w '%{http_code}' -N -X POST "http://localhost:4400/api/descriptors/${{ steps.descriptor.outputs.name }}/setup")
+          if [ "$status" = "400" ]; then
+            echo "No setup script registered for this descriptor — nothing to do."
+          elif [ "$status" != "200" ] || ! tail -1 setup.log | grep -q '"type":"done"'; then
+            echo "Setup failed (HTTP $status)"
+            cat setup.log
+            docker compose logs workbench
+            exit 1
+          else
+            cat setup.log
+          fi
+
+      # Reuses buildTestRunEnv(descriptor) — the exact same FRONTEND_URL/
+      # credentials overlay a human triggering "Run tests" from the admin UI
+      # already gets — instead of this workflow re-deriving that env
+      # overlay logic a second time in bash.
       - name: Run BDD test suite
-        working-directory: tests
-        run: pnpm run test
+        id: run_tests
+        run: |
+          curl -s -N -X POST "http://localhost:4400/api/tests/run" \
+            -H 'Content-Type: application/json' \
+            -d "{\"descriptor\": \"${{ steps.descriptor.outputs.name }}\"}" \
+            | tee run-tests.log
+          last_line=$(tail -1 run-tests.log)
+          if ! echo "$last_line" | grep -q '"type":"done"'; then
+            echo "Test run itself errored (not just failing scenarios)"
+            exit 1
+          fi
+          echo "$last_line" | jq -e '.testsPassed' > /dev/null || echo "tests_failed=1" >> "$GITHUB_OUTPUT"
 
-      - name: Generate Cucumber HTML report
-        if: always()
-        working-directory: tests
-        run: pnpm run report
+      - name: Fail the job if scenarios failed
+        if: steps.run_tests.outputs.tests_failed == '1'
+        run: exit 1
 
-      - name: Sweep test data created by this run
-        if: always()
-        working-directory: tests
-        run: pnpm run cleanup
+      # No separate "Generate Cucumber HTML report" step here — confirmed
+      # live, /api/tests/run's own route already regenerates it itself
+      # after every run (pass or fail), same as a human triggering "Run
+      # tests" from the admin UI already gets. Re-running it here would
+      # just duplicate that work.
+
+      # No "sweep leftover/created test data" step here — unlike OrderFlow's
+      # own long-lived shared dev database (what tests/support/cleanup.mjs
+      # is actually for, and it's hardcoded to Postgres besides), this job's
+      # whole target is deployed fresh and undeployed again below every
+      # single run, so there is no persistent state across runs to sweep.
 
       - name: Upload Cucumber HTML report
         if: always()
@@ -125,10 +195,14 @@ jobs:
           path: tests/test-results
           retention-days: 14
 
-      - name: Dump app logs on failure
+      - name: Dump workbench logs on failure
         if: failure()
-        run: docker compose logs
+        run: docker compose logs workbench
 
-      - name: Stop app stack
+      - name: Undeploy the target
+        if: always()
+        run: curl -s -N -X POST "http://localhost:4400/api/descriptors/${{ steps.descriptor.outputs.name }}/undeploy" || true
+
+      - name: Stop workbench
         if: always()
         run: docker compose down -v
