@@ -8,6 +8,11 @@
       "composeFile": "compose.yaml"
     },
     {
+      "type": "sqlite",
+      "name": "kuma_db",
+      "path": "/home/test/projects/agentic-qa-platform/targets/uptime-kuma/repo/data/kuma.db"
+    },
+    {
       "type": "web-ui",
       "baseUrl": "http://host.docker.internal:3001",
       "routes": [
@@ -15,11 +20,6 @@
         "/add",
         "/settings"
       ]
-    },
-    {
-      "type": "sqlite",
-      "name": "kuma_db",
-      "path": "/home/test/projects/agentic-qa-platform/targets/uptime-kuma/repo/data/kuma.db"
     },
     {
       "type": "rest-api",

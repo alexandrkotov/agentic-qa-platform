@@ -570,6 +570,9 @@ const FIELD_DEFS = {
   'mongo': [
     { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'mongodb://host:27017/db' },
   ],
+  'mssql': [
+    { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'mssql://user:pass@host:1433/db' },
+  ],
 };
 
 async function api(path, opts) {

@@ -23,6 +23,22 @@ FROM docker:29-cli AS docker-cli
 # so version skew here isn't fatal, but there's no reason to introduce any.
 FROM docker/compose-bin:v5.3.1 AS compose-cli
 
+# `docker compose build` silently falls back to the legacy (non-BuildKit)
+# builder whenever it can't find a `buildx` CLI plugin — and that legacy
+# builder can't parse BuildKit-only Dockerfile syntax at all. Hit this live:
+# nopCommerce's own official Dockerfile opens with
+# `FROM --platform=$BUILDPLATFORM ...`, and the fallback legacy build failed
+# immediately with "failed to parse platform : \"\" is an invalid OS
+# component" — a `build:`-in-compose target (rather than a plain `image:`
+# one, which is all every target before nopCommerce happened to use) was
+# never exercised until now. Same fix shape as the `docker-compose` plugin
+# above: `docker/buildx-bin` publishes just one file at its image root,
+# /buildx (verified by extracting the image's own layer, not assumed).
+# Pinned to 0.35.0 to match the host's own installed buildx CLI exactly
+# (confirmed live via `docker buildx version`) — same reasoning as the
+# compose pin above, just carried one plugin further.
+FROM docker/buildx-bin:0.35.0 AS buildx-cli
+
 # Debian ("bookworm-slim"), not Alpine: Playwright's browser builds are not
 # supported on musl libc (Alpine) — this is a compatibility requirement, not
 # a "which distro is smaller" choice. The actual size cost is Chromium
@@ -34,7 +50,8 @@ WORKDIR /usr/src/app
 
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=compose-cli /docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
-RUN chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+COPY --from=buildx-cli /buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+RUN chmod +x /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-buildx
 
 # git: the docker-compose component type (bootstrap/deployTarget.ts) clones
 # an arbitrary target repo (e.g. wger's own deploy manifest repo) before

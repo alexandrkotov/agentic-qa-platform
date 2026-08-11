@@ -1,0 +1,15 @@
+{
+  "name": "nopcommerce",
+  "components": [
+    {
+      "type": "docker-compose",
+      "repoUrl": "https://github.com/nopSolutions/nopCommerce",
+      "ref": "develop"
+    },
+    {
+      "type": "mssql",
+      "name": "nopcommerce_db",
+      "connectionString": "mssql://sa:nopCommerce_db_password@host.docker.internal:1433/nopCommerce"
+    }
+  ]
+}

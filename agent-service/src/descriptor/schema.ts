@@ -185,9 +185,21 @@ const MongoComponentSchema = z.object({
   connectionString: z.string(),
 });
 
+/**
+ * Same connectionString-only shape again — mssql.ts parses host/port/user/
+ * password/database out of it itself, same reasoning as mysql.ts (the
+ * `mssql` driver package takes a discrete config object, not a URI).
+ */
+const MssqlComponentSchema = z.object({
+  type: z.literal('mssql'),
+  name: z.string().optional(),
+  connectionString: z.string(),
+});
+
 export type PostgresComponent = z.infer<typeof PostgresComponentSchema>;
 export type MongoComponent = z.infer<typeof MongoComponentSchema>;
 export type MysqlComponent = z.infer<typeof MysqlComponentSchema>;
+export type MssqlComponent = z.infer<typeof MssqlComponentSchema>;
 export type RestApiComponent = z.infer<typeof RestApiComponentSchema>;
 export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
 export type KafkaConsumerComponent = z.infer<typeof KafkaConsumerComponentSchema>;
@@ -205,6 +217,7 @@ const SystemComponentSchema = z.discriminatedUnion('type', [
   SqliteComponentSchema,
   MysqlComponentSchema,
   MongoComponentSchema,
+  MssqlComponentSchema,
 ]);
 
 export const SystemDescriptorSchema = z

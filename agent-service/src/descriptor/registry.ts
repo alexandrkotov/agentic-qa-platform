@@ -9,6 +9,7 @@ import { dockerComposeBuilder } from './components/dockerCompose.ts';
 import { sqliteBuilder } from './components/sqlite.ts';
 import { mysqlBuilder } from './components/mysql.ts';
 import { mongoBuilder } from './components/mongo.ts';
+import { mssqlBuilder } from './components/mssql.ts';
 
 /**
  * Per-component-type wiring: which MCP server(s) / custom tool(s) it needs, and the
@@ -36,6 +37,7 @@ export const componentRegistry: BuilderMap = {
   sqlite: sqliteBuilder,
   mysql: mysqlBuilder,
   mongo: mongoBuilder,
+  mssql: mssqlBuilder,
 };
 
 export interface AssembledDiscovery {
