@@ -23,6 +23,24 @@ if [ -d /home/node/.cache ]; then
   chown node:node /home/node/.cache
 fi
 
+# HOST_PROJECT_ROOT/targets is the mirrored-mount bind (docker-compose.yml,
+# identical absolute path on both sides) bootstrap/deployTarget.ts's own
+# assertMirroredMount() writes a marker file into on every deploy. Same
+# root-owned-by-default class of bug as /home/node/.cache above — Docker
+# creates a missing bind-mount source as root before this entrypoint ever
+# runs — but this one stayed hidden far longer: this repo's own dev host
+# happens to share uid 1000 with the "node" user below (pure coincidence,
+# already called out in the top-of-file comment), so every deploy here
+# just worked. A real GitHub Actions runner's checkout is owned by uid
+# 1001 ("runner"), not 1000, and confirmed live: assertMirroredMount()
+# failed outright with "EACCES: permission denied, open
+# '.../targets/.mirror-check-...'" — the very first deploy this whole
+# initiative's own CI job ever attempted on a genuinely different uid.
+if [ -n "$HOST_PROJECT_ROOT" ]; then
+  mkdir -p "$HOST_PROJECT_ROOT/targets"
+  chown node:node "$HOST_PROJECT_ROOT/targets"
+fi
+
 # /var/run/docker.sock is bind-mounted from the host (docker-compose.yml) so
 # this container can run real `docker`/`docker compose` commands against the
 # host's own daemon -- see Dockerfile.workbench's "docker-cli" build stage.
