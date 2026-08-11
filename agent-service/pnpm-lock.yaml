@@ -44,6 +44,9 @@ importers:
       pg:
         specifier: ^8.13.0
         version: 8.22.0
+      playwright:
+        specifier: 1.62.0-alpha-1783623505000
+        version: 1.62.0-alpha-1783623505000
       typescript:
         specifier: ^5.5.0
         version: 5.9.3

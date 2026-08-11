@@ -63,19 +63,31 @@ jobs:
       - name: Start workbench
         run: docker compose up -d --build workbench
 
+      # Generous budget, not the old services' plain "app booted" wait: this
+      # container's own startup command (docker-compose.yml) runs a real
+      # `npx playwright install chromium` (twice — once for agent-service's
+      # own use, once for tests/) before the admin server even starts
+      # listening, and the playwright-browsers volume that caches that
+      # download is empty on every fresh GitHub Actions runner (a new VM
+      # each run, no persisted Docker volumes across runs). Confirmed live
+      # this can genuinely take several minutes depending on network
+      # conditions — timed a real cold run locally at 280s+ and still not
+      # done with just the FIRST of the two installs — so this budget errs
+      # well on the generous side rather than risk repeating this same
+      # false failure.
       - name: Wait for workbench to be ready
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 120); do
             if curl -sf -o /dev/null http://localhost:4400/api/descriptors; then
               echo "workbench is up"
               break
             fi
-            if [ "$i" -eq 30 ]; then
+            if [ "$i" -eq 120 ]; then
               echo "workbench did not become ready in time"
               docker compose logs workbench
               exit 1
             fi
-            sleep 2
+            sleep 5
           done
 
       # Same NDJSON-stream-then-check-the-last-line idiom used throughout
