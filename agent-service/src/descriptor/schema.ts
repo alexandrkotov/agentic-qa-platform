@@ -84,9 +84,12 @@ const WebUiComponentSchema = z.object({
 
 /**
  * SQLite has no network protocol, so there's no connection string the way
- * postgres has — this is a plain file read. Absolute-only + no ".."
- * segments is the same defense-in-depth spirit as composeFile above; the
- * builder (descriptor/components/sqlite.ts) additionally requires the
+ * postgres has — this is a plain file read. Absolute-only (or the
+ * `${HOST_PROJECT_ROOT}`-prefixed form, expanded at execute time by
+ * expandHostProjectRoot.ts — see its own comment for why a checked-in
+ * descriptor can't just hardcode one machine's own absolute prefix) + no
+ * ".." segments is the same defense-in-depth spirit as composeFile above;
+ * the builder (descriptor/components/sqlite.ts) additionally requires the
  * resolved path to sit under this container's own mirrored targets/ mount
  * before ever spawning sqlite3 against it, since a descriptor is a file a
  * human hand-edits and this schema alone can't know what's actually safe
@@ -98,10 +101,14 @@ const SqliteComponentSchema = z.object({
   /** Path to the .db file as seen from inside the workbench container —
    *  e.g. a docker-compose-deployed target's bind-mounted data dir (see
    *  dockerCompose.ts's mirrored-mount comment for why that path is
-   *  directly visible here with no extra plumbing). */
-  path: z.string().refine((p) => p.startsWith('/') && !p.split('/').includes('..'), {
-    message: 'path must be an absolute path with no ".." segments',
-  }),
+   *  directly visible here with no extra plumbing). Prefer
+   *  "${HOST_PROJECT_ROOT}/targets/..." over a hardcoded absolute prefix so
+   *  the descriptor stays correct on every machine/CI runner that clones
+   *  this repo, not just the one it was authored on. */
+  path: z.string().refine(
+    (p) => (p.startsWith('/') || p.startsWith('${HOST_PROJECT_ROOT}/')) && !p.split('/').includes('..'),
+    { message: 'path must be an absolute path (or start with "${HOST_PROJECT_ROOT}/") with no ".." segments' },
+  ),
 });
 
 /**

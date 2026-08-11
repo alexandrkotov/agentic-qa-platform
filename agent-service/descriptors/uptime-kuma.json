@@ -10,7 +10,7 @@
     {
       "type": "sqlite",
       "name": "kuma_db",
-      "path": "/home/test/projects/agentic-qa-platform/targets/uptime-kuma/repo/data/kuma.db"
+      "path": "${HOST_PROJECT_ROOT}/targets/uptime-kuma/repo/data/kuma.db"
     },
     {
       "type": "web-ui",

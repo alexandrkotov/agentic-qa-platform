@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { CustomTool } from '../../providers/AgentProvider.ts';
 import type { ComponentBuilder } from '../registry.ts';
 import type { SqliteComponent } from '../schema.ts';
+import { expandHostProjectRoot } from '../../util/expandHostProjectRoot.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,7 +31,12 @@ function resolveSafePath(rawPath: string): string {
     throw new Error('Refusing to open a sqlite component: HOST_PROJECT_ROOT is not set in this container.');
   }
   const targetsRoot = resolve(hostRoot, 'targets');
-  const resolvedPath = resolve(rawPath);
+  // A descriptor's own `path` may carry the literal `${HOST_PROJECT_ROOT}`
+  // placeholder instead of a hardcoded machine-specific prefix — see
+  // expandHostProjectRoot.ts for why (a checked-in descriptor is shared
+  // across every machine/CI runner that clones this repo, each with its own
+  // checkout path).
+  const resolvedPath = resolve(expandHostProjectRoot(rawPath));
   if (resolvedPath !== targetsRoot && !resolvedPath.startsWith(targetsRoot + '/')) {
     throw new Error(
       `Refusing to open "${resolvedPath}" — sqlite components may only point at a file under this deployment's own targets/ directory (${targetsRoot}).`,

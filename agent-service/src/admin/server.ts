@@ -11,6 +11,7 @@ import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTa
 import { hasSetup, runSetup } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { runCommand } from '../util/runCommand.ts';
+import { expandHostProjectRoot } from '../util/expandHostProjectRoot.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
@@ -357,7 +358,7 @@ app.post('/api/descriptors/:name/setup', async (req, res) => {
       res.status(400).json({ error: `No first-run setup script registered for "${name}".` });
       return;
     }
-    const env = await loadTestEnvOverrides(descriptorPath(name));
+    const env = expandOverrides(await loadTestEnvOverrides(descriptorPath(name)));
 
     res.setHeader('Content-Type', 'application/x-ndjson');
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
@@ -1330,10 +1331,21 @@ const BASE_TEST_RUN_ENV: NodeJS.ProcessEnv = {
  * keys on top (loadTestEnvOverrides() itself already returns {} on a
  * missing file, so a target with no overrides yet is the same no-op path).
  */
+// A descriptor's own .env sidecar (e.g. uptime-kuma.env's SQLITE_DB_PATH) is
+// checked into git and shared across every machine/CI runner that clones
+// this repo — see expandHostProjectRoot.ts for why a value that points
+// under this deployment's own targets/ mount must carry the
+// `${HOST_PROJECT_ROOT}` placeholder rather than one machine's hardcoded
+// absolute prefix, and why it's expanded here rather than relying on
+// dotenv's own (nonexistent) automatic expansion.
+function expandOverrides(overrides: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, expandHostProjectRoot(v)]));
+}
+
 async function buildTestRunEnv(descriptor?: string): Promise<NodeJS.ProcessEnv> {
   if (!descriptor) return BASE_TEST_RUN_ENV;
   const overrides = await loadTestEnvOverrides(descriptorPath(descriptor));
-  return { ...BASE_TEST_RUN_ENV, ...overrides };
+  return { ...BASE_TEST_RUN_ENV, ...expandOverrides(overrides) };
 }
 
 /**
@@ -1350,7 +1362,7 @@ async function buildTestRunEnv(descriptor?: string): Promise<NodeJS.ProcessEnv> 
  */
 async function resolveTestEnvForSnapshot(descriptor: string): Promise<string> {
   const overrides = await loadTestEnvOverrides(descriptorPath(descriptor));
-  const resolved: Record<string, string> = { ...CONTAINER_ENV_DEFAULTS, ...overrides };
+  const resolved: Record<string, string> = { ...CONTAINER_ENV_DEFAULTS, ...expandOverrides(overrides) };
   return Object.entries(resolved).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
 }
 
