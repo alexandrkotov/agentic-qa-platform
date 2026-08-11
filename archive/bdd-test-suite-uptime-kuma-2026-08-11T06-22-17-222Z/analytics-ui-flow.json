@@ -1,0 +1,162 @@
+{
+  "generatedAt": "2026-08-10T07:15:49.498Z",
+  "sourceReportPath": "reports/discovery-2026-08-10T06-38-10-413Z-uptime-kuma.json",
+  "pages": [
+    {
+      "route": "/dashboard",
+      "transitions": [
+        {
+          "kind": "in_place_action",
+          "action": "Log in",
+          "description": "Submits login credentials and authenticates user, staying on dashboard or refreshing to authenticated view"
+        },
+        {
+          "kind": "navigation",
+          "action": "Add New Monitor",
+          "to": "/add"
+        },
+        {
+          "kind": "navigation",
+          "action": "Status Pages",
+          "to": "/status-pages"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Dashboard",
+          "description": "Already on dashboard, this is a navigation indicator or refresh"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Search monitored sites",
+          "description": "Filters the monitor list on the current page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Select all monitors",
+          "description": "Selects all monitors in the list on the current page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Status filter",
+          "description": "Filters monitors by status on the current page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Tags filter",
+          "description": "Filters monitors by tags on the current page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Clear All Events",
+          "description": "Clears event notifications on the current page"
+        }
+      ]
+    },
+    {
+      "route": "/add",
+      "transitions": [
+        {
+          "kind": "in_place_action",
+          "action": "Save",
+          "description": "Saves the new monitor configuration and may redirect to dashboard or stay on page with confirmation"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Add Tags",
+          "description": "Opens tag selection or adds tags to the monitor being created"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Set Up Notification",
+          "description": "Opens notification configuration panel or modal on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Set Up Proxy",
+          "description": "Opens proxy configuration panel or modal on the same page"
+        }
+      ]
+    },
+    {
+      "route": "/settings",
+      "transitions": [
+        {
+          "kind": "in_place_action",
+          "action": "Save",
+          "description": "Saves current settings configuration on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Auto Get",
+          "description": "Auto-detects a setting value on the current page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Test",
+          "description": "Tests a configuration setting on the current page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "General",
+          "description": "Switches to General settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Appearance",
+          "description": "Switches to Appearance settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Notifications",
+          "description": "Switches to Notifications settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Reverse Proxy",
+          "description": "Switches to Reverse Proxy settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Tags",
+          "description": "Switches to Tags settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Monitor History",
+          "description": "Switches to Monitor History settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Docker Hosts",
+          "description": "Switches to Docker Hosts settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Remote Browsers",
+          "description": "Switches to Remote Browsers settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Security",
+          "description": "Switches to Security settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "API Keys",
+          "description": "Switches to API Keys settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Proxies",
+          "description": "Switches to Proxies settings tab on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "About",
+          "description": "Switches to About settings tab on the same page"
+        }
+      ]
+    }
+  ],
+  "approvedAt": "2026-08-10T07:17:08.548Z"
+}

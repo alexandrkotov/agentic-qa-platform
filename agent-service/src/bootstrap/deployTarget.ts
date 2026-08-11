@@ -247,7 +247,7 @@ async function cloneOrUpdateRepo(
 // ---------------------------------------------------------------------------
 
 function projectNameFor(name: string): string {
-  return `aqap-target-${name}`;
+  return `bdd-target-${name}`;
 }
 
 async function fileExists(path: string): Promise<boolean> {

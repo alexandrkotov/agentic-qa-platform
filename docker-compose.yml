@@ -1,48 +1,4 @@
 services:
-  app:
-    build: ./app
-    ports: ["3000:3000"]
-    volumes:
-      - ./app:/usr/src/app
-      - /usr/src/app/node_modules
-    depends_on:
-      db:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://user:pass@db:5432/testdb
-      KAFKA_BROKERS: kafka:9092
-      KAFKAJS_NO_PARTITIONER_WARNING: "1"
-    # Extra DNS name for this same container, alongside "app" — "app" is
-    # also a real, Google-owned top-level domain with mandatory HTTPS
-    # (HSTS-preloaded at the registry level), and Chrome silently applies
-    # that same enforcement to a bare hostname "app" even though it's just
-    # this compose network's internal service name, not a real internet
-    # domain. Confirmed live: the headless browser the Playwright suite
-    # drives (frontend/src/api/client.ts's own fetch calls, made from
-    # INSIDE that browser) got net::ERR_SSL_PROTOCOL_ERROR trying to reach
-    # "http://app:3000" — Chrome attempted a silent HTTPS upgrade with no
-    # fallback, purely because of the hostname string, and the exact same
-    # thing reproduced for "dev" (also a real Google gTLD) but never for
-    # any other name. Node-side HTTP clients (Playwright's own `request`
-    # fixture, curl, etc.) are unaffected — this is a browser-only quirk —
-    # so BACKEND_URL for those stays "http://app:3000" unchanged; only the
-    # browser-executed frontend code needs the alias.
-    networks:
-      default:
-        aliases:
-          - backend
-
-  frontend:
-    build: ./frontend
-    ports: ["5173:5173"]
-    volumes:
-      - ./frontend:/usr/src/app
-      - /usr/src/app/node_modules
-    depends_on:
-      - app
-
   report:
     image: nginx:alpine
     ports: ["8080:80", "80:8000"]
@@ -52,49 +8,13 @@ services:
       - ./hub:/usr/share/nginx/hub:ro
       - ./report-nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: testdb
-    ports: ["5432:5432"]
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d testdb"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # Second discovery proof point (alongside postgres) for the System Descriptor —
-  # single-node KRaft broker, no ZooKeeper. PLAINTEXT is for other containers
-  # on the compose network (e.g. kafka-ui); PLAINTEXT_HOST is for anything
-  # reaching it from the host, incl. the dockerized kafka-mcp-server started
-  # with --network=host.
-  kafka:
-    image: apache/kafka:latest
-    ports: ["9094:9094"]
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
-  # Admin UI for the broker above — convenience for humans, not used by the
+  # Admin UI for the Kafka broker — that broker itself now lives in
+  # docker-compose.demo-orderflow.yml (the bundled OrderFlow demo's own
+  # group, `bdd-target-demo-orderflow`), not here. Reachable by plain
+  # hostname (kafka:9092) only because both projects share the
+  # `agentic-qa-platform-net` network declared below — if the demo group
+  # isn't deployed, this shows disconnected, which is expected, not a bug
+  # (see the hub page's own note next to this card). Not used by the
   # discovery agent (which talks to Kafka via kafka-mcp-server instead).
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -102,8 +22,6 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-    depends_on:
-      - kafka
 
   # Workbench: the System Descriptor editor (agent-service/descriptors/*.json),
   # Discovery (runs the same agent `pnpm discovery` does), Analysis, and the
@@ -240,6 +158,19 @@ services:
       # also verifies the mirror actually holds via `docker inspect` before
       # trusting it, rather than assuming this comment stayed accurate.
       - ${PWD}/targets:${PWD}/targets
+      # The bundled OrderFlow demo's own compose file
+      # (docker-compose.demo-orderflow.yml) — same identical-absolute-path
+      # mirroring trick as targets/ just above, for the same reason: the
+      # /api/demo/switch route (server.ts) runs `docker compose -f <this
+      # file>` over the mounted docker.sock below, and the file's own
+      # relative bind mounts (`./app`, `./frontend`) get resolved against
+      # the HOST daemon's filesystem, not this container's — mirroring the
+      # path is what makes that resolve to the real host directories
+      # instead of silently creating empty ones. Read-only: this container
+      # never needs to write to it, and (unlike targets/) `up` here never
+      # passes `--build`, so it doesn't need to read app/'s or frontend's
+      # own source content either — just the compose file's own text.
+      - ${PWD}/docker-compose.demo-orderflow.yml:${PWD}/docker-compose.demo-orderflow.yml:ro
       # Stage 3 (render) writes .feature/.steps.ts here, and "Run tests"
       # executes the suite from here — without this mount, either action
       # would only touch the container's own ephemeral filesystem, never
@@ -260,5 +191,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
-  pgdata:
   playwright-browsers:
+
+# Named (not the fragile directory-basename default Compose would otherwise
+# derive) so docker-compose.demo-orderflow.yml — a separate compose project,
+# `bdd-target-demo-orderflow` — can join it as `external: true` by this same
+# fixed name. This is what lets `workbench`/`kafka-ui` above keep reaching
+# `db`/`app`/`frontend`/`kafka` (now in that other project) by plain
+# hostname, exactly as when they all lived in this one file. This project
+# owns creation — bring this file up at least once before
+# docker-compose.demo-orderflow.yml.
+networks:
+  default:
+    name: agentic-qa-platform-net

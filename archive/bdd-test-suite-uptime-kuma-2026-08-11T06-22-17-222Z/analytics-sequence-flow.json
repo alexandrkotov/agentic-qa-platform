@@ -1,0 +1,233 @@
+{
+  "generatedAt": "2026-08-10T07:23:57.218Z",
+  "sourceReportPath": "reports/discovery-2026-08-10T06-38-10-413Z-uptime-kuma.json",
+  "scenarios": [
+    {
+      "name": "Create HTTP monitor with valid URL",
+      "description": "Demonstrates the full flow of creating a new HTTP monitor from the UI through database persistence.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Navigate to /add page"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Fill form: Monitor Type=HTTP(s), Friendly Name='Test Monitor', URL='https://example.com', Heartbeat Interval=60"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Click Save"
+        },
+        {
+          "from": "web_ui",
+          "to": "kuma_db",
+          "label": "INSERT INTO monitor (name, type, url, interval, active, ...)"
+        },
+        {
+          "from": "kuma_db",
+          "to": "web_ui",
+          "label": "Return new monitor id"
+        },
+        {
+          "from": "web_ui",
+          "to": "User",
+          "label": "Redirect to /dashboard showing new monitor"
+        }
+      ]
+    },
+    {
+      "name": "Login with valid credentials",
+      "description": "Shows the authentication flow from login form through user verification in the database.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Navigate to /dashboard (unauthenticated)"
+        },
+        {
+          "from": "web_ui",
+          "to": "User",
+          "label": "Display login form with Username, Password fields"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Enter Username='admin', Password=correct, click Log in"
+        },
+        {
+          "from": "web_ui",
+          "to": "kuma_db",
+          "label": "SELECT FROM user WHERE username='admin'"
+        },
+        {
+          "from": "kuma_db",
+          "to": "web_ui",
+          "label": "Return user record (id, password hash, active, twofa_status)"
+        },
+        {
+          "from": "web_ui",
+          "to": "web_ui",
+          "label": "Verify password hash matches"
+        },
+        {
+          "from": "web_ui",
+          "to": "User",
+          "label": "Create session, redirect to /dashboard"
+        }
+      ]
+    },
+    {
+      "name": "Push monitor without valid token",
+      "description": "Demonstrates the REST API validation when an invalid push token is provided.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "kuma_rest",
+          "label": "GET /api/push/invalidtoken"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "kuma_db",
+          "label": "SELECT FROM monitor WHERE push_token='invalidtoken' AND active=1"
+        },
+        {
+          "from": "kuma_db",
+          "to": "kuma_rest",
+          "label": "Return empty result (no matching monitor)"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "User",
+          "label": "404 {ok: false, msg: 'Monitor not found or not active.'}"
+        }
+      ]
+    },
+    {
+      "name": "Certificate expiry notification",
+      "description": "Shows how TLS certificate information is captured and stored when monitoring an HTTPS endpoint.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Navigate to /add page"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Fill form: Monitor Type=HTTP(s), URL='https://example.com', Certificate Expiry Notification=checked"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Click Save"
+        },
+        {
+          "from": "web_ui",
+          "to": "kuma_db",
+          "label": "INSERT INTO monitor (name, type, url, ...)"
+        },
+        {
+          "from": "kuma_db",
+          "to": "web_ui",
+          "label": "Return monitor id"
+        },
+        {
+          "from": "web_ui",
+          "to": "web_ui",
+          "label": "Monitor heartbeat job executes HTTPS request"
+        },
+        {
+          "from": "web_ui",
+          "to": "kuma_db",
+          "label": "INSERT INTO heartbeat (monitor_id, status, msg, ping, ...)"
+        },
+        {
+          "from": "web_ui",
+          "to": "kuma_db",
+          "label": "INSERT/UPDATE monitor_tls_info (monitor_id, info_json)"
+        },
+        {
+          "from": "web_ui",
+          "to": "User",
+          "label": "Dashboard shows monitor status with TLS info"
+        }
+      ]
+    },
+    {
+      "name": "Status page heartbeat data",
+      "description": "Demonstrates retrieving aggregated heartbeat data for a public status page via the REST API.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "kuma_rest",
+          "label": "GET /api/status-page/heartbeat/default"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "kuma_db",
+          "label": "SELECT FROM status_page WHERE slug='default'"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "kuma_db",
+          "label": "SELECT FROM group WHERE status_page_id=<id>"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "kuma_db",
+          "label": "SELECT FROM monitor_group WHERE group_id IN (...)"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "kuma_db",
+          "label": "SELECT FROM heartbeat WHERE monitor_id IN (...) ORDER BY time DESC"
+        },
+        {
+          "from": "kuma_db",
+          "to": "kuma_rest",
+          "label": "Return heartbeat records"
+        },
+        {
+          "from": "kuma_rest",
+          "to": "User",
+          "label": "200 {heartbeatList: [...], uptimeList: [...]}"
+        }
+      ]
+    },
+    {
+      "name": "Access dashboard without authentication",
+      "description": "Demonstrates the security flow that redirects unauthenticated users to login.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Navigate to /dashboard without session"
+        },
+        {
+          "from": "web_ui",
+          "to": "web_ui",
+          "label": "Check session/authentication status"
+        },
+        {
+          "from": "web_ui",
+          "to": "User",
+          "label": "Redirect to login form on /dashboard"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Attempt to access /settings without session"
+        },
+        {
+          "from": "web_ui",
+          "to": "User",
+          "label": "Redirect to login form"
+        }
+      ]
+    }
+  ],
+  "approvedAt": "2026-08-10T07:24:06.013Z"
+}

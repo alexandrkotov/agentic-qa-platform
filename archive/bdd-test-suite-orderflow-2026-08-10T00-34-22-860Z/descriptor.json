@@ -1,0 +1,32 @@
+{
+  "name": "orderflow",
+  "components": [
+    {
+      "type": "postgres",
+      "connectionString": "postgresql://user:pass@localhost:5432/testdb"
+    },
+    {
+      "type": "rest-api",
+      "swaggerUrl": "http://localhost:3000/docs-json"
+    },
+    {
+      "type": "web-ui",
+      "baseUrl": "http://localhost:5173",
+      "routes": [
+        "/",
+        "/customers",
+        "/products",
+        "/orders"
+      ]
+    },
+    {
+      "type": "kafka-consumer",
+      "brokers": [
+        "localhost:9094"
+      ],
+      "topic": "orders.status-changed",
+      "sampleSize": 5
+    }
+  ],
+  "extraInstructions": "### Verify Behavior With Fresh Data (write scenario)\nDo not rely solely on existing database rows to infer business rules and\nhistory/audit-trail behavior. Perform this minimal write scenario through the\nUI (`web_ui__*` tools), then confirm what actually happened via the\n`postgres__query` tool. Use exactly these fixed identifiers, not a unique\nemail per run — a separate cleanup step outside your control removes this\ndata after you finish, so the fixed identifiers are always free to reuse:\n\n1. Create a new Customer: name \"Discovery Test Customer\", email\n   \"discovery-test@example.com\".\n2. Create a new Product: name \"Discovery Test Product\", price 19.99.\n3. Create a new Order (DRAFT) for that customer with one item using that product.\n4. Immediately query `OrderStatusHistory` for that new order's id — record\n   exactly how many rows exist and their statuses right after creation\n   (before any status change). Do not assume; report what you observed.\n5. Submit the order (DRAFT → SUBMITTED) via the UI.\n6. Query `OrderStatusHistory` again for that order — record the full,\n   ordered sequence of entries (status + relative order).\n\nDo not attempt to delete the Order, Product, or Customer yourself — a\nSUBMITTED order cannot be deleted via the API or reverted to DRAFT (this is\ncorrect, intentional application behavior), and your postgres tool is\nread-only. A separate, non-agent cleanup step handles removing this test\ndata; trying to delete it yourself only wastes turns.\n\nRecord the exact sequence of OrderStatusHistory entries you observed at each\npoint (after create, after submit) in `businessRules` — write the concrete\nobserved sequence, not a generic statement like \"tracks status changes\"."
+}

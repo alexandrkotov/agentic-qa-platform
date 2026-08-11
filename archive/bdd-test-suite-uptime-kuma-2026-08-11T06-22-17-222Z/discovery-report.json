@@ -1,0 +1,1566 @@
+{
+  "generatedAt": "2026-08-10T06:36:52.000Z",
+  "components": {
+    "web_ui": {
+      "uiPages": [
+        {
+          "route": "/dashboard",
+          "title": "Uptime Kuma",
+          "formFields": [
+            {
+              "name": "Username",
+              "type": "textbox"
+            },
+            {
+              "name": "Password",
+              "type": "textbox"
+            },
+            {
+              "name": "Remember me",
+              "type": "checkbox"
+            }
+          ],
+          "actions": [
+            "Log in",
+            "Add New Monitor",
+            "Status Pages",
+            "Dashboard",
+            "Search monitored sites",
+            "Select all monitors",
+            "Status filter",
+            "Tags filter",
+            "Clear All Events"
+          ]
+        },
+        {
+          "route": "/add",
+          "title": "Uptime Kuma",
+          "formFields": [
+            {
+              "name": "Monitor Type",
+              "type": "combobox",
+              "options": [
+                "HTTP(s)",
+                "HTTP(s) - Keyword",
+                "TCP Port",
+                "Ping",
+                "DNS",
+                "Docker Container",
+                "PM2 Process",
+                "HTTP(s) - Browser Engine (Chrome/Chromium) (Beta)",
+                "Group",
+                "Push",
+                "Manual",
+                "Globalping",
+                "gRPC(s) - Keyword",
+                "HTTP(s) - Json Query",
+                "Kafka Producer",
+                "MQTT",
+                "NTP",
+                "RabbitMQ",
+                "SMTP",
+                "SNMP",
+                "Websocket Upgrade",
+                "Microsoft SQL Server",
+                "MongoDB",
+                "MySQL/MariaDB",
+                "Oracle Database",
+                "PostgreSQL",
+                "Radius",
+                "Redis",
+                "GameDig",
+                "Steam Game Server"
+              ]
+            },
+            {
+              "name": "Friendly Name",
+              "type": "textbox"
+            },
+            {
+              "name": "URL",
+              "type": "textbox"
+            },
+            {
+              "name": "Heartbeat Interval",
+              "type": "spinbutton"
+            },
+            {
+              "name": "Retries",
+              "type": "spinbutton"
+            },
+            {
+              "name": "Request Timeout",
+              "type": "spinbutton"
+            },
+            {
+              "name": "Resend Notification if Down X times consecutively",
+              "type": "spinbutton"
+            },
+            {
+              "name": "Certificate Expiry Notification",
+              "type": "checkbox"
+            },
+            {
+              "name": "Domain Name Expiry Notification",
+              "type": "checkbox"
+            },
+            {
+              "name": "Ignore TLS/SSL errors for HTTPS websites",
+              "type": "checkbox"
+            },
+            {
+              "name": "Add the uptime_kuma_cachebuster parameter",
+              "type": "checkbox"
+            },
+            {
+              "name": "Upside Down Mode",
+              "type": "checkbox"
+            },
+            {
+              "name": "Max. Redirects",
+              "type": "spinbutton"
+            },
+            {
+              "name": "Save HTTP Error Response for Notifications",
+              "type": "checkbox"
+            },
+            {
+              "name": "Save HTTP Success Response for Notifications",
+              "type": "checkbox"
+            },
+            {
+              "name": "Response Max Length (bytes)",
+              "type": "spinbutton"
+            },
+            {
+              "name": "Accepted Status Codes",
+              "type": "combobox"
+            },
+            {
+              "name": "IP Family",
+              "type": "combobox",
+              "options": [
+                "Auto Select",
+                "IPv4",
+                "IPv6"
+              ]
+            },
+            {
+              "name": "Monitor Group",
+              "type": "combobox"
+            },
+            {
+              "name": "Description",
+              "type": "textbox"
+            },
+            {
+              "name": "Method",
+              "type": "combobox",
+              "options": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "HEAD",
+                "OPTIONS"
+              ]
+            },
+            {
+              "name": "Body Encoding",
+              "type": "combobox",
+              "options": [
+                "JSON",
+                "x-www-form-urlencoded",
+                "XML"
+              ]
+            },
+            {
+              "name": "Body",
+              "type": "textbox"
+            },
+            {
+              "name": "Headers",
+              "type": "textbox"
+            },
+            {
+              "name": "Authentication Method",
+              "type": "combobox",
+              "options": [
+                "None",
+                "HTTP Basic Auth",
+                "Bearer Token",
+                "OAuth2: Client Credentials",
+                "NTLM",
+                "mTLS"
+              ]
+            }
+          ],
+          "actions": [
+            "Save",
+            "Add Tags",
+            "Set Up Notification",
+            "Set Up Proxy"
+          ]
+        },
+        {
+          "route": "/settings",
+          "title": "Uptime Kuma",
+          "formFields": [
+            {
+              "name": "Display Timezone",
+              "type": "combobox"
+            },
+            {
+              "name": "Server Timezone",
+              "type": "combobox"
+            },
+            {
+              "name": "Search Engine Visibility",
+              "type": "radio",
+              "options": [
+                "Allow indexing",
+                "Discourage search engines from indexing site"
+              ]
+            },
+            {
+              "name": "Entry Page",
+              "type": "radio",
+              "options": [
+                "Dashboard"
+              ]
+            },
+            {
+              "name": "Primary Base URL",
+              "type": "textbox"
+            },
+            {
+              "name": "Steam API Key",
+              "type": "textbox"
+            },
+            {
+              "name": "Globalping API Token",
+              "type": "textbox"
+            },
+            {
+              "name": "Enable NSCD",
+              "type": "radio",
+              "options": [
+                "Enable",
+                "Disable"
+              ]
+            },
+            {
+              "name": "Chrome/Chromium Executable",
+              "type": "textbox"
+            }
+          ],
+          "actions": [
+            "Save",
+            "Auto Get",
+            "Test",
+            "General",
+            "Appearance",
+            "Notifications",
+            "Reverse Proxy",
+            "Tags",
+            "Monitor History",
+            "Docker Hosts",
+            "Remote Browsers",
+            "Security",
+            "API Keys",
+            "Proxies",
+            "About"
+          ]
+        }
+      ]
+    },
+    "kuma_db": {
+      "tables": [
+        {
+          "name": "user",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "username",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "password",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "timezone",
+              "type": "VARCHAR(150)",
+              "nullable": true
+            },
+            {
+              "name": "twofa_secret",
+              "type": "VARCHAR(64)",
+              "nullable": true
+            },
+            {
+              "name": "twofa_status",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "twofa_last_token",
+              "type": "VARCHAR(6)",
+              "nullable": true
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "username": "admin",
+              "active": 1,
+              "twofa_status": 0
+            }
+          ]
+        },
+        {
+          "name": "monitor",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(150)",
+              "nullable": true
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "interval",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "url",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "type",
+              "type": "VARCHAR(20)",
+              "nullable": true
+            },
+            {
+              "name": "weight",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "hostname",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "port",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "created_date",
+              "type": "DATETIME",
+              "nullable": false
+            },
+            {
+              "name": "keyword",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "maxretries",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "ignore_tls",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "upside_down",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "maxredirects",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "accepted_statuscodes_json",
+              "type": "TEXT",
+              "nullable": false
+            },
+            {
+              "name": "dns_resolve_type",
+              "type": "VARCHAR(5)",
+              "nullable": true
+            },
+            {
+              "name": "dns_resolve_server",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "retry_interval",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "push_token",
+              "type": "varchar(32)",
+              "nullable": true
+            },
+            {
+              "name": "method",
+              "type": "TEXT",
+              "nullable": false
+            },
+            {
+              "name": "body",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "headers",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "timeout",
+              "type": "DOUBLE",
+              "nullable": false
+            },
+            {
+              "name": "parent",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "description",
+              "type": "TEXT",
+              "nullable": true
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "name": "Test HTTP Monitor",
+              "type": "http",
+              "url": "https://example.com",
+              "interval": 60
+            },
+            {
+              "id": 2,
+              "name": "Test HTTP Monitor-1786330070051",
+              "type": "http",
+              "url": "https://example.com",
+              "interval": 60
+            },
+            {
+              "id": 3,
+              "name": "Test Ping Monitor-1786330076129",
+              "type": "ping",
+              "hostname": "localhost",
+              "interval": 60
+            }
+          ]
+        },
+        {
+          "name": "heartbeat",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "important",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "status",
+              "type": "SMALLINT",
+              "nullable": false
+            },
+            {
+              "name": "msg",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "time",
+              "type": "DATETIME",
+              "nullable": false
+            },
+            {
+              "name": "ping",
+              "type": "bigint",
+              "nullable": true
+            },
+            {
+              "name": "duration",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "down_count",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "end_time",
+              "type": "datetime",
+              "nullable": true
+            },
+            {
+              "name": "retries",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "response",
+              "type": "text",
+              "nullable": true
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "monitor_id": 1,
+              "status": 1,
+              "msg": "200 - OK",
+              "ping": 109
+            },
+            {
+              "id": 2,
+              "monitor_id": 1,
+              "status": 1,
+              "msg": "200 - OK",
+              "ping": 93
+            },
+            {
+              "id": 3,
+              "monitor_id": 1,
+              "status": 1,
+              "msg": "200 - OK",
+              "ping": 74
+            }
+          ]
+        },
+        {
+          "name": "notification",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "is_default",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "config",
+              "type": "TEXT",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "tag",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "color",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "created_date",
+              "type": "DATETIME",
+              "nullable": false
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "status_page",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "slug",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "title",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "description",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "icon",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "theme",
+              "type": "VARCHAR(30)",
+              "nullable": false
+            },
+            {
+              "name": "published",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "search_engine_index",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "show_tags",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "password",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "footer_text",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "custom_css",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "show_powered_by",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "auto_refresh_interval",
+              "type": "integer",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "setting",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "key",
+              "type": "VARCHAR(200)",
+              "nullable": false
+            },
+            {
+              "name": "value",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "type",
+              "type": "VARCHAR(20)",
+              "nullable": true
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "key": "database_version",
+              "value": "10"
+            },
+            {
+              "id": 2,
+              "key": "databasePatchedFiles",
+              "value": "..."
+            },
+            {
+              "id": 3,
+              "key": "migrateAggregateTableState",
+              "value": "migrated"
+            }
+          ]
+        },
+        {
+          "name": "maintenance",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "title",
+              "type": "VARCHAR(150)",
+              "nullable": false
+            },
+            {
+              "name": "description",
+              "type": "TEXT",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "strategy",
+              "type": "VARCHAR(50)",
+              "nullable": false
+            },
+            {
+              "name": "start_date",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "end_date",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "cron",
+              "type": "TEXT",
+              "nullable": true
+            },
+            {
+              "name": "timezone",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "duration",
+              "type": "INTEGER",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "group",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "created_date",
+              "type": "DATETIME",
+              "nullable": false
+            },
+            {
+              "name": "public",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "weight",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "status_page_id",
+              "type": "INTEGER",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "incident",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "title",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "content",
+              "type": "TEXT",
+              "nullable": false
+            },
+            {
+              "name": "style",
+              "type": "VARCHAR(30)",
+              "nullable": false
+            },
+            {
+              "name": "created_date",
+              "type": "DATETIME",
+              "nullable": false
+            },
+            {
+              "name": "last_updated_date",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "pin",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "status_page_id",
+              "type": "INTEGER",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "api_key",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "key",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "created_date",
+              "type": "DATETIME",
+              "nullable": false
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "expires",
+              "type": "DATETIME",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "proxy",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "INT",
+              "nullable": false
+            },
+            {
+              "name": "protocol",
+              "type": "VARCHAR(10)",
+              "nullable": false
+            },
+            {
+              "name": "host",
+              "type": "VARCHAR(255)",
+              "nullable": false
+            },
+            {
+              "name": "port",
+              "type": "integer",
+              "nullable": true
+            },
+            {
+              "name": "auth",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "username",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "password",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "active",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "default",
+              "type": "BOOLEAN",
+              "nullable": false
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "docker_host",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "INT",
+              "nullable": false
+            },
+            {
+              "name": "docker_daemon",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "docker_type",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR(255)",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "remote_browser",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "varchar(255)",
+              "nullable": false
+            },
+            {
+              "name": "url",
+              "type": "varchar(255)",
+              "nullable": false
+            },
+            {
+              "name": "user_id",
+              "type": "integer",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "monitor_tls_info",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "info_json",
+              "type": "text",
+              "nullable": true
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "monitor_id": 1,
+              "info_json": "(TLS certificate info for example.com)"
+            }
+          ]
+        },
+        {
+          "name": "domain_expiry",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "last_check",
+              "type": "datetime",
+              "nullable": true
+            },
+            {
+              "name": "domain",
+              "type": "varchar(255)",
+              "nullable": false
+            },
+            {
+              "name": "expiry",
+              "type": "datetime",
+              "nullable": true
+            },
+            {
+              "name": "last_expiry_notification_sent",
+              "type": "integer",
+              "nullable": true
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "domain": "example.com",
+              "expiry": "2026-08-13 04:00:00.000"
+            }
+          ]
+        },
+        {
+          "name": "stat_minutely",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "timestamp",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "ping",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "up",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "down",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "ping_min",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "ping_max",
+              "type": "float",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "monitor_id": 1,
+              "timestamp": 1786321020,
+              "ping": 109,
+              "up": 1,
+              "down": 0
+            }
+          ]
+        },
+        {
+          "name": "stat_hourly",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "timestamp",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "ping",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "ping_min",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "ping_max",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "up",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "down",
+              "type": "integer",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "monitor_id": 1,
+              "timestamp": 1786320000,
+              "ping": 90.88,
+              "up": 43,
+              "down": 0
+            }
+          ]
+        },
+        {
+          "name": "stat_daily",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "timestamp",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "ping",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "up",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "down",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "ping_min",
+              "type": "float",
+              "nullable": false
+            },
+            {
+              "name": "ping_max",
+              "type": "float",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "monitor_id": 1,
+              "timestamp": 1786320000,
+              "ping": 90.6,
+              "up": 379,
+              "down": 0
+            }
+          ]
+        },
+        {
+          "name": "monitor_notification",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "notification_id",
+              "type": "INTEGER",
+              "nullable": false
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "monitor_tag",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "tag_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "value",
+              "type": "TEXT",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "monitor_group",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "group_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "weight",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "send_url",
+              "type": "BOOLEAN",
+              "nullable": false
+            },
+            {
+              "name": "custom_url",
+              "type": "text",
+              "nullable": true
+            }
+          ],
+          "sampleRows": []
+        },
+        {
+          "name": "monitor_maintenance",
+          "columns": [
+            {
+              "name": "id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "monitor_id",
+              "type": "INTEGER",
+              "nullable": false
+            },
+            {
+              "name": "maintenance_id",
+              "type": "INTEGER",
+              "nullable": false
+            }
+          ],
+          "sampleRows": []
+        }
+      ]
+    },
+    "kuma_rest": {
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/entry-page",
+          "description": "Returns JSON with entry page type configuration; body: {type: 'entryPage', entryPage: null}. Status 200."
+        },
+        {
+          "method": "GET",
+          "path": "/api/status-page/heartbeat/default",
+          "description": "Returns heartbeat/uptime data for the default status page. Returns empty heartbeatList and uptimeList if no status page is configured. Status 200."
+        },
+        {
+          "method": "GET",
+          "path": "/api/badge/1/status",
+          "description": "Returns SVG status badge for monitor 1. Shows 'N/A' when monitor has no heartbeat data. Content-Type: image/svg+xml. Status 200."
+        },
+        {
+          "method": "GET",
+          "path": "/api/badge/1/uptime",
+          "description": "Returns SVG uptime percentage badge for monitor 1. Shows 'N/A' when no data. Content-Type: image/svg+xml. Status 200."
+        },
+        {
+          "method": "GET",
+          "path": "/api/badge/1/ping",
+          "description": "Returns SVG ping time badge for monitor 1. Shows 'N/A' when no data. Content-Type: image/svg+xml. Status 200."
+        },
+        {
+          "method": "GET",
+          "path": "/api/push/testtoken",
+          "description": "Push monitor heartbeat endpoint. Returns 404 with {ok: false, msg: 'Monitor not found or not active.'} for invalid/missing push token."
+        }
+      ]
+    }
+  },
+  "businessRules": [
+    "User authentication required to access dashboard, add monitors, and settings pages",
+    "Monitors have a heartbeat interval (default 60 seconds) defining how often they are checked",
+    "Monitors support retry logic with configurable maxretries and retry_interval",
+    "HTTP monitors can filter accepted status codes (default 200-299)",
+    "TLS/SSL certificate expiry can be tracked and notified in advance (configurable days)",
+    "Domain name expiry can be monitored and notifications sent",
+    "Monitors can be organized into groups for hierarchical status pages",
+    "Upside Down Mode inverts monitor status (reachable = DOWN)",
+    "Max redirects limit configurable (default 10, 0 disables)",
+    "HTTP error and success responses can be saved for notification templates",
+    "Response body storage size is configurable (default 1024 bytes)",
+    "Status pages can be password protected",
+    "Maintenance windows can be scheduled with various strategies (single, recurring, cron)",
+    "Monitors support various authentication methods: Basic Auth, Bearer Token, OAuth2, NTLM, mTLS",
+    "Monitors support proxy configuration",
+    "Tags can be assigned to monitors for categorization",
+    "2FA authentication is supported but optional",
+    "API keys can be created with optional expiration dates",
+    "DNS caching via NSCD can be enabled/disabled",
+    "Push monitors require a valid push_token to record heartbeats",
+    "Group monitors aggregate status from child monitors"
+  ],
+  "testScenarios": [
+    {
+      "name": "Create HTTP monitor with valid URL",
+      "type": "happy_path",
+      "description": "Create an HTTP monitor targeting https://example.com with default settings. Verify monitor appears in dashboard, starts heartbeating, and shows 'Up' status."
+    },
+    {
+      "name": "Create ping monitor",
+      "type": "happy_path",
+      "description": "Create a Ping monitor targeting localhost. Verify ping checks succeed and uptime is recorded."
+    },
+    {
+      "name": "Login with valid credentials",
+      "type": "happy_path",
+      "description": "Login with username 'admin' and correct password. Verify redirect to dashboard and session persists."
+    },
+    {
+      "name": "Login with invalid credentials",
+      "type": "security",
+      "description": "Attempt login with incorrect password. Verify login fails with appropriate error message and no session created."
+    },
+    {
+      "name": "Create monitor with empty URL",
+      "type": "edge_case",
+      "description": "Try to create an HTTP monitor without providing a URL. Verify validation error prevents creation."
+    },
+    {
+      "name": "Create monitor with invalid URL format",
+      "type": "edge_case",
+      "description": "Create HTTP monitor with malformed URL (e.g., 'not-a-url'). Verify appropriate error handling."
+    },
+    {
+      "name": "Monitor with zero heartbeat interval",
+      "type": "edge_case",
+      "description": "Attempt to set heartbeat interval to 0 or negative value. Verify validation prevents this."
+    },
+    {
+      "name": "Push monitor without valid token",
+      "type": "edge_case",
+      "description": "Call push endpoint /api/push/invalidtoken. Verify 404 response with 'Monitor not found or not active.'"
+    },
+    {
+      "name": "Certificate expiry notification",
+      "type": "happy_path",
+      "description": "Configure certificate expiry monitoring for an HTTPS site. Verify TLS info is recorded in monitor_tls_info table."
+    },
+    {
+      "name": "Domain expiry tracking",
+      "type": "happy_path",
+      "description": "Enable domain expiry notification for a monitor. Verify domain_expiry table is populated with expiry date."
+    },
+    {
+      "name": "Access dashboard without authentication",
+      "type": "security",
+      "description": "Navigate to /dashboard without logging in. Verify redirect to login page."
+    },
+    {
+      "name": "Create API key and test authentication",
+      "type": "happy_path",
+      "description": "Create an API key in settings. Verify key appears in api_key table and can be used for API authentication."
+    },
+    {
+      "name": "Group monitor with no children",
+      "type": "edge_case",
+      "description": "Create a Group type monitor with no child monitors. Verify it shows 'Pending' status with 'Group empty' message."
+    },
+    {
+      "name": "Badge endpoint for non-existent monitor",
+      "type": "edge_case",
+      "description": "Request badge for monitor ID that doesn't exist. Verify appropriate N/A or error response."
+    },
+    {
+      "name": "Monitor with upside down mode",
+      "type": "happy_path",
+      "description": "Create monitor with Upside Down Mode enabled. Verify that when target is reachable, status shows as 'Down'."
+    },
+    {
+      "name": "Configure maximum redirects",
+      "type": "edge_case",
+      "description": "Set max redirects to 0 for an HTTP monitor targeting a redirecting URL. Verify redirect is not followed."
+    },
+    {
+      "name": "Status page heartbeat data",
+      "type": "happy_path",
+      "description": "Create a status page with monitors assigned. Verify /api/status-page/heartbeat/{slug} returns heartbeat data."
+    },
+    {
+      "name": "Two-factor authentication setup",
+      "type": "security",
+      "description": "Enable 2FA for user account. Verify twofa_status is set to 1 and twofa_secret is populated."
+    },
+    {
+      "name": "Maintenance window effect on monitors",
+      "type": "happy_path",
+      "description": "Create maintenance window for a monitor. Verify monitor status shows 'Maintenance' during the window."
+    },
+    {
+      "name": "Monitor timeout configuration",
+      "type": "edge_case",
+      "description": "Set very short timeout (1 second) for slow-responding target. Verify timeout error is recorded in heartbeat."
+    }
+  ]
+}

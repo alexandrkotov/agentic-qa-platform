@@ -73,12 +73,14 @@ exists purely to help a human understand what Discovery found.
 ### The application under test
 
 **OrderFlow below is this repo's own bundled example — not the only thing under test anymore.**
-It's always available (part of the base `docker-compose.yml`, no extra deploy step), and its own
-suite is preserved and restorable any time (see "The test suite" below). But the same pipeline,
-unmodified, now also runs against 5 real, unrelated open-source apps it was never built for —
-[wger](https://github.com/wger-project/wger), Uptime Kuma, Snipe-IT, Wekan, nopCommerce — each
-deployed straight from its own repo (see "The System Descriptor" and "Adding a new target" below).
-Right now it's actually one of those, Uptime Kuma, whose suite is checked into `tests/`.
+It's its own compose project (`bdd-target-demo-orderflow`, alongside the platform's own
+`docker-compose.yml` — see "Running this locally" below), independently deployable/tearable-down,
+and its own suite is preserved and restorable any time (see "The test suite" below). But the same
+pipeline, unmodified, now also runs against 5 real, unrelated open-source apps it was never built
+for — [wger](https://github.com/wger-project/wger), Uptime Kuma, Snipe-IT, Wekan, nopCommerce —
+each deployed straight from its own repo (see "The System Descriptor" and "Adding a new target"
+below). Right now it's actually one of those, Uptime Kuma, whose suite `tests/.current-descriptor`
+names.
 
 Not a Todo list — a small order-processing app, **OrderFlow**, chosen specifically because it creates
 real relationships across layers to test against: `Customer` → `Order` → `OrderItem` → `Product`,
@@ -145,9 +147,9 @@ human approval (workbench UI at `:4400`, or the CLI + hand-edited JSON) before t
   targets, type-checks it, and re-runs the scenario with no further AI involvement.
 - **Guardrails**, enforced in code, not just prompted: no touching `app/`/`frontend/`, no patch at
   all when the cause is an app bug, exact-match-only file edits.
-- All scenarios in whichever suite is currently checked into `tests/` are auto-discovered from the
-  `.feature` files (currently 20, Uptime Kuma's suite — see "The test suite" below); `--scenario`
-  accepts an id, an exact title, or a Gherkin tag.
+- All scenarios in whichever suite `tests/.current-descriptor` currently names are auto-discovered
+  from the `.feature` files (currently 20, Uptime Kuma's suite — see "The test suite" below);
+  `--scenario` accepts an id, an exact title, or a Gherkin tag.
 
 A real (trimmed) diagnosis, captured against OrderFlow's own suite (preserved under `archive/`,
 see "The test suite" below — not the Uptime Kuma suite currently checked into `tests/`) — the same
@@ -307,11 +309,14 @@ just works end to end — including CI, with zero pipeline edits. Checklist, in 
    if something explicitly calls `POST /api/descriptors/<name>/setup` for it — CI treats that 400 as
    "nothing to do" and moves on.
 
-From here, CI just works: `.github/workflows/tests.yml`'s `e2e` job reads `tests/.current-descriptor`
-and drives the real Workbench over its own HTTP API — `/deploy` → `/setup` → `/tests/run` →
-`/undeploy` — the same routes a human already uses from the browser, not a separate reimplementation.
-Swapping which target's suite is checked into `tests/` (step 4 above, next time) is the only thing
-that changes what CI runs; the workflow file itself never needs touching again. A target's own setup
+From here, CI just works: `.github/workflows/tests.yml`'s `e2e` job reads `tests/.current-descriptor`,
+restores that descriptor's own archived suite via `tests/support/restore-suite.mjs` (`tests/features`/
+`tests/steps` aren't git-tracked themselves, see "The test suite" below), then drives the real
+Workbench over its own HTTP API — `/deploy` → `/setup` → `/tests/run` → `/undeploy` — the same
+routes a human already uses from the browser, not a separate reimplementation. Swapping which
+target's suite `tests/.current-descriptor` names (step 4 above, next time — or the hub's own
+"Deploy ... and its BDD suite" buttons) is the only thing that changes what CI runs; the workflow
+file itself never needs touching again. A target's own setup
 script (if it has one) is also bundled automatically into every archive snapshot
 (`POST /api/generate/snapshot`) alongside its descriptor/corrections/env, so a snapshot stays
 self-contained enough to actually reproduce the target's tested state, not just its test code.
@@ -386,22 +391,38 @@ HTML report and a Cucumber-format HTML report (via `multiple-cucumber-html-repor
 through a small local `nginx` container. See [docs/phase3-status.md](docs/phase3-status.md) for the
 original reporting details. Path: [`tests/`](tests/).
 
-`tests/features/`/`tests/steps/` hold whichever *one* descriptor's suite was most recently written
-via "Write & Run" — not fixed to OrderFlow forever. `tests/.current-descriptor` names which one (see
-"Adding a new target" above); a suite generated for a different descriptor overwrites what's there,
-same as any other generated-code directory. Every past suite still has its own permanent, timestamped
-copy under [`archive/`](archive/) — the Test Suite tab's snapshot action (below) bundles the
-`.feature`/`.steps.ts` files alongside the descriptor/corrections/env/setup-script that produced
-them — so switching which suite is live in `tests/` never loses an earlier one.
+`tests/features/`/`tests/steps/` hold whichever *one* descriptor's suite is currently live — not
+fixed to OrderFlow forever, and **not git-tracked themselves** (gitignored; a working copy, not
+source content in its own right). `tests/.current-descriptor` names which one, and **is** tracked
+(a one-line pointer, not bulk content). Two ways this directory gets (re)populated:
+
+- **"Write & Run"** generates a fresh suite from an approved spec and overwrites what's there
+  (`POST /api/generate/render`), updating `tests/.current-descriptor` to match.
+- **[`tests/support/restore-suite.mjs`](tests/support/restore-suite.mjs)** copies a suite back out
+  of one of its own past snapshots instead of regenerating it — the one real mechanism CI, the
+  hub's "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons, and manual local setup (Quick
+  Start above) all share. Takes an optional descriptor name (defaults to reading
+  `tests/.current-descriptor`).
+
+Every past suite still has its own permanent, timestamped copy under [`archive/`](archive/) — the
+Test Suite tab's snapshot action bundles the `.feature`/`.steps.ts` files alongside the
+descriptor/corrections/env/setup-script that produced them, so switching which suite is live in
+`tests/` never loses an earlier one. Only **two** of those snapshots are themselves git-tracked
+(OrderFlow's and Uptime Kuma's — the two the restore script and CI actually rely on existing on a
+fresh checkout); every other snapshot in `archive/` stays disk-only, gitignored, a point-in-time
+convenience rather than permanent history.
 
 ### CI
 
 A GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)),
-descriptor-agnostic: it reads `tests/.current-descriptor`, then drives the real `workbench`
-container over its own HTTP API — `/deploy` → `/setup` → `/tests/run` → `/undeploy`, the same
-routes a human already uses from the browser — rather than reimplementing deploy/run logic in YAML.
-Whichever descriptor's suite is currently checked into `tests/` is what CI deploys and tests; no
-workflow edit needed when that changes (see "Adding a new target" above). Uploads both HTML reports
+descriptor-agnostic: it reads `tests/.current-descriptor`, restores that descriptor's own archived
+suite (`tests/support/restore-suite.mjs` — `tests/features`/`tests/steps` aren't git-tracked
+themselves, only `tests/.current-descriptor` and the two `archive/bdd-test-suite-*` snapshots are),
+then drives the real `workbench` container over its own HTTP API — `/deploy` → `/setup` →
+`/tests/run` → `/undeploy`, the same routes a human already uses from the browser — rather than
+reimplementing deploy/run logic in YAML. Whichever descriptor `tests/.current-descriptor` names is
+what CI deploys and tests; no workflow edit needed when that changes (see "Adding a new target"
+above). Uploads both HTML reports
 as artifacts regardless of pass/fail. **Verified green on a real GitHub-hosted runner**, most
 recently against the Uptime Kuma suite (2026-08-10) after this descriptor-agnostic rewrite — five
 real environment-only bugs surfaced and fixed along the way (lockfile drift; an npm-vs-pnpm phantom
@@ -443,19 +464,23 @@ Deliberately out of scope, not missing pieces:
 ### Quick start
 
 The minimum to get a real target deployed and its test suite green — no AI calls needed, since the
-discovery report and generated suite are already committed. `tests/` currently holds **Uptime
-Kuma**'s suite, a real external target (not the bundled OrderFlow app) deployed straight from its
-own repo — see "The test suite" below for why it's Kuma right now and not OrderFlow, and "Adding a
-new target" for how any target gets checked in. Assumes WSL2 + Docker Desktop (see
-[Prerequisites](#prerequisites) below); every command runs from the repo root unless noted.
+discovery report and generated suite are already committed as an archived snapshot. `tests/features`/
+`tests/steps` themselves start out empty (gitignored — they're a *restored working copy*, not source
+content in their own right; see "The test suite" below) — the first real step for either target is
+restoring one of the two git-tracked `archive/bdd-test-suite-*` snapshots into them. Assumes WSL2 +
+Docker Desktop (see [Prerequisites](#prerequisites) below); every command runs from the repo root
+unless noted.
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build                                                                     # platform
+docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build   # demo: OrderFlow
+
 # give the workbench container a few seconds to finish starting, then deploy
 # and set up Uptime Kuma — the same two API calls CI itself makes:
 curl -X POST http://localhost:4400/api/descriptors/uptime-kuma/deploy
 curl -X POST http://localhost:4400/api/descriptors/uptime-kuma/setup
 
+node tests/support/restore-suite.mjs uptime-kuma
 cp agent-service/descriptors/uptime-kuma.env tests/.env
 cd tests
 pnpm install
@@ -464,28 +489,31 @@ pnpm run test
 ```
 
 That's Uptime Kuma deployed for real (its own containers, host ports auto-allocated) plus a real
-20-scenario Playwright/BDD run against it. The bundled OrderFlow app itself is also already up as
-part of `docker compose up` (see "Services & URLs" below) — its own original suite is preserved
-under `archive/` and its database just needs `docker compose exec app npx prisma migrate deploy`
-if you want to try it (swap `tests/.env` back to
-`DATABASE_URL=postgresql://user:pass@localhost:5432/testdb` first). The full walkthrough below adds:
-`.env` files for the other two parts, the Cucumber HTML report, the AI usage dashboard, and how to
-run the agents (discovery/generate/E2E) yourself.
+20-scenario Playwright/BDD run against it. The bundled OrderFlow demo is also already up, in its own
+`bdd-target-demo-orderflow` project (the platform's `docker compose up` above must run first — it
+owns creation of the shared network both projects join). To try OrderFlow's own suite instead, swap
+the restore + env steps: `node tests/support/restore-suite.mjs orderflow` and set
+`DATABASE_URL=postgresql://user:pass@localhost:5432/testdb` in `tests/.env` — no manual migration
+step needed, the demo compose file's own `app` service runs `prisma migrate deploy` on every start.
+The hub page's own "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons automate this whole
+tear-down-and-redeploy dance with one click each (see "The Workbench" below). The full walkthrough
+below adds: `.env` files for the other two parts, the Cucumber HTML report, the AI usage dashboard,
+and how to run the agents (discovery/generate/E2E) yourself.
 
 ### Services & URLs
 
-Once `docker compose up` is running, here's everything with a web UI — or just open
+Once both compose commands above are running, here's everything with a web UI — or just open
 `http://localhost` for a page linking to all of them ([`hub/index.html`](hub/index.html), served
 by the same `report` container on the default port, no `:8080` to remember):
 
 | Service | URL | What it is | Started by |
 |---|---|---|---|
 | **Hub — links to everything below** | `http://localhost` | | `docker compose up` |
-| Frontend | `http://localhost:5173` | OrderFlow, the app under test | `docker compose up` |
-| Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | `docker compose up` |
+| Frontend | `http://localhost:5173` | OrderFlow, the app under test | the demo compose command above |
+| Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | the demo compose command above |
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
-| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) | `docker compose up` |
+| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) | `docker compose up`, but only shows a connected cluster while the OrderFlow demo group is also deployed — `kafka` itself lives there now, not in the platform project |
 | Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
 
 A full tour of all of them, starting from the hub: create an order, verify it in Swagger, find
@@ -535,35 +563,47 @@ constants committed directly in `agent-service/src/bootstrap/*.ts`, not external
 ### 2. Start the app stack
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build                                                                     # platform
+docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build   # demo: OrderFlow
 ```
 
-Starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db` (Postgres, `:5432`), `kafka`
-(single-node broker, external listener `:9094`), `kafka-ui` (cluster admin UI, `:8081` — for
-humans only, nothing in this repo depends on it), `report` (nginx, `:8080` — serves the Cucumber
-test report at `/` once you generate one in step 4, and the AI usage/cost log at `/usage/`, which
-shows a friendly placeholder until any agent call happens in step 5 or 6; the same container also
-serves the hub page above on the default port, `:80`), and `workbench` (the Workbench control
-panel — Discovery/Analysis/Test Suite/E2E tabs, `:4400` — see below).
+The first command starts `kafka-ui` (cluster admin UI, `:8081` — for humans only, nothing in this
+repo depends on it), `report` (nginx, `:8080` — serves the Cucumber test report at `/` once you
+generate one in step 4, and the AI usage/cost log at `/usage/`, which shows a friendly placeholder
+until any agent call happens in step 5 or 6; the same container also serves the hub page above on
+the default port, `:80`), and `workbench` (the Workbench control panel — Discovery/Analysis/Test
+Suite/E2E tabs, `:4400` — see below). It also creates the `agentic-qa-platform-net` network the
+second command's own project joins — always run this one first.
 
-Kafka is intentionally not persisted across rebuilds (no volume) — it's a derived event stream,
-not data worth keeping, and `app`'s health-gated dependency on it means a full `--build` always
-comes up clean regardless.
+The second command starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db`
+(Postgres, `:5432`), and `kafka` (single-node broker, external listener `:9094`) — the bundled
+OrderFlow demo, its own compose project (`bdd-target-demo-orderflow`) so it can be torn down and
+redeployed independently of the platform above (see "The Workbench" below for the hub's own
+buttons that do exactly this, suite included). Kafka is intentionally not persisted across
+rebuilds (no volume) — it's a derived event stream, not data worth keeping, and `app`'s
+health-gated dependency on it means a full `--build` always comes up clean regardless.
 
-### 3. Run database migrations
+### 3. Database migrations
 
-The app has no auto-migrate-on-boot, so a fresh `db` container starts with no schema:
+The demo compose file's own `app` service runs `prisma migrate deploy` automatically on every
+start (needed so a fresh `pgdata` volume — e.g. after the hub's "Deploy OrderFlow" button does a
+clean teardown+redeploy — always ends up with a real schema, not just `prisma generate`) — nothing
+to do here normally. To re-run migrations by hand against an already-running container:
 
 ```bash
-docker compose exec app npx prisma migrate deploy
+docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml exec app npx prisma migrate deploy
 ```
 
-Once that's done, `http://localhost:3000/customers` and `http://localhost:5173` should both
+Once step 2 is done, `http://localhost:3000/customers` and `http://localhost:5173` should both
 respond.
 
 ### 4. Run the test suite
 
+`tests/features`/`tests/steps` start out empty (gitignored — see "The test suite" below) — restore
+one of the two git-tracked `archive/bdd-test-suite-*` snapshots into them first:
+
 ```bash
+node tests/support/restore-suite.mjs uptime-kuma   # or: orderflow
 cd tests
 pnpm install
 npx playwright install --with-deps chromium   # one-time, downloads the browser
@@ -571,6 +611,10 @@ pnpm run test      # bddgen + playwright test — checkmark output in terminal +
 pnpm run report    # renders reports/cucumber-html/ from that JSON
 pnpm run cleanup   # sweeps the test data this run created out of the database
 ```
+
+Running against `uptime-kuma` needs it deployed+set up first (see the Quick Start above); running
+against `orderflow` needs `tests/.env`'s `DATABASE_URL` pointed at
+`postgresql://user:pass@localhost:5432/testdb` (step 1 already sets this by default).
 
 Then open `http://localhost:8080/` to view the Cucumber HTML report (served by the `report`
 container from step 2 — refresh the page any time you regenerate the report, no restart needed).

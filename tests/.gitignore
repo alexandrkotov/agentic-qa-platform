@@ -4,3 +4,10 @@ node_modules/
 test-results/
 playwright-report/
 reports/
+# Restored working copy of whichever archived snapshot is currently active
+# (tests/support/restore-suite.mjs) — the real source of truth now lives in
+# the two git-tracked archive/bdd-test-suite-* snapshots, not here.
+# tests/.current-descriptor stays tracked (it's just a pointer), see the
+# root .gitignore's own comment on the archive exceptions.
+features/
+steps/

@@ -1,0 +1,97 @@
+{
+  "generatedAt": "2026-07-30T17:51:49.544Z",
+  "sourceReportPath": "reports/discovery-2026-07-30T15-21-48-438Z-orderflow.json",
+  "pages": [
+    {
+      "route": "/",
+      "transitions": [
+        {
+          "kind": "navigation",
+          "action": "Redirects",
+          "to": "/customers"
+        }
+      ]
+    },
+    {
+      "route": "/customers",
+      "transitions": [
+        {
+          "kind": "in_place_action",
+          "action": "Add Customer",
+          "description": "Submits the form and adds a new customer row to the table on the same page, no navigation"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Edit",
+          "description": "Opens inline editing or modal for the customer row, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Delete",
+          "description": "Removes the customer row from the table, stays on the same page"
+        }
+      ]
+    },
+    {
+      "route": "/products",
+      "transitions": [
+        {
+          "kind": "in_place_action",
+          "action": "Add Product",
+          "description": "Submits the form and adds a new product row to the table on the same page, no navigation"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Edit",
+          "description": "Opens inline editing or modal for the product row, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Delete",
+          "description": "Removes the product row from the table, stays on the same page"
+        }
+      ]
+    },
+    {
+      "route": "/orders",
+      "transitions": [
+        {
+          "kind": "in_place_action",
+          "action": "+ Add item",
+          "description": "Adds another product/quantity row to the order creation form, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Create Order",
+          "description": "Submits the order form and creates a new order card on the same page, no navigation"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Submit",
+          "description": "Changes the order status from DRAFT to SUBMITTED, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Edit",
+          "description": "Opens editing mode for the DRAFT order items, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Delete",
+          "description": "Removes the DRAFT order from the page, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Show history ▼",
+          "description": "Expands the status history section for the order, stays on the same page"
+        },
+        {
+          "kind": "in_place_action",
+          "action": "Hide history ▲",
+          "description": "Collapses the status history section for the order, stays on the same page"
+        }
+      ]
+    }
+  ],
+  "approvedAt": "2026-07-30T17:52:00.192Z"
+}

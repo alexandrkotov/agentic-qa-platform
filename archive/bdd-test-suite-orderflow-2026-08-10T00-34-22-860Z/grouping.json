@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-31T03:49:37.266Z",
+  "sourceReportPath": "reports/discovery-2026-07-30T15-21-48-438Z-orderflow.json",
+  "crossFunctionalTypes": [
+    "security"
+  ],
+  "threshold": 0.3,
+  "groups": [
+    {
+      "key": "security",
+      "scenarioNames": [
+        "SQL Injection in customer email",
+        "XSS in product name"
+      ],
+      "rationale": "cross-functional: type=\"security\""
+    },
+    {
+      "key": "customers",
+      "scenarioNames": [
+        "Create Customer with valid data",
+        "Create Customer with missing email",
+        "Create Customer with missing name",
+        "Create Customer with duplicate email",
+        "Update customer information",
+        "Delete customer with no orders",
+        "Delete customer with existing orders"
+      ],
+      "rationale": "entity: \"customers\""
+    },
+    {
+      "key": "products",
+      "scenarioNames": [
+        "Create Product with valid data",
+        "Create Product with zero or negative price",
+        "Delete product with no order items",
+        "Delete product used in existing order",
+        "Update product price"
+      ],
+      "rationale": "entity: \"products\""
+    },
+    {
+      "key": "orders",
+      "scenarioNames": [
+        "Submit DRAFT order",
+        "Verify Kafka event on order creation",
+        "Verify Kafka event on order submission",
+        "Delete DRAFT order",
+        "Attempt to delete SUBMITTED order",
+        "Edit DRAFT order items",
+        "Attempt to edit SUBMITTED order",
+        "Create order with quantity greater than 1",
+        "API: Update order status with invalid status value",
+        "Create Order with valid customer and items",
+        "Create Order without selecting a customer",
+        "Create Order without any items",
+        "Add multiple items to order",
+        "API: Create order with invalid customerId",
+        "API: Create order with invalid productId"
+      ],
+      "rationale": "entity: \"orders\""
+    }
+  ],
+  "ungrouped": [],
+  "flatFallback": true,
+  "approvedAt": "2026-08-02T06:36:27.143Z"
+}

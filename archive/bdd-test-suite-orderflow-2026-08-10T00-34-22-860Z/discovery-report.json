@@ -1,0 +1,816 @@
+{
+  "generatedAt": "2026-07-30T15:21:00.000Z",
+  "components": {
+    "postgres": {
+      "tables": [
+        {
+          "name": "Customer",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "email",
+              "type": "text",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "text",
+              "nullable": false
+            },
+            {
+              "name": "createdAt",
+              "type": "timestamp without time zone",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "email": "jane.doe@example.com",
+              "name": "Jane Doe",
+              "createdAt": "2026-07-21T04:12:42.457Z"
+            },
+            {
+              "id": 3,
+              "email": "discovery-test@example.com",
+              "name": "Discovery Test Customer",
+              "createdAt": "2026-07-30T15:20:00.550Z"
+            }
+          ]
+        },
+        {
+          "name": "Product",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "text",
+              "nullable": false
+            },
+            {
+              "name": "price",
+              "type": "numeric",
+              "nullable": false
+            },
+            {
+              "name": "createdAt",
+              "type": "timestamp without time zone",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 1,
+              "name": "Wireless Mouse",
+              "price": "29.99",
+              "createdAt": "2026-07-22T00:18:04.323Z"
+            },
+            {
+              "id": 5,
+              "name": "Discovery Test Product",
+              "price": "19.99",
+              "createdAt": "2026-07-30T15:20:12.435Z"
+            },
+            {
+              "id": 3,
+              "name": "Mouse Pad",
+              "price": "5.02",
+              "createdAt": "2026-07-22T17:39:03.883Z"
+            }
+          ]
+        },
+        {
+          "name": "Order",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "customerId",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "status",
+              "type": "USER-DEFINED",
+              "nullable": false
+            },
+            {
+              "name": "createdAt",
+              "type": "timestamp without time zone",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 2,
+              "customerId": 3,
+              "status": "SUBMITTED",
+              "createdAt": "2026-07-30T15:20:29.350Z"
+            }
+          ]
+        },
+        {
+          "name": "OrderItem",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "orderId",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "productId",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "quantity",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "unitPrice",
+              "type": "numeric",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 2,
+              "orderId": 2,
+              "productId": 5,
+              "quantity": 1,
+              "unitPrice": "19.99"
+            }
+          ]
+        },
+        {
+          "name": "OrderStatusHistory",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "orderId",
+              "type": "integer",
+              "nullable": false
+            },
+            {
+              "name": "status",
+              "type": "USER-DEFINED",
+              "nullable": false
+            },
+            {
+              "name": "changedAt",
+              "type": "timestamp without time zone",
+              "nullable": false
+            }
+          ],
+          "sampleRows": [
+            {
+              "id": 3,
+              "orderId": 2,
+              "status": "DRAFT",
+              "changedAt": "2026-07-30T15:20:29.350Z"
+            },
+            {
+              "id": 4,
+              "orderId": 2,
+              "status": "SUBMITTED",
+              "changedAt": "2026-07-30T15:20:38.478Z"
+            }
+          ]
+        }
+      ]
+    },
+    "rest_api": {
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "description": "App root endpoint",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "POST",
+          "path": "/customers",
+          "description": "Create a new customer",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string",
+                "example": "jane@example.com"
+              },
+              "name": {
+                "type": "string",
+                "example": "Jane Doe"
+              }
+            },
+            "required": [
+              "email",
+              "name"
+            ]
+          },
+          "responseSchema": {}
+        },
+        {
+          "method": "GET",
+          "path": "/customers",
+          "description": "Get all customers",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "GET",
+          "path": "/customers/{id}",
+          "description": "Get a customer by ID",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "PATCH",
+          "path": "/customers/{id}",
+          "description": "Update a customer",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string",
+                "example": "jane@example.com"
+              },
+              "name": {
+                "type": "string",
+                "example": "Jane Doe"
+              }
+            },
+            "required": []
+          },
+          "responseSchema": {}
+        },
+        {
+          "method": "DELETE",
+          "path": "/customers/{id}",
+          "description": "Delete a customer",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "POST",
+          "path": "/products",
+          "description": "Create a new product",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "Wireless Mouse"
+              },
+              "price": {
+                "type": "number",
+                "example": 29.99
+              }
+            },
+            "required": [
+              "name",
+              "price"
+            ]
+          },
+          "responseSchema": {}
+        },
+        {
+          "method": "GET",
+          "path": "/products",
+          "description": "Get all products",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "GET",
+          "path": "/products/{id}",
+          "description": "Get a product by ID",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "PATCH",
+          "path": "/products/{id}",
+          "description": "Update a product",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "Wireless Mouse"
+              },
+              "price": {
+                "type": "number",
+                "example": 29.99
+              }
+            },
+            "required": []
+          },
+          "responseSchema": {}
+        },
+        {
+          "method": "DELETE",
+          "path": "/products/{id}",
+          "description": "Delete a product",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "description": "Create a new order",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "number",
+                "example": 1
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "productId": {
+                      "type": "number",
+                      "example": 1
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "example": 2
+                    }
+                  },
+                  "required": [
+                    "productId",
+                    "quantity"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "customerId",
+              "items"
+            ]
+          },
+          "responseSchema": {}
+        },
+        {
+          "method": "GET",
+          "path": "/orders",
+          "description": "Get all orders",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "GET",
+          "path": "/orders/{id}",
+          "description": "Get an order by ID",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "DELETE",
+          "path": "/orders/{id}",
+          "description": "Delete an order",
+          "requestBody": null,
+          "responseSchema": {}
+        },
+        {
+          "method": "PATCH",
+          "path": "/orders/{id}/status",
+          "description": "Update order status",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "DRAFT",
+                  "SUBMITTED"
+                ],
+                "example": "SUBMITTED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "responseSchema": {}
+        },
+        {
+          "method": "PATCH",
+          "path": "/orders/{id}/items",
+          "description": "Update order items",
+          "requestBody": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "productId": {
+                      "type": "number",
+                      "example": 1
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "example": 2
+                    }
+                  },
+                  "required": [
+                    "productId",
+                    "quantity"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "items"
+            ]
+          },
+          "responseSchema": {}
+        }
+      ]
+    },
+    "web_ui": {
+      "uiPages": [
+        {
+          "route": "/",
+          "title": "frontend",
+          "description": "Redirects to /customers",
+          "formFields": [],
+          "actions": []
+        },
+        {
+          "route": "/customers",
+          "title": "frontend",
+          "formFields": [
+            {
+              "name": "Email",
+              "type": "textbox"
+            },
+            {
+              "name": "Name",
+              "type": "textbox"
+            }
+          ],
+          "actions": [
+            {
+              "name": "Add Customer",
+              "type": "button"
+            },
+            {
+              "name": "Edit",
+              "type": "button",
+              "context": "per row"
+            },
+            {
+              "name": "Delete",
+              "type": "button",
+              "context": "per row"
+            }
+          ],
+          "dataDisplay": "table with columns: ID, Email, Name, Actions"
+        },
+        {
+          "route": "/products",
+          "title": "frontend",
+          "formFields": [
+            {
+              "name": "Name",
+              "type": "textbox"
+            },
+            {
+              "name": "Price",
+              "type": "spinbutton"
+            }
+          ],
+          "actions": [
+            {
+              "name": "Add Product",
+              "type": "button"
+            },
+            {
+              "name": "Edit",
+              "type": "button",
+              "context": "per row"
+            },
+            {
+              "name": "Delete",
+              "type": "button",
+              "context": "per row"
+            }
+          ],
+          "dataDisplay": "table with columns: ID, Name, Price, Actions"
+        },
+        {
+          "route": "/orders",
+          "title": "frontend",
+          "formFields": [
+            {
+              "name": "Customer",
+              "type": "combobox"
+            },
+            {
+              "name": "Product",
+              "type": "combobox",
+              "context": "per item"
+            },
+            {
+              "name": "Quantity",
+              "type": "spinbutton",
+              "context": "per item",
+              "defaultValue": "1"
+            }
+          ],
+          "actions": [
+            {
+              "name": "+ Add item",
+              "type": "button"
+            },
+            {
+              "name": "Create Order",
+              "type": "button"
+            },
+            {
+              "name": "Submit",
+              "type": "button",
+              "context": "per DRAFT order"
+            },
+            {
+              "name": "Edit",
+              "type": "button",
+              "context": "per DRAFT order"
+            },
+            {
+              "name": "Delete",
+              "type": "button",
+              "context": "per DRAFT order"
+            },
+            {
+              "name": "Show history ▼",
+              "type": "button",
+              "context": "per order"
+            },
+            {
+              "name": "Hide history ▲",
+              "type": "button",
+              "context": "per order with expanded history"
+            }
+          ],
+          "dataDisplay": "Order cards with: Order ID, Status badge, Customer name, Items table (Product, Qty, Unit Price, Subtotal), Status history list (status + timestamp)"
+        }
+      ]
+    },
+    "kafka_consumer": {
+      "topic": "orders.status-changed",
+      "messageCount": 5,
+      "sampleMessages": [
+        {
+          "orderId": 17,
+          "customerId": 1,
+          "status": "DRAFT",
+          "occurredAt": "2026-07-28T00:53:42.680Z"
+        },
+        {
+          "orderId": 18,
+          "customerId": 1,
+          "status": "DRAFT",
+          "occurredAt": "2026-07-29T01:01:38.900Z"
+        },
+        {
+          "orderId": 18,
+          "customerId": 1,
+          "status": "SUBMITTED",
+          "occurredAt": "2026-07-29T01:06:28.361Z"
+        },
+        {
+          "orderId": 17,
+          "customerId": 1,
+          "status": "SUBMITTED",
+          "occurredAt": "2026-07-29T01:13:19.462Z"
+        },
+        {
+          "orderId": 19,
+          "customerId": 2,
+          "status": "DRAFT",
+          "occurredAt": "2026-07-29T01:32:46.713Z"
+        }
+      ],
+      "inferredSchema": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "number"
+          },
+          "customerId": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "SUBMITTED"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "ISO 8601 datetime"
+          }
+        },
+        "required": [
+          "orderId",
+          "customerId",
+          "status",
+          "occurredAt"
+        ]
+      },
+      "anomalies": []
+    }
+  },
+  "businessRules": [
+    "Customer email and name are required fields for customer creation",
+    "Product name and price are required fields for product creation",
+    "Orders are created with status DRAFT by default",
+    "Orders require a customerId and at least one item (productId + quantity) to be created",
+    "When an order is created, a DRAFT entry is immediately added to OrderStatusHistory - observed sequence after creation: [DRAFT]",
+    "When an order status changes from DRAFT to SUBMITTED, a new SUBMITTED entry is added to OrderStatusHistory - observed sequence after submit: [DRAFT, SUBMITTED]",
+    "SUBMITTED orders cannot be edited, deleted, or reverted to DRAFT (Submit, Edit, Delete buttons disappear from UI)",
+    "Only DRAFT orders have Submit, Edit, and Delete actions available in the UI",
+    "Order status can only be DRAFT or SUBMITTED (enum constraint in API)",
+    "OrderItem unitPrice is captured at order creation time (snapshotted from product price)",
+    "Kafka events are published to orders.status-changed topic when order status changes (both initial DRAFT on creation and subsequent status updates)",
+    "The root URL '/' redirects to '/customers'",
+    "Order status history is viewable via 'Show history' toggle in the UI"
+  ],
+  "testScenarios": [
+    {
+      "name": "Create Customer with valid data",
+      "type": "happy_path",
+      "description": "Create a customer with valid email and name, verify customer appears in list and database"
+    },
+    {
+      "name": "Create Customer with missing email",
+      "type": "edge_case",
+      "description": "Attempt to create a customer without email, expect validation error"
+    },
+    {
+      "name": "Create Customer with missing name",
+      "type": "edge_case",
+      "description": "Attempt to create a customer without name, expect validation error"
+    },
+    {
+      "name": "Create Customer with duplicate email",
+      "type": "edge_case",
+      "description": "Attempt to create a customer with an email that already exists, verify behavior"
+    },
+    {
+      "name": "Create Product with valid data",
+      "type": "happy_path",
+      "description": "Create a product with valid name and price, verify product appears in list"
+    },
+    {
+      "name": "Create Product with zero or negative price",
+      "type": "edge_case",
+      "description": "Attempt to create a product with price 0 or negative, verify validation behavior"
+    },
+    {
+      "name": "Create Order with valid customer and items",
+      "type": "happy_path",
+      "description": "Create an order with valid customer and product items, verify DRAFT status and OrderStatusHistory entry"
+    },
+    {
+      "name": "Create Order without selecting a customer",
+      "type": "edge_case",
+      "description": "Attempt to create an order without selecting a customer, expect error"
+    },
+    {
+      "name": "Create Order without any items",
+      "type": "edge_case",
+      "description": "Attempt to create an order without adding any product items, expect error"
+    },
+    {
+      "name": "Submit DRAFT order",
+      "type": "happy_path",
+      "description": "Change order status from DRAFT to SUBMITTED, verify status change and new OrderStatusHistory entry"
+    },
+    {
+      "name": "Verify Kafka event on order creation",
+      "type": "happy_path",
+      "description": "Create an order and verify a DRAFT status event is published to orders.status-changed topic"
+    },
+    {
+      "name": "Verify Kafka event on order submission",
+      "type": "happy_path",
+      "description": "Submit an order and verify a SUBMITTED status event is published to orders.status-changed topic"
+    },
+    {
+      "name": "Delete DRAFT order",
+      "type": "happy_path",
+      "description": "Delete a DRAFT order and verify it is removed from the system"
+    },
+    {
+      "name": "Attempt to delete SUBMITTED order",
+      "type": "edge_case",
+      "description": "Verify that SUBMITTED orders cannot be deleted (no delete button in UI)"
+    },
+    {
+      "name": "Edit DRAFT order items",
+      "type": "happy_path",
+      "description": "Edit items in a DRAFT order and verify changes are saved"
+    },
+    {
+      "name": "Attempt to edit SUBMITTED order",
+      "type": "edge_case",
+      "description": "Verify that SUBMITTED orders cannot be edited (no edit button in UI)"
+    },
+    {
+      "name": "Delete customer with no orders",
+      "type": "happy_path",
+      "description": "Delete a customer that has no associated orders, verify successful deletion"
+    },
+    {
+      "name": "Delete customer with existing orders",
+      "type": "edge_case",
+      "description": "Attempt to delete a customer that has orders, verify behavior (cascading delete or error)"
+    },
+    {
+      "name": "Delete product with no order items",
+      "type": "happy_path",
+      "description": "Delete a product that is not in any order, verify successful deletion"
+    },
+    {
+      "name": "Delete product used in existing order",
+      "type": "edge_case",
+      "description": "Attempt to delete a product that is used in an order item, verify behavior"
+    },
+    {
+      "name": "Add multiple items to order",
+      "type": "happy_path",
+      "description": "Create an order with multiple different products and verify all items are saved correctly"
+    },
+    {
+      "name": "Create order with quantity greater than 1",
+      "type": "happy_path",
+      "description": "Create an order item with quantity > 1 and verify subtotal calculation"
+    },
+    {
+      "name": "Update customer information",
+      "type": "happy_path",
+      "description": "Edit a customer's name or email and verify changes are persisted"
+    },
+    {
+      "name": "Update product price",
+      "type": "happy_path",
+      "description": "Edit a product's price and verify existing orders retain original unitPrice"
+    },
+    {
+      "name": "SQL Injection in customer email",
+      "type": "security",
+      "description": "Attempt SQL injection via customer email field, verify input is sanitized"
+    },
+    {
+      "name": "XSS in product name",
+      "type": "security",
+      "description": "Attempt XSS attack via product name field, verify input is properly escaped in UI"
+    },
+    {
+      "name": "API: Create order with invalid customerId",
+      "type": "edge_case",
+      "description": "Call POST /orders with non-existent customerId, expect error response"
+    },
+    {
+      "name": "API: Create order with invalid productId",
+      "type": "edge_case",
+      "description": "Call POST /orders with non-existent productId in items, expect error response"
+    },
+    {
+      "name": "API: Update order status with invalid status value",
+      "type": "edge_case",
+      "description": "Call PATCH /orders/{id}/status with status other than DRAFT or SUBMITTED, expect validation error"
+    }
+  ]
+}

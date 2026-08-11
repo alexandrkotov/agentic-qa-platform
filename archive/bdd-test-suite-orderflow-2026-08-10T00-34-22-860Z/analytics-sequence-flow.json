@@ -1,0 +1,207 @@
+{
+  "generatedAt": "2026-08-03T04:18:16.916Z",
+  "sourceReportPath": "reports/discovery-2026-07-30T15-21-48-438Z-orderflow.json",
+  "scenarios": [
+    {
+      "name": "Create Order with valid customer and items",
+      "description": "Demonstrates the full order creation flow across UI, API, database writes, and Kafka event publishing.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Select Customer from combobox, add Product with Quantity, click \"Create Order\""
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "POST /orders {customerId, items: [{productId, quantity}]}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "INSERT INTO Order (customerId, status=DRAFT)"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "INSERT INTO OrderItem (orderId, productId, quantity, unitPrice)"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "INSERT INTO OrderStatusHistory (orderId, status=DRAFT, changedAt)"
+        },
+        {
+          "from": "rest_api",
+          "to": "kafka_consumer",
+          "label": "Publish to orders.status-changed {orderId, customerId, status: DRAFT, occurredAt}"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "201 Created with order details"
+        }
+      ]
+    },
+    {
+      "name": "Submit DRAFT order",
+      "description": "Demonstrates changing an order from DRAFT to SUBMITTED with database update and Kafka event.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Click \"Submit\" on a DRAFT order"
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "PATCH /orders/{id}/status {status: SUBMITTED}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "UPDATE Order SET status=SUBMITTED WHERE id={id}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "INSERT INTO OrderStatusHistory (orderId, status=SUBMITTED, changedAt)"
+        },
+        {
+          "from": "rest_api",
+          "to": "kafka_consumer",
+          "label": "Publish to orders.status-changed {orderId, customerId, status: SUBMITTED, occurredAt}"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "200 OK with updated order"
+        }
+      ]
+    },
+    {
+      "name": "Create Customer with valid data",
+      "description": "Demonstrates creating a new customer through the UI, API, and database persistence.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Enter Email and Name in form, click \"Add Customer\""
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "POST /customers {email, name}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "INSERT INTO Customer (email, name, createdAt)"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "201 Created with customer details"
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "GET /customers"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "SELECT * FROM Customer"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "200 OK with customer list"
+        }
+      ]
+    },
+    {
+      "name": "Delete DRAFT order",
+      "description": "Demonstrates deleting a DRAFT order and its associated items from the database.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Click \"Delete\" on a DRAFT order"
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "DELETE /orders/{id}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "DELETE FROM OrderItem WHERE orderId={id}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "DELETE FROM OrderStatusHistory WHERE orderId={id}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "DELETE FROM Order WHERE id={id}"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "200 OK"
+        }
+      ]
+    },
+    {
+      "name": "Update product price",
+      "description": "Demonstrates that updating a product price does not affect existing order items which snapshot the original unitPrice.",
+      "steps": [
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Click \"Edit\" on a product row"
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "PATCH /products/{id} {price: newPrice}"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "UPDATE Product SET price=newPrice WHERE id={id}"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "200 OK with updated product"
+        },
+        {
+          "from": "User",
+          "to": "web_ui",
+          "label": "Navigate to /orders to view existing order"
+        },
+        {
+          "from": "web_ui",
+          "to": "rest_api",
+          "label": "GET /orders"
+        },
+        {
+          "from": "rest_api",
+          "to": "postgres",
+          "label": "SELECT * FROM Order JOIN OrderItem ON Order.id=OrderItem.orderId"
+        },
+        {
+          "from": "rest_api",
+          "to": "web_ui",
+          "label": "200 OK with orders showing original unitPrice in OrderItem"
+        }
+      ]
+    }
+  ],
+  "approvedAt": "2026-08-03T04:18:20.461Z"
+}

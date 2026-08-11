@@ -46,6 +46,16 @@ jobs:
           cache: pnpm
           cache-dependency-path: tests/pnpm-lock.yaml
 
+      # tests/features and tests/steps are no longer git-tracked themselves
+      # (only the two archive/bdd-test-suite-* snapshots are) — this is what
+      # actually populates them, from whichever snapshot
+      # tests/.current-descriptor names. Same script the hub's own
+      # POST /api/demo/switch route and the README's Quick Start use — one
+      # implementation, not reimplemented here. No dependencies of its own,
+      # so it can run before "Install test dependencies" below.
+      - name: Restore the checked-in suite from its archived snapshot
+        run: node tests/support/restore-suite.mjs "${{ steps.descriptor.outputs.name }}"
+
       # Populates tests/node_modules on the runner's own checkout — which is
       # exactly what `workbench` below bind-mounts (docker-compose.yml),
       # so this is what its own /api/tests/run route actually runs against.

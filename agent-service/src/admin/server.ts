@@ -1696,6 +1696,174 @@ app.post('/api/tests/run', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Hub "Demo" section — "Deploy OrderFlow/Uptime Kuma and its BDD suite"
+// (hub/index.html, reached through report-nginx.conf's own same-origin
+// /api/ proxy to this container, not CORS). Tears down whichever demo is
+// currently up and deploys the chosen one fresh, suite included — always a
+// full teardown+redeploy of the CHOSEN target too, even if it's already the
+// active one, matching the button's own "completely tear down, then
+// deploy" wording rather than special-casing "already deployed". Reuses
+// existing pieces rather than reimplementing them:
+//   - Uptime Kuma is a real docker-compose-component descriptor, deployed
+//     the exact same way the Workbench's own Deploy/Setup buttons do
+//     (deployTarget()/runSetup(), both already imported above).
+//   - OrderFlow is NOT a docker-compose-component descriptor — it's this
+//     repo's own always-present sample app, just split into its own
+//     compose project now (docker-compose.demo-orderflow.yml, see that
+//     file's own comment) — driven with a plain `docker compose`
+//     invocation instead of deployTarget.ts's clone-based pipeline.
+//   - The suite itself (tests/features/tests/steps) is restored from
+//     whichever of the two git-tracked archive/bdd-test-suite-* snapshots
+//     matches, via tests/support/restore-suite.mjs — the SAME script CI and
+//     the README's Quick Start use, not reimplemented here.
+// ---------------------------------------------------------------------------
+
+const ORDERFLOW_DEMO_PROJECT = 'bdd-target-demo-orderflow';
+
+// Same identical-absolute-path mirroring HOST_PROJECT_ROOT already backs
+// for targets/ (deployTarget.ts's own module comment has the full
+// reasoning) — docker-compose.yml's workbench service mounts this one file
+// at this same path for exactly this reason. Unlike deployTarget.ts's own
+// assertMirroredMount(), no extra `docker inspect` check here: a wrong
+// HOST_PROJECT_ROOT makes the `docker compose -f <path>` call below fail
+// immediately and clearly ("no such file"), since this container reads the
+// compose file's own text directly — there's no silent-empty-directory
+// failure mode to guard against the way a cloned target's bind mounts have.
+function orderflowDemoComposeFile(): string {
+  const hostRoot = process.env.HOST_PROJECT_ROOT;
+  if (!hostRoot) {
+    throw new Error('HOST_PROJECT_ROOT is not set — docker-compose.yml should pass it into the workbench service');
+  }
+  return join(hostRoot, 'docker-compose.demo-orderflow.yml');
+}
+
+async function undeployOrderflowDemo(onProgress: (message: string) => void): Promise<void> {
+  const composeFile = orderflowDemoComposeFile();
+  // `down -v` (not plain `down`) — this route's whole point is a clean
+  // slate every switch, and a fresh `pgdata` volume is exactly what
+  // exercises the demo compose file's own auto-migrate-on-start fix.
+  // Idempotent/safe even if nothing is currently deployed under this
+  // project (unlike deployTarget.ts's undeployTarget(), which depends on a
+  // per-target resolved-config file that only exists after a first real
+  // deploy) — no existence check needed first.
+  onProgress(`$ docker compose -p ${ORDERFLOW_DEMO_PROJECT} -f ${composeFile} down -v`);
+  const { code, output } = await runCommand(
+    'docker',
+    ['compose', '-p', ORDERFLOW_DEMO_PROJECT, '-f', composeFile, 'down', '-v'],
+    APP_ROOT,
+    process.env,
+    onProgress,
+  );
+  if (code !== 0) {
+    throw new Error(`docker compose down failed for ${ORDERFLOW_DEMO_PROJECT} (exit ${code}): ${output.slice(-800)}`);
+  }
+}
+
+async function deployOrderflowDemo(onProgress: (message: string) => void): Promise<void> {
+  await undeployOrderflowDemo(onProgress);
+  const composeFile = orderflowDemoComposeFile();
+  // No `--build` — the images are already built (initial README setup);
+  // rebuilding on every hub-button click would make "one click" genuinely
+  // slow for no benefit, since this route never changes the Dockerfiles.
+  // `--wait` blocks until db/kafka's own healthchecks pass, replacing
+  // hand-rolled polling.
+  onProgress(`$ docker compose -p ${ORDERFLOW_DEMO_PROJECT} -f ${composeFile} up -d --wait`);
+  const { code, output } = await runCommand(
+    'docker',
+    ['compose', '-p', ORDERFLOW_DEMO_PROJECT, '-f', composeFile, 'up', '-d', '--wait'],
+    APP_ROOT,
+    process.env,
+    onProgress,
+  );
+  if (code !== 0) {
+    throw new Error(`docker compose up failed for ${ORDERFLOW_DEMO_PROJECT} (exit ${code}): ${output.slice(-800)}`);
+  }
+}
+
+app.post('/api/demo/switch', async (req, res) => {
+  const { target } = req.body as { target?: string };
+  if (target !== 'orderflow' && target !== 'uptime-kuma') {
+    res.status(400).json({ error: `"target" must be "orderflow" or "uptime-kuma", got ${JSON.stringify(target)}` });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+  try {
+    if (target === 'uptime-kuma') {
+      send({ type: 'progress', message: 'Tearing down the OrderFlow demo…' });
+      await undeployOrderflowDemo((message) => send({ type: 'progress', message }));
+
+      send({ type: 'progress', message: 'Deploying Uptime Kuma…' });
+      const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath('uptime-kuma'), 'utf-8')));
+      const component = findDockerComposeComponent(descriptor);
+      await deployTarget(component, 'uptime-kuma', (message) => send({ type: 'progress', message }));
+
+      if (!hasSetup('uptime-kuma')) {
+        send({ type: 'progress', message: 'No first-run setup script registered for uptime-kuma — skipping.' });
+      } else {
+        send({ type: 'progress', message: 'Running first-run setup…' });
+        const env = expandOverrides(await loadTestEnvOverrides(descriptorPath('uptime-kuma')));
+        await runSetup('uptime-kuma', env, (message) => send({ type: 'progress', message }));
+      }
+    } else {
+      // Checked first, not just try/caught — unlike the orderflow leg's own
+      // `down -v` (idempotent against a static compose file), undeployTarget()
+      // depends on a per-target resolved-config file that only exists once
+      // Kuma has actually been deployed at least once; calling it against a
+      // target that's never been deployed throws, and "never deployed yet"
+      // is the expected common case here (e.g. OrderFlow already active),
+      // not an error worth failing the whole switch over.
+      const existingKuma = await getTargetContainerNames('uptime-kuma');
+      if (existingKuma.length > 0) {
+        send({ type: 'progress', message: 'Tearing down Uptime Kuma…' });
+        await undeployTarget('uptime-kuma', (message) => send({ type: 'progress', message }));
+      } else {
+        send({ type: 'progress', message: 'Uptime Kuma is not currently deployed — nothing to tear down.' });
+      }
+
+      send({ type: 'progress', message: 'Deploying OrderFlow…' });
+      await deployOrderflowDemo((message) => send({ type: 'progress', message }));
+    }
+
+    send({ type: 'progress', message: `Restoring ${target}'s suite from its archived snapshot…` });
+    const restoreResult = await runCommand(
+      'node',
+      ['tests/support/restore-suite.mjs', target],
+      APP_ROOT,
+      process.env,
+      (message) => send({ type: 'progress', message }),
+    );
+    if (restoreResult.code !== 0) {
+      throw new Error(`restore-suite.mjs failed (exit ${restoreResult.code}): ${restoreResult.output.slice(-800)}`);
+    }
+
+    // Same two commands /api/tests/run runs above — descriptor passed only
+    // for uptime-kuma (so PLAYWRIGHT_WORKERS=1 etc. from
+    // descriptors/uptime-kuma.env apply, avoiding the known login
+    // rate-limit flakiness); orderflow has no sidecar env of its own, same
+    // as every other caller of buildTestRunEnv().
+    const testEnv = await buildTestRunEnv(target === 'uptime-kuma' ? 'uptime-kuma' : undefined);
+    send({ type: 'progress', message: '$ npx bddgen && npx playwright test' });
+    const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv, (message) => send({ type: 'progress', message }));
+    send({ type: 'progress', message: '$ node support/generate-html-report.mjs' });
+    const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv, (message) => send({ type: 'progress', message }));
+
+    send({
+      type: 'done',
+      target,
+      testsPassed: testRun.code === 0,
+      testsExitCode: testRun.code,
+      reportGenerated: reportRun.code === 0,
+    });
+  } catch (err) {
+    send({ type: 'error', error: (err as Error).message });
+  }
+  res.end();
+});
+
+// ---------------------------------------------------------------------------
 // E2E Agent — Suggest mode (run a real scenario, diagnose on failure) and
 // Execute-with-approval (apply a proposed fix, typecheck, re-run), both
 // already fully working as a CLI (`pnpm e2e`, `pnpm apply-fix`,

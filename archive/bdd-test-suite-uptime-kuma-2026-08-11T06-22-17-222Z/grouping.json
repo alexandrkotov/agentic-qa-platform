@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-08-10T17:54:45.601Z",
+  "sourceReportPath": "reports/discovery-2026-08-10T06-38-10-413Z-uptime-kuma.json",
+  "crossFunctionalTypes": [
+    "security"
+  ],
+  "threshold": 0.3,
+  "groups": [
+    {
+      "key": "security",
+      "scenarioNames": [
+        "Login with invalid credentials",
+        "Access dashboard without authentication",
+        "Two-factor authentication setup",
+        "Login with valid credentials",
+        "Create API key and test authentication"
+      ],
+      "rationale": "manual: authentication, session, and access-control scenarios"
+    },
+    {
+      "key": "monitor-crud",
+      "scenarioNames": [
+        "Create HTTP monitor with valid URL",
+        "Create ping monitor",
+        "Configure maximum redirects",
+        "Monitor timeout configuration",
+        "Monitor with upside down mode",
+        "Group monitor with no children"
+      ],
+      "rationale": "manual: core monitor creation and configuration"
+    },
+    {
+      "key": "monitor-validation",
+      "scenarioNames": [
+        "Create monitor with empty URL",
+        "Create monitor with invalid URL format",
+        "Monitor with zero heartbeat interval",
+        "Push monitor without valid token"
+      ],
+      "rationale": "manual: invalid/edge-case monitor input handling"
+    },
+    {
+      "key": "notifications-and-alerts",
+      "scenarioNames": [
+        "Certificate expiry notification",
+        "Domain expiry tracking"
+      ],
+      "rationale": "manual: expiry-tracking notification scenarios"
+    },
+    {
+      "key": "status-and-maintenance",
+      "scenarioNames": [
+        "Status page heartbeat data",
+        "Badge endpoint for non-existent monitor",
+        "Maintenance window effect on monitors"
+      ],
+      "rationale": "manual: public status-page surface and maintenance-window behavior"
+    }
+  ],
+  "ungrouped": [],
+  "flatFallback": false,
+  "approvedAt": "2026-08-10T17:56:16.907Z"
+}

@@ -9,11 +9,13 @@
     --bg: #f5f6f8; --surface: #ffffff; --text: #16181d; --mute: #666e7a;
     --line: #dfe3e8; --accent: #3a63d8; --accent-bg: #e8edfc;
     --warn-fg: #8a5a1f; --warn-bg: rgba(201, 138, 63, 0.16);
+    --danger: #b3261e; --danger-bg: #fbe9e7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14161b; --surface: #1c1f26; --text: #e7e9ed; --mute: #8b93a1; --line: #2b2f38; --accent: #7c9bef; --accent-bg: #232c47;
       --warn-fg: #e0ac6c; --warn-bg: rgba(201, 138, 63, 0.18);
+      --danger: #f0847c; --danger-bg: #3a1f1e;
     }
   }
   * { box-sizing: border-box; }
@@ -44,15 +46,23 @@
   .gh-link:hover { border-color: var(--accent); }
   .gh-link svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
   .lede { color: var(--mute); margin: 0 0 2.25rem; line-height: 1.55; max-width: 56ch; }
+  .section-heading {
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--mute); margin: 2.25rem 0 0.9rem;
+  }
+  .section-heading:first-of-type { margin-top: 0; }
+  .section-note { color: var(--mute); margin: -0.4rem 0 1rem; line-height: 1.55; font-size: 0.87rem; max-width: 56ch; }
   .grid { display: grid; gap: 0.9rem; }
-  a.card {
+  a.card, button.card {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
     padding: 1.1rem 1.3rem; text-decoration: none; color: inherit;
     box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     transition: border-color 0.15s ease;
+    width: 100%; font: inherit; text-align: left; cursor: pointer;
   }
-  a.card:hover { border-color: var(--accent); }
+  a.card:hover, button.card:hover:not(:disabled) { border-color: var(--accent); }
+  button.card:disabled { opacity: 0.6; cursor: not-allowed; }
   .card-main { display: flex; align-items: center; gap: 1rem; min-width: 0; }
   .card-icon {
     flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px;
@@ -62,6 +72,7 @@
   .card-icon svg { width: 21px; height: 21px; }
   .card-name { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 700; font-size: 1.02rem; }
   .card-desc { color: var(--mute); font-size: 0.87rem; margin-top: 0.15rem; }
+  .card-note { color: var(--mute); font-size: 0.78rem; margin-top: 0.3rem; font-style: italic; }
   .badge-needs {
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
     color: var(--warn-fg); background: var(--warn-bg);
@@ -74,6 +85,44 @@
   }
   footer { margin-top: 2.5rem; font-size: 0.8rem; color: var(--mute); }
   footer a { color: inherit; }
+
+  /* Deploy progress, shown only once a Demo button has been clicked. */
+  #demo-switch-panel { display: none; margin-top: 0.9rem; }
+  #demo-switch-panel.open { display: block; }
+  #demo-switch-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; }
+  #demo-switch-status.ok { color: #2f8f5b; }
+  #demo-switch-status.err { color: var(--danger); }
+  #demo-switch-log {
+    margin: 0.5rem 0 0; padding: 0.8rem 1rem; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 10px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.78rem;
+    white-space: pre-wrap; word-break: break-word; max-height: 16rem; overflow-y: auto;
+  }
+
+  /* Ported from the Workbench's own confirm-modal (agent-service/src/admin/static/index.html)
+     — this page and the Workbench are two separate, non-sharing JS worlds, so the CSS/markup
+     are duplicated here rather than imported. */
+  .confirm-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .confirm-modal-overlay.open { display: flex; }
+  .confirm-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem; max-width: 26rem;
+    display: flex; gap: 1rem; align-items: flex-start;
+  }
+  .confirm-modal-icon { flex-shrink: 0; color: var(--danger); }
+  .confirm-modal-icon svg { display: block; }
+  .confirm-modal-body { min-width: 0; }
+  .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
+  .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+  .confirm-modal-actions button {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  }
+  .confirm-modal-actions button:hover { filter: brightness(1.08); }
+  .confirm-modal-actions button:focus { outline: 2px solid var(--text); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -91,41 +140,9 @@
     <p class="lede">Everything running for this project, one click away. Some entries need an
       extra step beyond <code>docker compose up</code> — see the note under each.</p>
 
+    <div class="section-heading">Platform</div>
+
     <div class="grid">
-      <a class="card" href="http://localhost:5173">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-              <line x1="3" y1="9" x2="21" y2="9"></line>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Frontend</div>
-            <div class="card-desc">OrderFlow — the app under test</div>
-          </div>
-        </div>
-        <span class="card-url">:5173</span>
-      </a>
-
-      <a class="card" href="http://localhost:3000/docs">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path>
-              <path d="M14 3v4h4"></path>
-              <line x1="9" y1="13" x2="15" y2="13"></line>
-              <line x1="9" y1="17" x2="15" y2="17"></line>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Backend API + Swagger</div>
-            <div class="card-desc">OpenAPI docs for the OrderFlow backend</div>
-          </div>
-        </div>
-        <span class="card-url">:3000/docs</span>
-      </a>
-
       <a class="card" href="http://localhost:8080/">
         <div class="card-main">
           <span class="card-icon">
@@ -170,6 +187,7 @@
           <div>
             <div class="card-name">Kafka UI</div>
             <div class="card-desc">Cluster admin — topics, messages, consumer groups</div>
+            <div class="card-note">Reflects whichever Demo target is deployed below — shows disconnected while Uptime Kuma is active (it has no Kafka).</div>
           </div>
         </div>
         <span class="card-url">:8081</span>
@@ -191,7 +209,206 @@
       </a>
     </div>
 
+    <div class="section-heading">Demo</div>
+    <p class="section-note">Bundled example, proving the pipeline end to end — the platform itself
+      works with any target system, see the Workbench's Discovery tab.</p>
+
+    <div class="grid">
+      <a class="card" href="http://localhost:5173">
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Frontend</div>
+            <div class="card-desc">OrderFlow — the app under test</div>
+          </div>
+        </div>
+        <span class="card-url">:5173</span>
+      </a>
+
+      <a class="card" href="http://localhost:3000/docs">
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path>
+              <path d="M14 3v4h4"></path>
+              <line x1="9" y1="13" x2="15" y2="13"></line>
+              <line x1="9" y1="17" x2="15" y2="17"></line>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Backend API + Swagger</div>
+            <div class="card-desc">OpenAPI docs for the OrderFlow backend</div>
+          </div>
+        </div>
+        <span class="card-url">:3000/docs</span>
+      </a>
+
+      <button class="card" id="deploy-orderflow-btn" onclick="switchDemo('orderflow', this)">
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+              <path d="M21 3v5h-5"></path>
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+              <path d="M3 21v-5h5"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Deploy OrderFlow and its BDD suite</div>
+            <div class="card-desc">Tears down whichever demo is currently deployed, deploys OrderFlow, restores and runs its suite</div>
+          </div>
+        </div>
+      </button>
+
+      <button class="card" id="deploy-uptime-kuma-btn" onclick="switchDemo('uptime-kuma', this)">
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+              <path d="M21 3v5h-5"></path>
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+              <path d="M3 21v-5h5"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Deploy Uptime Kuma and its BDD suite</div>
+            <div class="card-desc">Tears down whichever demo is currently deployed, deploys Uptime Kuma, restores and runs its suite</div>
+          </div>
+        </div>
+      </button>
+    </div>
+
+    <div id="demo-switch-panel">
+      <div id="demo-switch-status"></div>
+      <pre id="demo-switch-log"></pre>
+    </div>
+
     <footer>Served by the same <code>report</code> nginx container as the test report above — see <code>README.md</code> for what each service actually needs to be running.</footer>
   </main>
+
+  <div class="confirm-modal-overlay" id="confirm-modal-overlay">
+    <div class="confirm-modal">
+      <div class="confirm-modal-icon">
+        <svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+          <path d="M4 7h16M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3m4 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="10" y1="11" x2="10" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="14" y1="11" x2="14" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="confirm-modal-body">
+        <p id="confirm-modal-message"></p>
+        <div class="confirm-modal-actions">
+          <button id="confirm-modal-cancel">Cancel</button>
+          <button id="confirm-modal-ok">Yes, proceed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// Ported from the Workbench's own confirmModal (agent-service/src/admin/static/index.html) —
+// same behavior, simplified to the one icon this page needs (danger/trash).
+function confirmModal(message) {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-modal-message').textContent = message;
+    const overlay = document.getElementById('confirm-modal-overlay');
+    overlay.classList.add('open');
+    document.getElementById('confirm-modal-cancel').focus();
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
+    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
+}
+
+// Same NDJSON-stream-then-check-the-last-line idiom as the Workbench's own
+// streamNdjson (agent-service/src/admin/static/index.html) — duplicated
+// rather than shared, these are two separate JS worlds.
+async function streamNdjson(path, opts, onEvent) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex;
+    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line.trim()) onEvent(JSON.parse(line));
+    }
+  }
+}
+
+const DEMO_LABELS = { orderflow: 'OrderFlow', 'uptime-kuma': 'Uptime Kuma' };
+
+async function switchDemo(target, triggerBtn) {
+  const label = DEMO_LABELS[target];
+  const ok = await confirmModal(
+    `This will remove whatever demo is currently running and deploy ${label} instead — its BDD suite will be restored and run fresh. Continue?`
+  );
+  if (!ok) return;
+
+  const orderflowBtn = document.getElementById('deploy-orderflow-btn');
+  const kumaBtn = document.getElementById('deploy-uptime-kuma-btn');
+  orderflowBtn.disabled = true;
+  kumaBtn.disabled = true;
+
+  const panel = document.getElementById('demo-switch-panel');
+  const statusEl = document.getElementById('demo-switch-status');
+  const logEl = document.getElementById('demo-switch-log');
+  panel.classList.add('open');
+  statusEl.className = '';
+  statusEl.textContent = `Deploying ${label} and its BDD suite…`;
+  logEl.textContent = '';
+
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson('/api/demo/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check workbench logs.');
+    statusEl.className = 'ok';
+    const passed = doneEvent.testsPassed ? 'all scenarios passed' : `exit code ${doneEvent.testsExitCode}, see the Cucumber report`;
+    statusEl.textContent = `${label} deployed, suite restored and run (${passed}).`;
+  } catch (e) {
+    statusEl.className = 'err';
+    statusEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    orderflowBtn.disabled = false;
+    kumaBtn.disabled = false;
+  }
+}
+</script>
 </body>
 </html>

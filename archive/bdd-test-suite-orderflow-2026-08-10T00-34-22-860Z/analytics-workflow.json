@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-07-30T17:52:29.352Z",
+  "sourceReportPath": "reports/discovery-2026-07-30T15-21-48-438Z-orderflow.json",
+  "entities": [
+    {
+      "name": "Order",
+      "states": [
+        "DRAFT",
+        "SUBMITTED"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "DRAFT",
+          "trigger": "Create"
+        },
+        {
+          "kind": "state_transition",
+          "from": "DRAFT",
+          "to": "SUBMITTED",
+          "trigger": "Submit"
+        },
+        {
+          "kind": "forbidden_transition",
+          "from": "SUBMITTED",
+          "to": "DRAFT",
+          "reason": "SUBMITTED orders cannot be reverted to DRAFT"
+        },
+        {
+          "kind": "guard",
+          "action": "delete",
+          "condition": "status == SUBMITTED",
+          "description": "Only DRAFT orders can be deleted; SUBMITTED orders have no delete action available"
+        },
+        {
+          "kind": "guard",
+          "action": "edit",
+          "condition": "status == SUBMITTED",
+          "description": "Only DRAFT orders can be edited; SUBMITTED orders have no edit action available"
+        },
+        {
+          "kind": "invariant",
+          "description": "OrderItem.unitPrice is a snapshot captured at order creation time from the product price"
+        }
+      ]
+    }
+  ],
+  "approvedAt": "2026-07-30T17:52:35.016Z"
+}

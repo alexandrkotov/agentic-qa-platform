@@ -1,0 +1,121 @@
+# The bundled OrderFlow demo — app/frontend/db/kafka, split out of the
+# platform's own docker-compose.yml into its own group so it can be torn
+# down and redeployed independently of the platform (report/workbench/
+# kafka-ui), the same way an external docker-compose-component target
+# already can be. Run as its own project:
+#
+#   docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build
+#   docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml down -v
+#
+# The platform's own docker-compose.yml must be brought up at least once
+# BEFORE this file — it owns creation of the shared `agentic-qa-platform-net`
+# network referenced below (external: true here), which is what lets
+# `workbench`/`kafka-ui` (in the platform project) keep reaching
+# `db`/`app`/`frontend`/`kafka` (in this project) by plain hostname, exactly
+# as when they all lived in one compose file.
+services:
+  app:
+    build: ./app
+    ports: ["3000:3000"]
+    volumes:
+      - ./app:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://user:pass@db:5432/testdb
+      KAFKA_BROKERS: kafka:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: "1"
+    # Runs the schema migrations before starting, unlike app/Dockerfile's own
+    # default CMD (which only does `prisma generate`) — needed now that `db`
+    # lives in its own compose project: a fresh `pgdata` volume (e.g. after
+    # the hub's "Deploy OrderFlow" button does a clean `down -v` + `up`) has
+    # no schema at all otherwise, and the whole point of that button is
+    # repeated, unattended fresh starts. No seed data exists (no `seed*`
+    # file anywhere under app/) — the schema alone is enough, test data
+    # comes from the BDD scenarios themselves.
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && pnpm run start:dev"
+    # Extra DNS name for this same container, alongside "app" — "app" is
+    # also a real, Google-owned top-level domain with mandatory HTTPS
+    # (HSTS-preloaded at the registry level), and Chrome silently applies
+    # that same enforcement to a bare hostname "app" even though it's just
+    # this compose network's internal service name, not a real internet
+    # domain. Confirmed live: the headless browser the Playwright suite
+    # drives (frontend/src/api/client.ts's own fetch calls, made from
+    # INSIDE that browser) got net::ERR_SSL_PROTOCOL_ERROR trying to reach
+    # "http://app:3000" — Chrome attempted a silent HTTPS upgrade with no
+    # fallback, purely because of the hostname string, and the exact same
+    # thing reproduced for "dev" (also a real Google gTLD) but never for
+    # any other name. Node-side HTTP clients (Playwright's own `request`
+    # fixture, curl, etc.) are unaffected — this is a browser-only quirk —
+    # so BACKEND_URL for those stays "http://app:3000" unchanged; only the
+    # browser-executed frontend code needs the alias.
+    networks:
+      default:
+        aliases:
+          - backend
+
+  frontend:
+    build: ./frontend
+    ports: ["5173:5173"]
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - app
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: testdb
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d testdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Second discovery proof point (alongside postgres) for the System Descriptor —
+  # single-node KRaft broker, no ZooKeeper. PLAINTEXT is for other containers
+  # on the shared network (e.g. the platform project's own kafka-ui);
+  # PLAINTEXT_HOST is for anything reaching it from the host, incl. the
+  # dockerized kafka-mcp-server started with --network=host.
+  kafka:
+    image: apache/kafka:latest
+    ports: ["9094:9094"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:
+
+# External: owned/created by the platform's own docker-compose.yml (see its
+# matching top-level `networks:` block) — this file only joins it, never
+# creates or removes it.
+networks:
+  default:
+    external: true
+    name: agentic-qa-platform-net

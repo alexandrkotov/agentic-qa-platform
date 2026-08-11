@@ -7,8 +7,21 @@ build/
 agent-service/reports/
 agent-service/.playwright-mcp/
 # Test-suite snapshots — repo root, not nested under agent-service/, since
-# a snapshot bundles content from both agent-service/ and tests/.
-/archive/
+# a snapshot bundles content from both agent-service/ and tests/. Two
+# exceptions below: OrderFlow's and Uptime Kuma's snapshots are the real
+# source of truth tests/support/restore-suite.mjs restores from (CI, the
+# hub's demo-switch buttons, and manual Quick Start all use it) — everything
+# else in here is still a disposable point-in-time snapshot, gitignored.
+# NOTE: `/archive/*` (not `/archive/`) is deliberate — git can't re-include
+# a path whose PARENT DIRECTORY itself is excluded (it never descends into
+# an excluded dir to check further rules), only a path excluded via a
+# wildcard on its contents. See git-scm.com/docs/gitignore's own note on
+# this exact limitation.
+/archive/*
+!/archive/bdd-test-suite-orderflow-2026-08-10T00-34-22-860Z/
+!/archive/bdd-test-suite-orderflow-2026-08-10T00-34-22-860Z/**
+!/archive/bdd-test-suite-uptime-kuma-2026-08-11T06-22-17-222Z/
+!/archive/bdd-test-suite-uptime-kuma-2026-08-11T06-22-17-222Z/**
 # Clones of external target repos (docker-compose component type) — repo
 # root, mounted at an identical absolute path on both host and container
 # sides; see docker-compose.yml's own comment on this mount for why.

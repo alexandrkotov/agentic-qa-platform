@@ -1,0 +1,348 @@
+{
+  "generatedAt": "2026-08-10T07:25:16.585Z",
+  "sourceReportPath": "reports/discovery-2026-08-10T06-38-10-413Z-uptime-kuma.json",
+  "entities": [
+    {
+      "name": "monitor",
+      "states": [
+        "Pending",
+        "Up",
+        "Down",
+        "Maintenance"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "Pending",
+          "trigger": "Create"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Pending",
+          "to": "Up",
+          "trigger": "Heartbeat success"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Pending",
+          "to": "Down",
+          "trigger": "Heartbeat failure"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Up",
+          "to": "Down",
+          "trigger": "Heartbeat failure after maxretries exceeded"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Down",
+          "to": "Up",
+          "trigger": "Heartbeat success"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Up",
+          "to": "Maintenance",
+          "trigger": "Maintenance window starts"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Down",
+          "to": "Maintenance",
+          "trigger": "Maintenance window starts"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Maintenance",
+          "to": "Up",
+          "trigger": "Maintenance window ends and heartbeat success"
+        },
+        {
+          "kind": "state_transition",
+          "from": "Maintenance",
+          "to": "Down",
+          "trigger": "Maintenance window ends and heartbeat failure"
+        },
+        {
+          "kind": "invariant",
+          "description": "Upside Down Mode inverts monitor status: when target is reachable, status shows as Down; when unreachable, shows as Up"
+        },
+        {
+          "kind": "invariant",
+          "description": "Group monitors aggregate status from child monitors; empty groups show Pending status with 'Group empty' message"
+        },
+        {
+          "kind": "guard",
+          "action": "heartbeat_check",
+          "condition": "active == true",
+          "description": "Only active monitors perform heartbeat checks"
+        }
+      ]
+    },
+    {
+      "name": "heartbeat",
+      "states": [
+        "Up",
+        "Down",
+        "Pending",
+        "Maintenance"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "Up",
+          "trigger": "Successful check within accepted status codes"
+        },
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "Down",
+          "trigger": "Check failure or timeout"
+        },
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "Pending",
+          "trigger": "Initial state before first check"
+        },
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "Maintenance",
+          "trigger": "Check during maintenance window"
+        },
+        {
+          "kind": "invariant",
+          "description": "HTTP monitors record Up status only for responses matching accepted_statuscodes_json (default 200-299)"
+        },
+        {
+          "kind": "invariant",
+          "description": "Response body storage limited to configurable max length (default 1024 bytes)"
+        }
+      ]
+    },
+    {
+      "name": "user",
+      "states": [
+        "active",
+        "inactive"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "active",
+          "trigger": "Create user"
+        },
+        {
+          "kind": "state_transition",
+          "from": "active",
+          "to": "inactive",
+          "trigger": "Deactivate user"
+        },
+        {
+          "kind": "state_transition",
+          "from": "inactive",
+          "to": "active",
+          "trigger": "Reactivate user"
+        },
+        {
+          "kind": "guard",
+          "action": "login",
+          "condition": "active == true",
+          "description": "Only active users can log in"
+        },
+        {
+          "kind": "guard",
+          "action": "login_2fa",
+          "condition": "twofa_status == true",
+          "description": "When 2FA is enabled, user must provide valid TOTP token matching twofa_secret"
+        }
+      ]
+    },
+    {
+      "name": "maintenance",
+      "states": [
+        "active",
+        "inactive"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "active",
+          "trigger": "Create and activate maintenance window"
+        },
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "inactive",
+          "trigger": "Create inactive maintenance window"
+        },
+        {
+          "kind": "state_transition",
+          "from": "inactive",
+          "to": "active",
+          "trigger": "Activate maintenance window"
+        },
+        {
+          "kind": "state_transition",
+          "from": "active",
+          "to": "inactive",
+          "trigger": "Deactivate or maintenance period ends"
+        },
+        {
+          "kind": "invariant",
+          "description": "Maintenance windows support multiple strategies: single occurrence, recurring, or cron-based scheduling"
+        }
+      ]
+    },
+    {
+      "name": "status_page",
+      "states": [
+        "published",
+        "unpublished"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "unpublished",
+          "trigger": "Create status page"
+        },
+        {
+          "kind": "state_transition",
+          "from": "unpublished",
+          "to": "published",
+          "trigger": "Publish status page"
+        },
+        {
+          "kind": "state_transition",
+          "from": "published",
+          "to": "unpublished",
+          "trigger": "Unpublish status page"
+        },
+        {
+          "kind": "guard",
+          "action": "view",
+          "condition": "password IS NOT NULL",
+          "description": "Password-protected status pages require authentication to view"
+        }
+      ]
+    },
+    {
+      "name": "api_key",
+      "states": [
+        "active",
+        "inactive",
+        "expired"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "active",
+          "trigger": "Create API key"
+        },
+        {
+          "kind": "state_transition",
+          "from": "active",
+          "to": "inactive",
+          "trigger": "Deactivate API key"
+        },
+        {
+          "kind": "state_transition",
+          "from": "active",
+          "to": "expired",
+          "trigger": "Expiration date reached"
+        },
+        {
+          "kind": "state_transition",
+          "from": "inactive",
+          "to": "active",
+          "trigger": "Reactivate API key"
+        },
+        {
+          "kind": "forbidden_transition",
+          "from": "expired",
+          "to": "active",
+          "reason": "Expired API keys cannot be reactivated"
+        },
+        {
+          "kind": "guard",
+          "action": "authenticate",
+          "condition": "active == true AND (expires IS NULL OR expires > NOW())",
+          "description": "Only active, non-expired API keys can authenticate requests"
+        }
+      ]
+    },
+    {
+      "name": "notification",
+      "states": [
+        "active",
+        "inactive"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "active",
+          "trigger": "Create notification"
+        },
+        {
+          "kind": "state_transition",
+          "from": "active",
+          "to": "inactive",
+          "trigger": "Deactivate notification"
+        },
+        {
+          "kind": "state_transition",
+          "from": "inactive",
+          "to": "active",
+          "trigger": "Activate notification"
+        },
+        {
+          "kind": "guard",
+          "action": "send",
+          "condition": "active == true",
+          "description": "Only active notifications are sent when monitor status changes"
+        }
+      ]
+    },
+    {
+      "name": "incident",
+      "states": [
+        "active",
+        "inactive"
+      ],
+      "rules": [
+        {
+          "kind": "state_transition",
+          "from": null,
+          "to": "active",
+          "trigger": "Create incident"
+        },
+        {
+          "kind": "state_transition",
+          "from": "active",
+          "to": "inactive",
+          "trigger": "Resolve incident"
+        },
+        {
+          "kind": "state_transition",
+          "from": "inactive",
+          "to": "active",
+          "trigger": "Reopen incident"
+        },
+        {
+          "kind": "invariant",
+          "description": "Pinned incidents (pin == true) are displayed prominently on status pages"
+        }
+      ]
+    }
+  ],
+  "approvedAt": "2026-08-10T07:25:25.398Z"
+}
