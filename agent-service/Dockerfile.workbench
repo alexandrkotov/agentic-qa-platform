@@ -83,11 +83,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 # Stage 2 spec-generation calls itself (the same Claude/MCP/usage-logging
 # machinery the main CLI uses, not just express + zod) — a hand-maintained
 # list that silently drifts out of sync with the code's actual imports is
-# exactly the failure class this repo's Generate Agent redesign exists to
-# eliminate elsewhere; no reason to keep that pattern here.
+# exactly the failure class this repo's Generate Agent redesign eliminates
+# elsewhere; no reason to keep that pattern here.
 COPY package.json ./
 RUN npm install
-RUN npx playwright install --with-deps chromium
+
+# A real, live-discovered CI cost, not just local flakiness: confirmed on
+# an actual GitHub Actions run (not just this dev machine) that this
+# container's own startup command re-downloading chromium from scratch on
+# every single container start pushed "Wait for workbench to be ready"
+# past a 10-minute budget — twice, at two different timeout values, so
+# this genuinely IS how long it takes here, not a one-off network blip.
+# Root cause: PLAYWRIGHT_BROWSERS_PATH defaults to the CURRENT user's own
+# home dir, and this build-time install runs as root (default, before any
+# USER switch) — /root/.cache/ms-playwright — while the container actually
+# runs as the built-in non-root "node" user (docker-entrypoint.sh), whose
+# HOME is /home/node. Those are two different, unrelated paths, so the
+# browser this RUN step just downloaded was unreachable at runtime and
+# silently re-downloaded every single start, exactly as Playwright's own
+# docs warn a mismatched cache path will do. Fixed by pointing
+# PLAYWRIGHT_BROWSERS_PATH at one shared, world-writable location instead
+# of either user's own home dir, set here (build time, root) AND in
+# docker-entrypoint.sh (runtime, node) so both installs — this one for
+# agent-service's own playwright dependency, and the container's own
+# startup-time one for tests/'s separate playwright version — check the
+# SAME directory and skip the download entirely once a matching revision
+# is already cached there.
+# a+rwX (not just rX): confirmed live that read-only access isn't enough —
+# the runtime install (below, running as the non-root "node" user) still
+# re-downloaded from scratch even after this shared path was in place,
+# because Playwright's own install command writes into this directory too
+# (its .links bookkeeping dir, at minimum) even when the actual browser
+# revision it wants already exists, and a permission-denied write there
+# apparently falls back to redownloading rather than erroring loudly.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --with-deps chromium && chmod -R a+rwX /ms-playwright
 
 COPY src/ src/
 

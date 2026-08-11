@@ -193,18 +193,21 @@ services:
     # volume below makes that a no-op after the first successful start
     # rather than a fresh multi-hundred-MB download every restart.
     #
-    # This container runs as the non-root "node" user (docker-entrypoint.sh),
-    # whose HOME is /home/node — not /root, even though the image's own
-    # build-time playwright install (Dockerfile.workbench, run as root
-    # during build) wrote its browser to /root/.cache/ms-playwright. So that
-    # build-time browser is never reachable at runtime at all, regardless of
-    # this volume — it's dead weight, not "shadowed" the way it would be if
-    # both paths matched. This reinstall is what actually populates the
-    # browser this container uses, for both agent-service and tests/;
-    # --with-deps isn't needed again for either (the OS-level apt packages
-    # it installs live outside this cache path entirely, so the Dockerfile's
-    # build-time --with-deps already covers both — only the actual browser
-    # binary needs downloading into the volume).
+    # PLAYWRIGHT_BROWSERS_PATH (set in Dockerfile.workbench) points both this
+    # runtime install AND the build-time one at the SAME shared directory —
+    # confirmed live on a real GitHub Actions run that without this, the two
+    # installs used different cache paths (root's own $HOME at build time vs.
+    # node's own $HOME at runtime — this container runs as the non-root
+    # "node" user, docker-entrypoint.sh), so the build-time browser was
+    # unreachable at runtime and got silently re-downloaded from scratch on
+    # every single container start; that alone pushed a fresh CI run's own
+    # "wait for workbench" step past a 10-minute budget, twice, at two
+    # different timeout values, so this was a real, measured cost, not a
+    # one-off blip. Now agent-service's own `npx playwright install chromium`
+    # below is normally a fast idempotency check, not a real download — only
+    # tests/'s own separately-versioned browser still needs the actual
+    # download, and even that's a no-op after the first successful start
+    # thanks to the volume below.
     command: sh -c "npx playwright install chromium; (cd tests && npx playwright install chromium); npx tsx src/admin/server.ts"
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors
@@ -242,9 +245,18 @@ services:
       # would only touch the container's own ephemeral filesystem, never
       # the real tests/ directory this project's suite actually lives in.
       - ./tests:/usr/src/app/tests
-      # /home/node, not /root: the container runs as the non-root "node"
-      # user (docker-entrypoint.sh), and Playwright caches to $HOME.
-      - playwright-browsers:/home/node/.cache/ms-playwright
+      # Matches PLAYWRIGHT_BROWSERS_PATH (Dockerfile.workbench) — NOT
+      # /home/node/.cache/ms-playwright (Playwright's own un-overridden
+      # default, keyed to whichever user's $HOME is active), which is
+      # exactly the mismatch that made the build-time-installed browser
+      # unreachable at runtime (see the command's own comment above). A
+      # useful side effect of the shared path, confirmed live: Docker
+      # auto-seeds a brand-new named volume from the image's own existing
+      # content at the same mount point on first use, so even a completely
+      # fresh volume (e.g. a first-ever run on a new GitHub Actions runner,
+      # which never persists volumes across runs) starts pre-populated with
+      # whatever the image already baked in at build time, not empty.
+      - playwright-browsers:/ms-playwright
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
