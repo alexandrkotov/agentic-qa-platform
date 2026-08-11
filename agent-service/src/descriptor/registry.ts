@@ -8,6 +8,7 @@ import { webUiBuilder } from './components/webUi.ts';
 import { dockerComposeBuilder } from './components/dockerCompose.ts';
 import { sqliteBuilder } from './components/sqlite.ts';
 import { mysqlBuilder } from './components/mysql.ts';
+import { mongoBuilder } from './components/mongo.ts';
 
 /**
  * Per-component-type wiring: which MCP server(s) / custom tool(s) it needs, and the
@@ -34,6 +35,7 @@ export const componentRegistry: BuilderMap = {
   'docker-compose': dockerComposeBuilder,
   sqlite: sqliteBuilder,
   mysql: mysqlBuilder,
+  mongo: mongoBuilder,
 };
 
 export interface AssembledDiscovery {

@@ -1,0 +1,16 @@
+{
+  "name": "wekan",
+  "components": [
+    {
+      "type": "docker-compose",
+      "repoUrl": "https://github.com/wekan/wekan",
+      "ref": "main",
+      "composeFile": "docker-compose-mongodb-v7.yml"
+    },
+    {
+      "type": "mongo",
+      "name": "wekan_db",
+      "connectionString": "mongodb://host.docker.internal:27017/wekan"
+    }
+  ]
+}

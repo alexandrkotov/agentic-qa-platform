@@ -567,6 +567,9 @@ const FIELD_DEFS = {
   'mysql': [
     { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'mysql://user:pass@host:3306/db' },
   ],
+  'mongo': [
+    { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'mongodb://host:27017/db' },
+  ],
 };
 
 async function api(path, opts) {

@@ -171,7 +171,22 @@ const MysqlComponentSchema = z.object({
   connectionString: z.string(),
 });
 
+/**
+ * Same connectionString-only shape as postgres, deliberately — unlike
+ * mysql.ts, a genuinely official MCP server exists for this engine
+ * (mongodb-mcp-server, published by mongodb.com maintainers under the
+ * mongodb-js GitHub org — confirmed live via `npm view`), so
+ * mongo.ts's own builder hands this straight to it via mcpServers
+ * rather than hand-writing a CustomTool the way mysql.ts had to.
+ */
+const MongoComponentSchema = z.object({
+  type: z.literal('mongo'),
+  name: z.string().optional(),
+  connectionString: z.string(),
+});
+
 export type PostgresComponent = z.infer<typeof PostgresComponentSchema>;
+export type MongoComponent = z.infer<typeof MongoComponentSchema>;
 export type MysqlComponent = z.infer<typeof MysqlComponentSchema>;
 export type RestApiComponent = z.infer<typeof RestApiComponentSchema>;
 export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
@@ -189,6 +204,7 @@ const SystemComponentSchema = z.discriminatedUnion('type', [
   DockerComposeComponentSchema,
   SqliteComponentSchema,
   MysqlComponentSchema,
+  MongoComponentSchema,
 ]);
 
 export const SystemDescriptorSchema = z
