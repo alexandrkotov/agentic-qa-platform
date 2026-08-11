@@ -1765,8 +1765,9 @@ async function deployOrderflowDemo(onProgress: (message: string) => void): Promi
   // No `--build` — the images are already built (initial README setup);
   // rebuilding on every hub-button click would make "one click" genuinely
   // slow for no benefit, since this route never changes the Dockerfiles.
-  // `--wait` blocks until db/kafka's own healthchecks pass, replacing
-  // hand-rolled polling.
+  // `--wait` blocks until db/kafka/app's own healthchecks pass, replacing
+  // hand-rolled polling — but see waitForOrderflowBackendReady() below,
+  // still needed even with this.
   onProgress(`$ docker compose -p ${ORDERFLOW_DEMO_PROJECT} -f ${composeFile} up -d --wait`);
   const { code, output } = await runCommand(
     'docker',
@@ -1778,6 +1779,35 @@ async function deployOrderflowDemo(onProgress: (message: string) => void): Promi
   if (code !== 0) {
     throw new Error(`docker compose up failed for ${ORDERFLOW_DEMO_PROJECT} (exit ${code}): ${output.slice(-800)}`);
   }
+}
+
+// Confirmed live (2026-08-11) that `--wait` above genuinely isn't enough on
+// its own, even with app's own healthcheck added: `app`'s healthcheck runs
+// FROM INSIDE its own container (`wget http://localhost:3000/`), which can
+// report healthy while the very next cross-container connection — from
+// `workbench`, over the docker network, exactly what the real test run
+// needs — still gets a real `ECONNREFUSED`. Root cause not fully pinned
+// down (a container's own loopback becoming reachable slightly before its
+// externally-facing network interface, under this project's Docker
+// Desktop/WSL2 setup, is the leading theory — same general class of
+// cross-container-vs-loopback gap already documented for MSSQL's hairpin-
+// NAT issue elsewhere in this codebase, different mechanism). Same fix
+// shape as setupUptimeKuma.ts's own retry loop: probe from the SAME
+// vantage point the real failure happened from (this process, i.e.
+// workbench, not app's own container) before trusting it.
+async function waitForOrderflowBackendReady(onProgress: (message: string) => void): Promise<void> {
+  const url = 'http://app:3000/';
+  for (let attempt = 1; attempt <= 15; attempt++) {
+    try {
+      await fetch(url);
+      if (attempt > 1) onProgress(`${url} reachable from workbench after ${attempt} attempts.`);
+      return;
+    } catch {
+      if (attempt === 1) onProgress(`${url} not reachable from workbench yet — retrying...`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw new Error(`${url} never became reachable from workbench after 15 attempts (30s) — see waitForOrderflowBackendReady()'s own comment.`);
 }
 
 app.post('/api/demo/switch', async (req, res) => {
@@ -1825,6 +1855,7 @@ app.post('/api/demo/switch', async (req, res) => {
 
       send({ type: 'progress', message: 'Deploying OrderFlow…' });
       await deployOrderflowDemo((message) => send({ type: 'progress', message }));
+      await waitForOrderflowBackendReady((message) => send({ type: 'progress', message }));
     }
 
     send({ type: 'progress', message: `Restoring ${target}'s suite from its archived snapshot…` });

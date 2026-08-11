@@ -38,6 +38,23 @@ services:
     # file anywhere under app/) — the schema alone is enough, test data
     # comes from the BDD scenarios themselves.
     command: sh -c "npx prisma generate && npx prisma migrate deploy && pnpm run start:dev"
+    # Needed for `docker compose up --wait` (used by the hub's own
+    # /api/demo/switch route, server.ts) to actually gate on this service
+    # being ready, not just "container started" — confirmed live
+    # (2026-08-11) that without this, `--wait` returned as soon as
+    # db/kafka's own healthchecks passed, while `app` was still mid-`prisma
+    # migrate deploy`/Nest boot, and the very next step (restoring +
+    # running the suite) hit real `ECONNREFUSED` errors against it. No
+    # dedicated /health route exists — GET / (app.controller.ts's root
+    # route) is a fine readiness proxy, same spirit as db's own
+    # `pg_isready`. `wget`, not `curl` — this image's Alpine base has
+    # busybox wget but no curl installed.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/ >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
     # Extra DNS name for this same container, alongside "app" — "app" is
     # also a real, Google-owned top-level domain with mandatory HTTPS
     # (HSTS-preloaded at the registry level), and Chrome silently applies
@@ -65,7 +82,8 @@ services:
       - ./frontend:/usr/src/app
       - /usr/src/app/node_modules
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
   db:
     image: postgres:16

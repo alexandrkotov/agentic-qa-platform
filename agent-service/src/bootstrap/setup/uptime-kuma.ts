@@ -42,7 +42,32 @@ const setupUptimeKuma: SetupFn = async (env, onProgress) => {
   if (!password) throw new Error('uptime-kuma setup needs UPTIME_KUMA_PASSWORD in descriptors/uptime-kuma.env');
   const log = (message: string) => onProgress?.(message);
 
-  const entry = (await fetch(`${baseUrl}/api/entry-page`).then((r) => r.json())) as { type?: string };
+  // Retried, not a single attempt — confirmed live (2026-08-11, via the
+  // hub's own automated deploy-then-setup call, no human-paced delay
+  // between the two the way a browser click-through naturally has): the
+  // very first fetch right after `docker compose up` reports "Started" can
+  // still hit "fetch failed" (ECONNREFUSED) because the container reporting
+  // as started and the Node process inside it actually listening on 3001
+  // are two different moments, and Kuma's own compose service has no
+  // healthcheck (unlike this project's own db/kafka) for `deployTarget()`
+  // to wait on. 10 attempts/1s covers a real, observed multi-second gap
+  // without adding a meaningful delay to the common case where it's
+  // already up.
+  let entry: { type?: string } | undefined;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      entry = (await fetch(`${baseUrl}/api/entry-page`).then((r) => r.json())) as { type?: string };
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 1) log(`${baseUrl} not accepting connections yet — retrying...`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  if (!entry) {
+    throw new Error(`${baseUrl}/api/entry-page never became reachable after 10 attempts: ${(lastErr as Error)?.message}`);
+  }
   if (entry.type === 'entryPage') {
     log('Already set up (GET /api/entry-page reports "entryPage") — nothing to do.');
     return;
