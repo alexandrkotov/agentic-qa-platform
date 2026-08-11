@@ -23,23 +23,42 @@ if [ -d /home/node/.cache ]; then
   chown node:node /home/node/.cache
 fi
 
-# HOST_PROJECT_ROOT/targets is the mirrored-mount bind (docker-compose.yml,
-# identical absolute path on both sides) bootstrap/deployTarget.ts's own
-# assertMirroredMount() writes a marker file into on every deploy. Same
-# root-owned-by-default class of bug as /home/node/.cache above — Docker
-# creates a missing bind-mount source as root before this entrypoint ever
-# runs — but this one stayed hidden far longer: this repo's own dev host
-# happens to share uid 1000 with the "node" user below (pure coincidence,
-# already called out in the top-of-file comment), so every deploy here
-# just worked. A real GitHub Actions runner's checkout is owned by uid
-# 1001 ("runner"), not 1000, and confirmed live: assertMirroredMount()
-# failed outright with "EACCES: permission denied, open
-# '.../targets/.mirror-check-...'" — the very first deploy this whole
-# initiative's own CI job ever attempted on a genuinely different uid.
-if [ -n "$HOST_PROJECT_ROOT" ]; then
-  mkdir -p "$HOST_PROJECT_ROOT/targets"
-  chown node:node "$HOST_PROJECT_ROOT/targets"
-fi
+# Every OTHER bind-mounted host directory this container writes real files
+# into (docker-compose.yml) — same root-owned-by-default class of bug as
+# /home/node/.cache above, just never noticed here until CI actually
+# exercised it: this repo's own dev host happens to share uid 1000 with
+# the "node" user below (pure coincidence, already called out in the
+# top-of-file comment), so every one of these silently worked by luck, not
+# by design. A real GitHub Actions runner's checkout is owned by uid 1001
+# ("runner"), not 1000 — confirmed live, hit this exact bug twice in a
+# row for two different mounts before catching that it's systemic:
+# bootstrap/deployTarget.ts's own assertMirroredMount() failed outright on
+# targets/ ("EACCES ... open '.../targets/.mirror-check-...'"), then the
+# very next successful deploy immediately hit the identical failure
+# writing into tests/ ("EACCES ... mkdir '.../tests/.features-gen/features'"
+# from playwright-bdd's own generator, then again writing tests/reports/
+# from support/generate-html-report.mjs). Fixing every mount in one pass
+# here rather than waiting for each to fail in its own separate CI run.
+# Both -R and an unconditional mkdir -p matter for every entry, not just
+# whichever one first triggered this: real content gets generated into NEW
+# subdirectories at arbitrary depth (tests/.features-gen/, tests/reports/,
+# agent-service/reports/*.json, archive/bdd-test-suite-*/, ...), so the
+# top-level directory alone being node-owned isn't enough; and several of
+# these (archive/, targets/, agent-service/reports/, tests/.features-gen/,
+# tests/reports/) are gitignored, so a fresh GitHub Actions checkout has
+# NONE of them yet — a plain `[ -d ]` existence guard would silently skip
+# exactly the ones most likely to hit this bug.
+for dir in \
+  /usr/src/app/descriptors \
+  /usr/src/app/reports \
+  /usr/src/app/archive \
+  /usr/src/app/tests \
+  "${HOST_PROJECT_ROOT:+$HOST_PROJECT_ROOT/targets}"; do
+  if [ -n "$dir" ]; then
+    mkdir -p "$dir"
+    chown -R node:node "$dir"
+  fi
+done
 
 # /var/run/docker.sock is bind-mounted from the host (docker-compose.yml) so
 # this container can run real `docker`/`docker compose` commands against the
