@@ -94,6 +94,14 @@ re-run them); the E2E Agent runs against that suite for real, any time, on deman
 
 ### The application under test
 
+**OrderFlow below is this repo's own bundled example — not the only thing under test anymore.**
+It's always available (part of the base `docker-compose.yml`, no extra deploy step), and its own
+suite is preserved and restorable any time (see "The test suite" below). But the same pipeline,
+unmodified, now also runs against 5 real, unrelated open-source apps it was never built for —
+[wger](https://github.com/wger-project/wger), Uptime Kuma, Snipe-IT, Wekan, nopCommerce — each
+deployed straight from its own repo (see "The System Descriptor" and "Adding a new target" below).
+Right now it's actually one of those, Uptime Kuma, whose suite is checked into `tests/`.
+
 Not a Todo list — a small order-processing app, **OrderFlow**, chosen specifically because it creates
 real relationships across layers to test against: `Customer` → `Order` → `OrderItem` → `Product`,
 plus an `OrderStatusHistory` audit trail (`DRAFT → SUBMITTED`). That shape opens up test
