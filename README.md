@@ -256,6 +256,16 @@ other agent output in this app, just entirely mechanical this time. Proven end t
 [wger](https://github.com/wger-project/wger) and [Uptime Kuma](https://github.com/louislam/uptime-kuma),
 two real, unrelated open-source apps this project has never seen before.
 
+**Multiple targets can be deployed and stay up at the same time, with zero conflict.** Each deploy
+is its own Compose project (`deployTarget.ts`'s own `projectNameFor()`), so each gets its own Docker
+network and its own independently allocated host ports — `assignPorts()`'s remap-on-conflict logic
+already guarantees no two targets' published ports collide, with no coordination needed between
+them. Confirmed live: wger (7 services) and Uptime Kuma ran fully deployed at once for real stretches
+of this project's own development, neither one ever told to coexist deliberately — nothing in the
+design assumes only one target is ever live. The only real cost is host resources (CPU/RAM for
+however many stacks happen to be up); there's no artificial single-target limit anywhere in the
+architecture.
+
 ### Adding a new target
 
 Everything above composes into one path for onboarding a brand-new external target system so it
