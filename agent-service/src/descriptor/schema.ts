@@ -159,7 +159,20 @@ const DockerComposeComponentSchema = z.object({
     .optional(),
 });
 
+/**
+ * Same shape as PostgresComponentSchema, deliberately — a plain connection
+ * string is all mysql.ts's own builder needs (it parses host/port/user/
+ * password/database out of it itself, since the real `mysql` CLI takes
+ * discrete flags, not a URI the way `psql` does).
+ */
+const MysqlComponentSchema = z.object({
+  type: z.literal('mysql'),
+  name: z.string().optional(),
+  connectionString: z.string(),
+});
+
 export type PostgresComponent = z.infer<typeof PostgresComponentSchema>;
+export type MysqlComponent = z.infer<typeof MysqlComponentSchema>;
 export type RestApiComponent = z.infer<typeof RestApiComponentSchema>;
 export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
 export type KafkaConsumerComponent = z.infer<typeof KafkaConsumerComponentSchema>;
@@ -175,6 +188,7 @@ const SystemComponentSchema = z.discriminatedUnion('type', [
   WebUiComponentSchema,
   DockerComposeComponentSchema,
   SqliteComponentSchema,
+  MysqlComponentSchema,
 ]);
 
 export const SystemDescriptorSchema = z

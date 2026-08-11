@@ -564,6 +564,9 @@ const FIELD_DEFS = {
   'sqlite': [
     { key: 'path', label: 'Path to .db file', type: 'text', placeholder: '/…/targets/<name>/repo/data/app.db' },
   ],
+  'mysql': [
+    { key: 'connectionString', label: 'Connection string', type: 'text', placeholder: 'mysql://user:pass@host:3306/db' },
+  ],
 };
 
 async function api(path, opts) {

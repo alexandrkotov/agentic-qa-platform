@@ -7,6 +7,7 @@ import { kafkaConsumerBuilder } from './components/kafkaConsumer.ts';
 import { webUiBuilder } from './components/webUi.ts';
 import { dockerComposeBuilder } from './components/dockerCompose.ts';
 import { sqliteBuilder } from './components/sqlite.ts';
+import { mysqlBuilder } from './components/mysql.ts';
 
 /**
  * Per-component-type wiring: which MCP server(s) / custom tool(s) it needs, and the
@@ -32,6 +33,7 @@ export const componentRegistry: BuilderMap = {
   'web-ui': webUiBuilder,
   'docker-compose': dockerComposeBuilder,
   sqlite: sqliteBuilder,
+  mysql: mysqlBuilder,
 };
 
 export interface AssembledDiscovery {

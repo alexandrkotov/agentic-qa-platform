@@ -48,10 +48,16 @@ RUN chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 # the real CLI to run read-only queries against a docker-compose-deployed
 # target's own .db file — same reasoning as postgres's MCP server, just no
 # npm package exists for SQLite that's worth depending on here.
+# default-mysql-client (pulls in the real mariadb-client on Debian,
+# providing the `mysql` binary): same reasoning again for the `mysql`
+# component type (descriptor/components/mysql.ts) — no OFFICIAL
+# @modelcontextprotocol/server-mysql package exists (confirmed live,
+# npm 404s on it), only unmaintained/unaudited third-party ones not worth
+# trusting with real database credentials here.
 # --no-install-recommends + the apt-lists cleanup keep this from
 # reintroducing the image-bloat concern the Debian-over-Alpine comment
 # above already accepts a trade-off on for Chromium.
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates sqlite3 \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates sqlite3 default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Installs from the real package.json rather than a hand-picked package list,
