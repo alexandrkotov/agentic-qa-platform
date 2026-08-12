@@ -90,6 +90,15 @@
      Confirmed live: this is exactly what happened before this rule existed. */
   .badge-active[hidden] { display: none; }
   .badge-active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--ok); }
+  /* A tile can be "deployed" (containers up) while tests/ actually holds a
+     DIFFERENT target's suite — they're independent facts, see the JS's own
+     applyDemoStatus() comment. Same [hidden]-override reasoning as
+     .badge-active above applies here too. */
+  .tile-warning {
+    font-size: 0.78rem; color: var(--warn-fg); background: var(--warn-bg);
+    border-radius: 6px; padding: 0.4rem 0.6rem; margin-top: 0.5rem; line-height: 1.4;
+  }
+  .tile-warning[hidden] { display: none; }
   .card-url {
     flex-shrink: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace;
     font-size: 0.78rem; color: var(--accent); background: var(--accent-bg);
@@ -259,6 +268,7 @@
                 <span class="badge-active" id="tile-orderflow-badge" hidden>active</span>
               </div>
               <div class="card-desc" id="tile-orderflow-desc">Tears down whichever demo is currently deployed, deploys OrderFlow, restores and runs its suite</div>
+              <div class="tile-warning" id="tile-orderflow-warning" hidden></div>
             </div>
           </div>
         </button>
@@ -329,6 +339,7 @@
                 <span class="badge-active" id="tile-uptime-kuma-badge" hidden>active</span>
               </div>
               <div class="card-desc" id="tile-uptime-kuma-desc">Tears down whichever demo is currently deployed, deploys Uptime Kuma, restores and runs its suite</div>
+              <div class="tile-warning" id="tile-uptime-kuma-warning" hidden></div>
             </div>
           </div>
         </button>
@@ -470,6 +481,32 @@ function applyDemoStatus(status) {
     const link = document.getElementById('tile-uptime-kuma-link');
     link.href = kumaUrl;
     document.getElementById('tile-uptime-kuma-port').textContent = ':' + kumaUrl.split(':').pop();
+  }
+
+  // A tile being "deployed" (containers up, checked above) and tests/
+  // actually holding THAT target's suite are two independent facts —
+  // restoring a suite only happens inside a real /api/demo/switch call, so
+  // anything else that changes tests/ afterward (Write & Run for a
+  // DIFFERENT target in the Workbench, a hand edit in an editor) leaves
+  // the deployed containers untouched while the suite on disk quietly
+  // stops matching them. tests/.current-descriptor (server.ts's own
+  // currentSuiteDescriptor) is the one honest source for "whose suite is
+  // actually there right now" — compared here against each deployed tile
+  // so a real mismatch shows a warning instead of silently implying
+  // Cucumber report/Run tests still reflect this tile's own target.
+  const suite = status.currentSuiteDescriptor;
+  const ofWarning = document.getElementById('tile-orderflow-warning');
+  const ofMismatch = ofDeployed && suite && suite !== 'orderflow';
+  ofWarning.hidden = !ofMismatch;
+  if (ofMismatch) {
+    ofWarning.textContent = `⚠ tests/ currently holds a different suite ("${suite}") — the running containers are OrderFlow's, but the Cucumber report and "Run tests" reflect ${suite} instead. Click above to redeploy OrderFlow's own suite.`;
+  }
+
+  const kumaWarning = document.getElementById('tile-uptime-kuma-warning');
+  const kumaMismatch = kumaDeployed && suite && suite !== 'uptime-kuma';
+  kumaWarning.hidden = !kumaMismatch;
+  if (kumaMismatch) {
+    kumaWarning.textContent = `⚠ tests/ currently holds a different suite ("${suite}") — the running containers are Uptime Kuma's, but the Cucumber report and "Run tests" reflect ${suite} instead. Click above to redeploy Uptime Kuma's own suite.`;
   }
 
   currentActiveDemo = ofDeployed ? 'orderflow' : kumaDeployed ? 'uptime-kuma' : null;

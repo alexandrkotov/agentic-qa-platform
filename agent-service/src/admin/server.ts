@@ -1860,9 +1860,29 @@ app.get('/api/demo/status', async (req, res) => {
       }
     }
 
+    // Whether a demo's CONTAINERS are running (checked above) and whether
+    // tests/features/tests/steps actually hold ITS suite are two genuinely
+    // independent facts — restoring a suite only happens inside
+    // /api/demo/switch, so anything else that changes tests/ afterward
+    // (Write & Run for a different target in the Workbench, a hand edit in
+    // an editor) leaves the deployed containers untouched while the suite
+    // on disk quietly stops matching them. `tests/.current-descriptor`
+    // (kept up to date by both restore-suite.mjs and Write & Run) is the
+    // one honest source for "whose suite is actually there right now" —
+    // the hub compares it against each `deployed: true` tile client-side
+    // to show a real mismatch warning instead of silently implying the
+    // suite is still correct just because the container is still up.
+    let currentSuiteDescriptor: string | null = null;
+    try {
+      currentSuiteDescriptor = (await readFile(join(TESTS_ROOT, '.current-descriptor'), 'utf-8')).trim() || null;
+    } catch {
+      currentSuiteDescriptor = null;
+    }
+
     res.json({
       orderflow: { deployed: orderflowContainers.length > 0 },
       uptimeKuma: { deployed: kumaContainers.length > 0, url: kumaUrl },
+      currentSuiteDescriptor,
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
