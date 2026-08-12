@@ -214,17 +214,19 @@ for each component type stays small, explicit, and visible, rather than folded i
 discovery prompt. Adding a new target system means writing a descriptor JSON, not touching code;
 adding a new *kind* of component means one new builder file plus one line in the registry.
 
-Eight descriptors exist today, all under
+Ten descriptors exist today, all under
 [`agent-service/descriptors/`](agent-service/descriptors/): `orderflow.json` (this app — postgres +
 rest-api + web-ui + a `kafka-consumer` watching the `orders.status-changed` topic),
 `kafka-demo.json` (a bare Kafka broker, nothing else — whole-broker exploration via the plain
-`kafka` component), `kafka-consumer-demo.json` (the same broker, narrowed to one topic), and five
+`kafka` component), `kafka-consumer-demo.json` (the same broker, narrowed to one topic), five
 real, unrelated open-source apps this project has never seen before, each deployed via its own
 `docker-compose` component (see above) and each proving out a different `mysql`/`mongo`/`mssql`/
 `sqlite` component type against a real, independently-built database engine — not a mock:
 [wger](https://github.com/wger-project/wger) (postgres), `snipe-it.json` (mysql),
-`wekan.json` (mongo), `nopcommerce.json` (mssql), and `uptime-kuma.json` (sqlite — plus the only
-descriptor so far that also needs a first-run setup script, see "Adding a new target" below). Point
+`wekan.json` (mongo), `nopcommerce.json` (mssql), and `uptime-kuma.json` (sqlite), and two more
+minimal ones so far (just a `docker-compose` component each), `trilium.json` and `nocodb.json`.
+Three of these ten (`uptime-kuma.json`, `trilium.json`, `nocodb.json`) also need a first-run setup
+script, see "Adding a new target" below. Point
 discovery at any of them with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag
 defaults to `orderflow.json`, so `pnpm discovery` behaves exactly as before.
 
