@@ -506,18 +506,30 @@ Once both compose commands above are running, here's everything with a web UI �
 `http://localhost` for a page linking to all of them ([`hub/index.html`](hub/index.html), served
 by the same `report` container on the default port, no `:8080` to remember):
 
-| Service | URL | What it is | Started by |
+**Hub — links to everything below**: `http://localhost`, started by `docker compose up`. The hub
+itself mirrors this same **Platform** / **Demo** split, in that order:
+
+| Platform | URL | What it is | Started by |
 |---|---|---|---|
-| **Hub — links to everything below** | `http://localhost` | | `docker compose up` |
-| Frontend | `http://localhost:5173` | OrderFlow, the app under test | the demo compose command above |
-| Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | the demo compose command above |
+| Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
-| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) | `docker compose up`, but only shows a connected cluster while the OrderFlow demo group is also deployed — `kafka` itself lives there now, not in the platform project |
-| Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
 
-A full tour of all of them, starting from the hub: create an order, verify it in Swagger, find
-its Kafka message, open the biggest Cucumber scenario, toggle the AI usage log, and browse the
+| Demo | URL | What it is | Started by |
+|---|---|---|---|
+| Frontend | `http://localhost:5173` | OrderFlow, the app under test | the demo compose command above, or the hub's own "Deploy OrderFlow" tile |
+| Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | same as Frontend |
+| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) — `kafka` itself lives in the OrderFlow demo group, not the platform | same as Frontend |
+
+On the hub itself, Frontend/Backend/Kafka UI aren't plain always-there links — they're **sub-cards
+nested inside the "Deploy OrderFlow" tile**, hidden until OrderFlow is confirmed actually deployed
+and reachable, shown automatically (no extra click) once it is. Uptime Kuma's own tile gets a
+matching sub-card, a live link to its dashboard using whatever port it was actually assigned.
+
+A full tour, starting from the hub: click "Deploy OrderFlow and its BDD suite" (skip straight to
+the tour below if it's already deployed) to bring the sample app up — its Frontend/Backend/Kafka UI
+sub-cards reveal themselves once it's ready — then create an order, verify it in Swagger, find its
+Kafka message, open the biggest Cucumber scenario, toggle the AI usage log, and browse the
 Workbench.
 
 ![Hub tour: from the landing page through the app, Swagger, Kafka UI, the Cucumber report, the AI usage log, and the Workbench](docs/assets/hub-tour-demo.gif)
