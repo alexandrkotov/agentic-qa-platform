@@ -1,0 +1,10 @@
+{
+  "name": "trilium",
+  "components": [
+    {
+      "type": "docker-compose",
+      "repoUrl": "https://github.com/TriliumNext/Trilium",
+      "ref": "main"
+    }
+  ]
+}
