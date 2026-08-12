@@ -1,0 +1,11 @@
+{
+  "name": "nocodb",
+  "components": [
+    {
+      "type": "docker-compose",
+      "repoUrl": "https://github.com/nocodb/nocodb",
+      "ref": "develop",
+      "composeFile": "docker-compose/1_Auto_Upstall/docker-compose.yml"
+    }
+  ]
+}
