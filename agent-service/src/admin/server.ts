@@ -1812,14 +1812,25 @@ async function waitForOrderflowBackendReady(onProgress: (message: string) => voi
 }
 
 // Same `docker ps --filter label=com.docker.compose.project=...` idiom as
-// getTargetContainerNames() (deployTarget.ts) — not reused directly since
-// that one derives the project name from projectNameFor(), which only
-// applies to docker-compose-component descriptors; OrderFlow's demo group
-// is a plain compose file with a hardcoded project name instead.
-async function getOrderflowDemoContainerNames(): Promise<string[]> {
+// getTargetContainerNames() (deployTarget.ts) — NOT reused directly, for
+// two reasons: (1) that one derives the project name from the
+// non-exported projectNameFor(), which only applies to docker-compose-
+// component descriptors — OrderFlow's demo group is a plain compose file
+// with a hardcoded project name instead; (2) it deliberately passes `-a`
+// (any container, running or not — correct for ITS OWN callers, e.g. a
+// pre-deploy "leftover detected" warning or enabling "Remove" on a
+// stopped-but-present container). Confirmed live (2026-08-12, the user
+// caught this from Docker Desktop) that reusing `-a`-based logic for THIS
+// route's own "is the demo currently active" question is wrong — the hub
+// kept showing "OrderFlow — currently deployed" with the active badge
+// after the user manually stopped (not removed) its containers, because
+// they still existed, just not running. This one deliberately omits `-a`
+// — `docker ps` without it already means running-only, no extra filter
+// needed.
+async function getRunningContainerNames(projectName: string): Promise<string[]> {
   const { code, output } = await runCommand(
     'docker',
-    ['ps', '-a', '--filter', `label=com.docker.compose.project=${ORDERFLOW_DEMO_PROJECT}`, '--format', '{{.Names}}'],
+    ['ps', '--filter', `label=com.docker.compose.project=${projectName}`, '--format', '{{.Names}}'],
     APP_ROOT,
     process.env,
   );
@@ -1836,8 +1847,11 @@ async function getOrderflowDemoContainerNames(): Promise<string[]> {
 // `/api/descriptors/:name/deploy/status` route this mirrors.
 app.get('/api/demo/status', async (req, res) => {
   try {
-    const orderflowContainers = await getOrderflowDemoContainerNames();
-    const kumaContainers = await getTargetContainerNames('uptime-kuma');
+    const orderflowContainers = await getRunningContainerNames(ORDERFLOW_DEMO_PROJECT);
+    // uptime-kuma's own project name follows deployTarget.ts's
+    // projectNameFor() convention (bdd-target-<name>) — not exported, so
+    // spelled out literally here, same as ORDERFLOW_DEMO_PROJECT already is.
+    const kumaContainers = await getRunningContainerNames('bdd-target-uptime-kuma');
 
     // Uptime Kuma's own published port is dynamically allocated
     // (assignPorts() in deployTarget.ts) — unlike OrderFlow's fixed
