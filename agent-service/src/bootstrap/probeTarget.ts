@@ -1,8 +1,10 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
+import { chromium } from 'playwright';
 import type { SystemComponent } from '../descriptor/schema.ts';
 import { resolveTargetPaths, type DeployState, type PortMapping } from './deployTarget.ts';
 import { targetsDirFromEnv } from './targetsDir.ts';
+import { hasSetup } from './setupTarget.ts';
 
 // ---------------------------------------------------------------------------
 // Step (4) of the "External Target Onboarding" initiative — after a real
@@ -62,9 +64,19 @@ export interface ProbeUnclassified {
   reason: string;
 }
 
+/** Advisory only — see pass 4's own module comment below. Never becomes a
+ *  component; there's no "this needs a setup script" type in schema.ts,
+ *  and this app never writes bootstrap/setup/*.ts for you. */
+export interface ProbeSetupHint {
+  service: string;
+  port: number;
+  evidence: string;
+}
+
 export interface ProbeResult {
   candidates: ProbeCandidate[];
   unclassified: ProbeUnclassified[];
+  setupHints: ProbeSetupHint[];
 }
 
 /** Distinct from a generic failure so admin/server.ts's route can tell "deploy first" apart from a real bug — same shape as deployTarget.ts's own DeployCancelledError being exported for the same reason. */
@@ -397,62 +409,147 @@ async function fetchWithRetry(url: string): Promise<Response | null> {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Pass 4 — setup-wizard hint. Step 1 of the setup-script-autogen idea (see
+// memory `project_setup_script_autogen_idea`): entirely mechanical/free,
+// no Claude call — this only flags whether a target's root page LOOKS like
+// a first-run wizard rather than a login/dashboard, so a human knows it's
+// worth recording one. (Step 2 — actually generating the SetupFn script —
+// is deliberately NOT built here: that memory now records a human-records,
+// agent-converts design using `playwright codegen`, not the LLM-explores-
+// blindly shape originally floated.)
+//
+// A plain `fetch` genuinely cannot see this for a client-rendered SPA —
+// confirmed live against Uptime Kuma's own real wizard: `curl`'d HTML is a
+// byte-identical Vite/Vue shell (`<div id="app"></div>`) whether the
+// instance is pre- or post-setup; the real markup only exists once client
+// JS actually runs. So this pass renders with Playwright instead of a
+// plain fetch — the same `chromium` import `setup/uptime-kuma.ts` already
+// uses, for the identical reason. Real cost: a headless browser launch
+// plus one page load per candidate HTML port (a few seconds) — still zero
+// dollars, no Claude call, so still safe to run on every probe.
+//
+// The heuristic below was tuned against Uptime Kuma's own real 3-step
+// wizard, confirmed live across all 3 real states it can be in. A probe
+// only ever sees the FIRST screen — it deliberately never clicks through
+// steps, that's the future recording flow's job, not this cheap pass — and
+// that first screen commonly has NO password field yet (Kuma's own step 1
+// is a database picker, not account creation). So unlike an earlier draft
+// of this heuristic, password-field count is corroborating evidence only,
+// never a hard requirement: requiring wizard-style wording AND the absence
+// of ordinary login wording is what actually keeps this from firing on a
+// plain login page.
+// ---------------------------------------------------------------------------
+
+const WIZARD_KEYWORDS_RE =
+  /(create (an |your )?(admin|administrator) account|initial setup|setup wizard|first[- ]run|welcome to setup|configure your installation|which .*(database|storage).*(would you like|do you want) to use|choose (a|your) database|select (a|your) database)/i;
+const LOGIN_MARKERS_RE = /\b(log in|sign in|remember me|forgot password)\b/i;
+
+/** Pure on purpose — kept separate from the Playwright rendering below so
+ *  the actual matching logic can be reasoned about (and re-tuned) without
+ *  touching browser plumbing. Returns null rather than a boolean so the
+ *  caller gets an honest, non-fabricated evidence string straight from
+ *  the real match, not a made-up one. */
+function detectSetupWizardHint(bodyText: string, passwordFieldCount: number): string | null {
+  const wizardMatch = bodyText.match(WIZARD_KEYWORDS_RE);
+  if (!wizardMatch) return null;
+  if (LOGIN_MARKERS_RE.test(bodyText)) return null; // also looks like an ordinary login page — don't second-guess it
+  const fieldNote = passwordFieldCount > 0 ? `, ${passwordFieldCount} password field(s) present` : '';
+  return `page text matched "${wizardMatch[0]}"${fieldNote}, no login-page wording (log in/sign in/remember me/forgot password) found`;
+}
+
 async function detectHttpCandidates(
   ports: PortMapping[],
   claimedPorts: Set<number>,
-): Promise<{ candidates: ProbeCandidate[]; unclassified: ProbeUnclassified[] }> {
+  alreadyHasSetup: boolean,
+): Promise<{ candidates: ProbeCandidate[]; unclassified: ProbeUnclassified[]; setupHints: ProbeSetupHint[] }> {
   const candidates: ProbeCandidate[] = [];
   const unclassified: ProbeUnclassified[] = [];
+  const setupHints: ProbeSetupHint[] = [];
   const seenPorts = new Set<number>();
 
-  for (const mapping of ports) {
-    if (claimedPorts.has(mapping.publishedPort) || seenPorts.has(mapping.publishedPort)) continue;
-    seenPorts.add(mapping.publishedPort);
+  // Launched lazily, on the first HTML port that actually needs it — most
+  // probe calls hit a target that either has no HTML port at all or
+  // already has a registered setup script (alreadyHasSetup), so this
+  // avoids paying for a browser launch on every probe regardless.
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 
-    const base = `http://host.docker.internal:${mapping.publishedPort}`;
-    const rootRes = await fetchWithRetry(`${base}/`);
-    if (!rootRes) continue; // never answered after retries — nothing useful to report
+  try {
+    for (const mapping of ports) {
+      if (claimedPorts.has(mapping.publishedPort) || seenPorts.has(mapping.publishedPort)) continue;
+      seenPorts.add(mapping.publishedPort);
 
-    let classified = false;
-    const contentType = rootRes.headers.get('content-type') ?? '';
-    if (contentType.includes('text/html')) {
-      candidates.push({
-        component: { type: 'web-ui', name: mapping.service, baseUrl: base, routes: ['/'] },
-        evidence: `service "${mapping.service}", port ${mapping.publishedPort} — "/" returned HTML`,
-      });
-      classified = true;
-    }
+      const base = `http://host.docker.internal:${mapping.publishedPort}`;
+      const rootRes = await fetchWithRetry(`${base}/`);
+      if (!rootRes) continue; // never answered after retries — nothing useful to report
 
-    // Not mutually exclusive with the web-ui check above — plenty of real
-    // apps serve both a UI and an API on the same port.
-    for (const path of SWAGGER_PATHS) {
-      const res = await fetchOnce(`${base}${path}`);
-      if (!res?.ok) continue;
-      let body: unknown;
-      try {
-        body = await res.json();
-      } catch {
-        continue;
-      }
-      if (body && typeof body === 'object' && ('openapi' in body || 'swagger' in body)) {
+      let classified = false;
+      const contentType = rootRes.headers.get('content-type') ?? '';
+      if (contentType.includes('text/html')) {
         candidates.push({
-          component: { type: 'rest-api', name: `${mapping.service}_rest`, swaggerUrl: `${base}${path}` },
-          evidence: `service "${mapping.service}", port ${mapping.publishedPort} — real OpenAPI/Swagger response at ${path}`,
+          component: { type: 'web-ui', name: mapping.service, baseUrl: base, routes: ['/'] },
+          evidence: `service "${mapping.service}", port ${mapping.publishedPort} — "/" returned HTML`,
         });
         classified = true;
-        break; // one swagger candidate is enough per port
+
+        if (!alreadyHasSetup) {
+          try {
+            browser ??= await chromium.launch();
+            const page = await browser.newPage();
+            try {
+              await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: HTTP_TIMEOUT_MS * 3 });
+              const [bodyText, passwordFieldCount] = await Promise.all([
+                page.locator('body').innerText(),
+                page.locator('input[type="password"]').count(),
+              ]);
+              const evidence = detectSetupWizardHint(bodyText, passwordFieldCount);
+              if (evidence) {
+                setupHints.push({ service: mapping.service, port: mapping.publishedPort, evidence });
+              }
+            } finally {
+              await page.close();
+            }
+          } catch {
+            // A page that fails to render (timeout, crash, whatever) just
+            // means no hint for this port — same "honest silence, not a
+            // fabricated result" spirit as every other pass in this file.
+          }
+        }
+      }
+
+      // Not mutually exclusive with the web-ui check above — plenty of real
+      // apps serve both a UI and an API on the same port.
+      for (const path of SWAGGER_PATHS) {
+        const res = await fetchOnce(`${base}${path}`);
+        if (!res?.ok) continue;
+        let body: unknown;
+        try {
+          body = await res.json();
+        } catch {
+          continue;
+        }
+        if (body && typeof body === 'object' && ('openapi' in body || 'swagger' in body)) {
+          candidates.push({
+            component: { type: 'rest-api', name: `${mapping.service}_rest`, swaggerUrl: `${base}${path}` },
+            evidence: `service "${mapping.service}", port ${mapping.publishedPort} — real OpenAPI/Swagger response at ${path}`,
+          });
+          classified = true;
+          break; // one swagger candidate is enough per port
+        }
+      }
+
+      if (!classified) {
+        unclassified.push({
+          label: `port ${mapping.publishedPort} (service "${mapping.service}")`,
+          reason: `responded (status ${rootRes.status}, content-type "${contentType || 'none'}") but didn't look like a web UI or a known REST API shape — add a component by hand if this needs testing.`,
+        });
       }
     }
-
-    if (!classified) {
-      unclassified.push({
-        label: `port ${mapping.publishedPort} (service "${mapping.service}")`,
-        reason: `responded (status ${rootRes.status}, content-type "${contentType || 'none'}") but didn't look like a web UI or a known REST API shape — add a component by hand if this needs testing.`,
-      });
-    }
+  } finally {
+    await browser?.close();
   }
 
-  return { candidates, unclassified };
+  return { candidates, unclassified, setupHints };
 }
 
 // ---------------------------------------------------------------------------
@@ -469,10 +566,11 @@ export async function probeTarget(name: string): Promise<ProbeResult> {
   const claimedPorts = new Set<number>();
   const db = detectDbCandidates(config, state.ports, claimedPorts);
   const sqliteCandidates = await detectSqliteCandidates(config);
-  const http = await detectHttpCandidates(state.ports, claimedPorts);
+  const http = await detectHttpCandidates(state.ports, claimedPorts, hasSetup(name));
 
   return {
     candidates: [...db.candidates, ...sqliteCandidates, ...http.candidates],
     unclassified: [...db.unclassified, ...http.unclassified],
+    setupHints: http.setupHints,
   };
 }

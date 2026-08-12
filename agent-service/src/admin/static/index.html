@@ -1523,9 +1523,10 @@ document.getElementById('undeploy-btn').onclick = async () => {
 // rather than offering to deploy on click — an earlier version of this
 // did that; the user's own call to simplify back to one predictable
 // thing per button.
-function renderProbeResults({ candidates, unclassified }) {
+function renderProbeResults({ candidates, unclassified, setupHints }) {
   const el = document.getElementById('probe-results');
-  if (candidates.length === 0 && unclassified.length === 0) {
+  const hints = setupHints ?? []; // tolerate an older cached response shape, same defensive spirit as elsewhere in this file
+  if (candidates.length === 0 && unclassified.length === 0 && hints.length === 0) {
     el.textContent = 'Probe found nothing new — every published port was already accounted for, or nothing responded.';
     el.style.display = 'block';
     return;
@@ -1536,6 +1537,15 @@ function renderProbeResults({ candidates, unclassified }) {
     for (const c of candidates) {
       const label = c.component.name ? `${c.component.type} (${c.component.name})` : c.component.type;
       lines.push(`<div class="probe-line">&middot; <strong>${label}</strong> — ${c.evidence}</div>`);
+    }
+  }
+  if (hints.length > 0) {
+    // Heuristic, not certain — see probeTarget.ts's own pass-4 comment.
+    // Doesn't add anything to the editor; nothing to Save here, just a
+    // pointer for a human to look closer.
+    lines.push(`<div class="probe-line"><strong>Might need a first-run setup script:</strong></div>`);
+    for (const h of hints) {
+      lines.push(`<div class="probe-line">&middot; service "${h.service}" (port ${h.port}) — ${h.evidence}. No setup script is registered for this descriptor yet — review manually before treating this as certain.</div>`);
     }
   }
   if (unclassified.length > 0) {
