@@ -1,33 +1,66 @@
+import { readFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import sql from 'mssql';
 import type { CustomTool } from '../../providers/AgentProvider.ts';
-import type { ComponentBuilder } from '../registry.ts';
+import type { BuilderContext, ComponentBuilder } from '../registry.ts';
 import type { MssqlComponent } from '../schema.ts';
+import { resolveTargetPaths } from '../../bootstrap/deployTarget.ts';
+import { targetsDirFromEnv } from '../../bootstrap/targetsDir.ts';
+import { runCommand } from '../../util/runCommand.ts';
 
 /**
- * A real, live-discovered environment limitation worth recording here, not
- * just in a commit message: in this Docker Desktop/WSL2 setup,
- * `host.docker.internal:<published-port>` — the exact mechanism every other
- * DB component type in this file relies on — reliably fails for MSSQL
- * specifically, with a generic "Login failed for user 'sa'" / SQL Server
- * error 18456. Confirmed this is NOT a bug in this file's own code: the
- * identical connectionString, credentials, and query succeed immediately
- * when reached via the target's own internal docker-compose network
- * (container-to-container, no published-port hairpin involved) or from the
- * true host machine's own network stack — only the
- * container→published-port→hairpin-NAT path fails, and it fails
+ * A real, live-discovered environment limitation, and the fix for it —
+ * worth recording here, not just in a commit message. `host.docker.internal
+ * :<published-port>` — the exact mechanism every other DB component in this
+ * file's sibling files relies on — reliably fails for MSSQL specifically in
+ * this Docker Desktop/WSL2 setup, with a generic "Login failed for user
+ * 'sa'" / SQL Server error 18456. Confirmed this is NOT a bug in this
+ * file's own code: the identical connectionString, credentials, and query
+ * succeed immediately when reached via the target's own internal
+ * docker-compose network (container-to-container, no published-port
+ * hairpin involved) or from the true host machine's own network stack —
+ * only the container→published-port→hairpin-NAT path fails, and it fails
  * identically via `sqlcmd` too, so it isn't specific to the `mssql` npm
- * package either. Ruled out: IPv4 vs IPv6 (both fail identically),
- * `AUTO_CLOSE` on the database (a real separate issue also found this
- * session — SQL Server Express defaults new databases to
- * `AUTO_CLOSE ON`, worth turning off on any real MSSQL target for
- * reliability, but not the cause of the login failures themselves).
- * Best-guess root cause: TDS mandates an encrypted handshake for the LOGIN7
- * packet itself (unlike Postgres/MySQL/Mongo, where the wire protocol either
- * has no such requirement or tolerates this NAT path fine) — that handshake
- * appears to break specifically over this hairpin route. Not resolved at
- * the platform level here; a target relying on this component type may need
- * workbench joined to its own docker-compose network directly, which this
- * codebase doesn't automate today.
+ * package either. Best-guess root cause: TDS mandates an encrypted
+ * handshake for the LOGIN7 packet itself (unlike Postgres/MySQL/Mongo,
+ * where the wire protocol either has no such requirement or tolerates this
+ * NAT path fine) — that handshake appears to break specifically over this
+ * hairpin route.
+ *
+ * The fix: join `workbench` onto the target's own Docker network on demand,
+ * instead of going through a published port at all — the same "container-
+ * to-container, no hairpin" path already proven to work above. So
+ * `connectionString`'s host here means something different than every
+ * sibling component: it's the target's own docker-compose SERVICE name
+ * (e.g. "nopcommerce_database"), not "host.docker.internal", and the port
+ * is the container's real INTERNAL port (1433, MSSQL's fixed default),
+ * never a published one. Before each query, this file:
+ *   1. reads `targets/<descriptorName>/.aqap/resolved.json` (the same
+ *      `docker compose config --format json` output bootstrap/probeTarget.ts
+ *      already reads) to find which real Docker network(s) that compose
+ *      service actually lives on — read fresh every time, never assumed
+ *      from a naming convention: confirmed live that a target's own
+ *      network name can still reflect a stale project-naming scheme from
+ *      before deployTarget.ts's own projectNameFor() was renamed, until
+ *      that target is redeployed;
+ *   2. `docker network connect`s this container onto each of them (self-
+ *      identified via `hostname()` — Docker sets a container's hostname to
+ *      its own short ID by default, the exact same trick
+ *      bootstrap/deployTarget.ts's assertMirroredMount() already uses);
+ *   3. runs the query;
+ *   4. disconnects again in `finally`, alongside the connection pool's own
+ *      `close()`.
+ * A genuine simplification over the old published-port path, not just a
+ * workaround: nopCommerce's own official compose file never publishes
+ * MSSQL's port at all (only its web service does) — this needs no
+ * port-publish patch of any kind, on any target, ever. An in-process async
+ * mutex (below) serializes this connect→query→disconnect window so two
+ * concurrent MSSQL queries in this one `workbench` process — e.g. Discovery
+ * running against two different MSSQL-backed targets from two browser tabs
+ * at once — can't race each other's network membership; that's a real,
+ * documented limit to this fix (single-process safety only, not a
+ * distributed lock), same honesty-about-limits spirit as the read-only
+ * guard below.
  */
 function queryToolName(key: string): string {
   return `mssql_query__${key}`;
@@ -58,6 +91,114 @@ function parseConnectionString(raw: string): ParsedConnection {
     password: decodeURIComponent(url.password),
     database: url.pathname.replace(/^\//, ''),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Network-join — see this file's own header comment for the why. Reads the
+// same resolved.json shape bootstrap/probeTarget.ts's own ComposeConfig
+// reads, but only the two fields needed here (a service's own `networks`
+// map and each network's resolved real `name`) — not worth importing
+// probeTarget.ts's own (differently-scoped) interfaces for this.
+// ---------------------------------------------------------------------------
+
+interface ResolvedNetwork {
+  name?: string;
+  [key: string]: unknown;
+}
+interface ResolvedService {
+  networks?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+interface ResolvedConfig {
+  services?: Record<string, ResolvedService>;
+  networks?: Record<string, ResolvedNetwork>;
+  [key: string]: unknown;
+}
+
+async function resolveComposeServiceNetworks(descriptorName: string, composeService: string): Promise<string[]> {
+  const targetsDir = targetsDirFromEnv();
+  const { resolvedConfigPath } = resolveTargetPaths(targetsDir, descriptorName);
+
+  let resolved: ResolvedConfig;
+  try {
+    resolved = JSON.parse(await readFile(resolvedConfigPath, 'utf-8'));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(
+        `No deployed configuration found for target "${descriptorName}" — deploy it first (${resolvedConfigPath} is missing).`,
+      );
+    }
+    throw err;
+  }
+
+  const service = resolved.services?.[composeService];
+  if (!service) {
+    throw new Error(
+      `Compose service "${composeService}" (from this component's connectionString host) was not found in ` +
+        `target "${descriptorName}"'s resolved compose config — the connectionString's host must match the ` +
+        `service name in the target's own docker-compose file.`,
+    );
+  }
+
+  // A service with no explicit `networks:` of its own still implicitly
+  // joins Compose's synthesized "default" network — confirmed live against
+  // nopCommerce's real resolved.json (no `networks:` in its source compose
+  // file, but `services.nopcommerce_database.networks` still resolves to
+  // `{ "default": null }`), so this fallback should rarely if ever actually
+  // fire, but is the honest reading of Compose's own documented behavior.
+  const networkKeys = service.networks ? Object.keys(service.networks) : ['default'];
+
+  return networkKeys.map((key) => {
+    const name = resolved.networks?.[key]?.name;
+    if (!name) {
+      throw new Error(
+        `Network "${key}" (used by compose service "${composeService}") has no resolved name in target ` +
+          `"${descriptorName}"'s resolved compose config.`,
+      );
+    }
+    return name;
+  });
+}
+
+// Docker sets a container's hostname to its own short ID by default
+// (docker-compose.yml doesn't override `hostname:` for workbench) — this
+// container's own identity for `docker network connect/disconnect`, same
+// trick bootstrap/deployTarget.ts's assertMirroredMount() already uses.
+const SELF_CONTAINER_ID = hostname();
+
+async function joinNetwork(network: string): Promise<void> {
+  const { code, output } = await runCommand('docker', ['network', 'connect', network, SELF_CONTAINER_ID], process.cwd(), process.env);
+  // "already exists" — Docker's own wording when this container is already
+  // on that network (e.g. a previous call's own disconnect never ran,
+  // crash or otherwise) — not a real failure, safe to proceed.
+  if (code !== 0 && !/already exists/i.test(output)) {
+    throw new Error(`"docker network connect ${network}" failed (exit ${code}): ${output.slice(-400)}`);
+  }
+}
+
+async function leaveNetwork(network: string): Promise<void> {
+  // Best-effort, deliberately never throws — this runs from a `finally`
+  // block after a query has already succeeded or failed; a disconnect
+  // hiccup here shouldn't mask that real outcome. Same best-effort spirit
+  // as bootstrap/deployTarget.ts's own network-cleanup fallback.
+  const { code, output } = await runCommand('docker', ['network', 'disconnect', network, SELF_CONTAINER_ID], process.cwd(), process.env);
+  if (code !== 0 && !/is not connected/i.test(output)) {
+    console.error(`Warning: "docker network disconnect ${network}" failed (exit ${code}): ${output.slice(-400)}`);
+  }
+}
+
+// Serializes every mssql query's own connect→query→disconnect window
+// within this one process — see this file's header comment for why this
+// is a documented, deliberate single-process-only guarantee, not a
+// distributed lock.
+let mutexTail: Promise<void> = Promise.resolve();
+function withNetworkMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const run = mutexTail.then(fn, fn);
+  mutexTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 // Statements that must never reach the server through this tool, checked as
@@ -97,7 +238,7 @@ function assertReadOnlyQuery(query: string): void {
 }
 
 export const mssqlBuilder: ComponentBuilder<MssqlComponent> = {
-  tools(component, key): CustomTool[] {
+  tools(component, key, ctx: BuilderContext): CustomTool[] {
     return [
       {
         name: queryToolName(key),
@@ -111,25 +252,42 @@ export const mssqlBuilder: ComponentBuilder<MssqlComponent> = {
           if (!query) throw new Error('"query" is required.');
           assertReadOnlyQuery(query);
           const conn = parseConnectionString(component.connectionString);
-          const pool = await sql.connect({
-            server: conn.server,
-            port: conn.port,
-            user: conn.user,
-            password: conn.password,
-            database: conn.database,
-            // The target's own SQL Server instance (e.g. a fresh docker-compose
-            // deploy of mcr.microsoft.com/mssql/server) has no real TLS
-            // certificate to validate — same "this is a disposable test
-            // target, not a production connection" trust boundary the rest of
-            // this app already operates in.
-            options: { encrypt: true, trustServerCertificate: true },
-          });
-          try {
-            const result = await pool.request().query(query);
-            return JSON.stringify(result.recordset ?? []);
-          } finally {
-            await pool.close();
+
+          const descriptorName = ctx.descriptorName;
+          if (!descriptorName) {
+            throw new Error(
+              'This mssql component needs its descriptor\'s own top-level "name" set — the network-join ' +
+                'mechanism can\'t find targets/<name>/.aqap/resolved.json without it.',
+            );
           }
+
+          return withNetworkMutex(async () => {
+            const networks = await resolveComposeServiceNetworks(descriptorName, conn.server);
+            for (const network of networks) await joinNetwork(network);
+            try {
+              const pool = await sql.connect({
+                server: conn.server,
+                port: conn.port,
+                user: conn.user,
+                password: conn.password,
+                database: conn.database,
+                // The target's own SQL Server instance (e.g. a fresh docker-compose
+                // deploy of mcr.microsoft.com/mssql/server) has no real TLS
+                // certificate to validate — same "this is a disposable test
+                // target, not a production connection" trust boundary the rest of
+                // this app already operates in.
+                options: { encrypt: true, trustServerCertificate: true },
+              });
+              try {
+                const result = await pool.request().query(query);
+                return JSON.stringify(result.recordset ?? []);
+              } finally {
+                await pool.close();
+              }
+            } finally {
+              for (const network of networks) await leaveNetwork(network);
+            }
+          });
         },
       },
     ];

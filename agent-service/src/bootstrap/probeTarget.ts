@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import type { SystemComponent } from '../descriptor/schema.ts';
 import { resolveTargetPaths, type DeployState, type PortMapping } from './deployTarget.ts';
+import { targetsDirFromEnv } from './targetsDir.ts';
 
 // ---------------------------------------------------------------------------
 // Step (4) of the "External Target Onboarding" initiative — after a real
@@ -32,16 +33,21 @@ import { resolveTargetPaths, type DeployState, type PortMapping } from './deploy
 //    (`.../repo/data` -> `/app/data`); the file only exists once the app
 //    has run and created it. So sqlite detection has to actually look
 //    inside each bind-mounted directory, not string-match a volume path.
-// 3. `postgres`/`sqlite`/`mysql`/`mongo` all exist as DB-shaped component
-//    types in descriptor/schema.ts (mysql/mongo shipped 2026-08-11, proven
-//    live against Snipe-IT/Wekan — see memory `project_external_target_demo_idea`)
-//    — a detected image for any of those four becomes a real candidate.
-//    `mssql` also exists as a type, but DB_IMAGE_PATTERNS below still has
-//    no pattern for it (a real host.docker.internal connectivity
-//    limitation for this engine in this environment, same memory entry,
-//    makes a confidently-proposed candidate premature) — an MSSQL image
-//    is simply not recognized at all right now, out of scope for today's
-//    fix, left for later.
+// 3. `postgres`/`sqlite`/`mysql`/`mongo`/`mssql` all exist as DB-shaped
+//    component types in descriptor/schema.ts, and a detected image for any
+//    of them becomes a real candidate. mssql is the odd one out of the
+//    five: descriptor/components/mssql.ts doesn't reach a target's SQL
+//    Server over a published port at all (a real Docker Desktop/WSL2
+//    connectivity limitation for this engine specifically — see that
+//    file's own header comment) — it joins `workbench` onto the target's
+//    own Docker network on demand instead, so an mssql candidate here
+//    needs no published port and proposes the target's own compose
+//    service name as the connectionString host, not
+//    "host.docker.internal". It also can't propose a real application
+//    database name the way postgres/mysql do (`POSTGRES_DB`/
+//    `MYSQL_DATABASE`) — the official mssql/server image has no
+//    equivalent env var — so it proposes "master" (always exists) as an
+//    explicit placeholder instead of guessing.
 // ---------------------------------------------------------------------------
 
 export interface ProbeCandidate {
@@ -64,21 +70,20 @@ export interface ProbeResult {
 /** Distinct from a generic failure so admin/server.ts's route can tell "deploy first" apart from a real bug — same shape as deployTarget.ts's own DeployCancelledError being exported for the same reason. */
 export class ProbeTargetError extends Error {}
 
-// Deliberately doesn't call deployTarget.ts's own assertMirroredMount()
-// before using this path — that check exists because the HOST Docker
-// daemon needs to resolve a bind-mount source to the same real directory
-// `workbench` just wrote to, when STARTING a container. Nothing here
-// starts a container or asks the daemon to resolve anything; every read
-// below (`readFile`/`readdir`) happens directly inside `workbench` against
-// a path it can already read regardless of whether the daemon would
-// resolve that same string identically — mirror-correctness genuinely
-// doesn't matter for this file's own reads the way it does for a deploy.
-function targetsDirFromEnv(): string {
-  const hostRoot = process.env.HOST_PROJECT_ROOT;
-  if (!hostRoot) {
-    throw new ProbeTargetError('HOST_PROJECT_ROOT is not set — docker-compose.yml should pass it into the workbench service');
+// targetsDirFromEnv() itself now lives in ./targetsDir.ts (factored out once
+// descriptor/components/mssql.ts needed the identical HOST_PROJECT_ROOT
+// logic) — this thin wrapper just keeps this file's own error type
+// (ProbeTargetError, not a plain Error) for anything that calls
+// probeTarget() below. Its own doc-comment there still applies: nothing in
+// this file starts a container or asks the daemon to resolve anything, so
+// mirror-correctness genuinely doesn't matter for these reads the way it
+// does for an actual deploy.
+function targetsDirOrThrowProbeError(): string {
+  try {
+    return targetsDirFromEnv();
+  } catch (err) {
+    throw new ProbeTargetError((err as Error).message);
   }
-  return join(hostRoot, 'targets');
 }
 
 // ---------------------------------------------------------------------------
@@ -128,15 +133,17 @@ async function readJsonFile<T>(path: string): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 1 — database images. postgres/mysql/mongo can all become real
-// candidates (see the module comment above for why mssql and unpublished
-// ports still become unclassified notes instead).
+// Pass 1 — database images. postgres/mysql/mongo/mssql can all become real
+// candidates (see the module comment above for how mssql's own path
+// differs from the other three, and why an unpublished port still means
+// an honest unclassified note for postgres/mysql/mongo specifically).
 // ---------------------------------------------------------------------------
 
 const DB_IMAGE_PATTERNS: Array<{ engine: string; test: (image: string) => boolean }> = [
   { engine: 'postgres', test: (img) => /(^|\/)(postgres|postgis)(:|$)/i.test(img) },
   { engine: 'mysql/mariadb', test: (img) => /(^|\/)(mysql|mariadb)(:|$)/i.test(img) },
   { engine: 'mongodb', test: (img) => /(^|\/)mongo(:|$)/i.test(img) },
+  { engine: 'mssql', test: (img) => /(^|\/)mssql\/server(:|$)/i.test(img) },
 ];
 
 function detectDbCandidates(
@@ -154,6 +161,41 @@ function detectDbCandidates(
     if (!match) continue;
 
     const label = `${serviceName} (image ${image})`;
+    const env = service.environment ?? {};
+
+    // mssql doesn't go through a published port at all — see the module
+    // comment above — so it's handled before the published-port gate
+    // below, which the other three engines still need.
+    if (match.engine === 'mssql') {
+      // Official mssql/server image env var: SA_PASSWORD (2019-era images,
+      // e.g. nopCommerce's own compose file) / MSSQL_SA_PASSWORD (newer) —
+      // check both, whichever is actually set wins.
+      const password = env.MSSQL_SA_PASSWORD ?? env.SA_PASSWORD;
+      if (!password) {
+        unclassified.push({
+          label,
+          reason: 'looks like mssql, but neither MSSQL_SA_PASSWORD nor SA_PASSWORD was found in the compose environment — add the component by hand with the real "sa" password rather than guessing.',
+        });
+        continue;
+      }
+      candidates.push({
+        component: {
+          type: 'mssql',
+          name: serviceName,
+          // "master" always exists on a fresh SQL Server instance — unlike
+          // postgres/mysql, the official mssql/server image has no
+          // env-var-driven default application database, so there's
+          // nothing real to propose there instead. The target's own
+          // install process usually creates the real application database
+          // later (confirmed live: nopCommerce's own install wizard does
+          // exactly this) — update this once it does.
+          connectionString: `mssql://sa:${password}@${serviceName}:1433/master`,
+        },
+        evidence: `image ${image}, credentials found in the compose environment — connects over the target's own Docker network on demand (see mssql.ts), no published port needed; "master" is a placeholder database, update it once the target's own install process creates the real one`,
+      });
+      continue;
+    }
+
     const published = ports.find((p) => p.service === serviceName)?.publishedPort;
 
     if (!published) {
@@ -163,8 +205,6 @@ function detectDbCandidates(
       });
       continue;
     }
-
-    const env = service.environment ?? {};
 
     if (match.engine === 'postgres') {
       const user = env.POSTGRES_USER;
@@ -420,7 +460,7 @@ async function detectHttpCandidates(
 // ---------------------------------------------------------------------------
 
 export async function probeTarget(name: string): Promise<ProbeResult> {
-  const targetsDir = targetsDirFromEnv();
+  const targetsDir = targetsDirOrThrowProbeError();
   const paths = resolveTargetPaths(targetsDir, name);
 
   const config = await readJsonFile<ComposeConfig>(paths.resolvedConfigPath);

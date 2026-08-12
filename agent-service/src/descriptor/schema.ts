@@ -196,6 +196,16 @@ const MongoComponentSchema = z.object({
  * Same connectionString-only shape again — mssql.ts parses host/port/user/
  * password/database out of it itself, same reasoning as mysql.ts (the
  * `mssql` driver package takes a discrete config object, not a URI).
+ *
+ * Unlike every sibling DB component here, the host in this connectionString
+ * is NOT "host.docker.internal" and the port is NOT a published one — a
+ * real Docker Desktop/WSL2 hairpin-NAT limitation for this engine
+ * specifically (see mssql.ts's own header comment for the full account)
+ * means this component instead joins `workbench` onto the target's own
+ * Docker network on demand. So the host here is the target's own
+ * docker-compose SERVICE name (e.g. "nopcommerce_database" — must match a
+ * real service name in the target's own compose file) and the port is that
+ * service's real INTERNAL port (1433 by default), not a published one.
  */
 const MssqlComponentSchema = z.object({
   type: z.literal('mssql'),

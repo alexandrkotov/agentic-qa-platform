@@ -284,6 +284,34 @@ export async function getTargetContainerNames(name: string): Promise<string[]> {
 }
 
 /**
+ * Best-effort, run before EITHER cleanup path below — descriptor/components
+ * /mssql.ts's own network-join mechanism (see that file's header comment)
+ * joins `workbench` onto a target's own Docker network for the duration of
+ * each query and disconnects again right after, but a crash mid-query could
+ * in principle leave it still attached. Docker refuses to remove a network
+ * that still has an active endpoint ("network has active endpoints"),
+ * which would otherwise turn that leftover attachment into a real,
+ * confusing redeploy failure for a target that has nothing to do with
+ * mssql at all. Cheap and safe to run unconditionally — `docker network
+ * disconnect` on a network `workbench` was never attached to is just a
+ * no-op error, ignored the same way the rest of this function's own
+ * cleanup already tolerates a clean slate.
+ */
+async function disconnectSelfFromProjectNetworks(projectName: string): Promise<void> {
+  const netList = await runCommand(
+    'docker',
+    ['network', 'ls', '--filter', `label=com.docker.compose.project=${projectName}`, '-q'],
+    process.cwd(),
+    process.env,
+  );
+  const netIds = netList.output.split('\n').map((s) => s.trim()).filter(Boolean);
+  const selfId = hostname();
+  for (const netId of netIds) {
+    await runCommand('docker', ['network', 'disconnect', netId, selfId], process.cwd(), process.env);
+  }
+}
+
+/**
  * Self-healing, unconditional first step of every deploy — not just a
  * client-side confirm gate. A no-op (fast `docker ps`, nothing else) when
  * the target really is a clean slate, which is the common case. When
@@ -304,6 +332,8 @@ async function cleanupExistingContainers(
 
   const projectName = projectNameFor(name);
   onProgress?.(`Found ${names.length} existing container(s) for "${name}" already in Docker — removing them for a clean deploy: ${names.join(', ')}`);
+
+  await disconnectSelfFromProjectNetworks(projectName);
 
   let cleaned = false;
   if (await fileExists(paths.resolvedConfigPath)) {

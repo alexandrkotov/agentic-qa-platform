@@ -17,9 +17,22 @@ import { mssqlBuilder } from './components/mssql.ts';
  * is where the actual prompt engineering for a component type lives, kept small and
  * visible per type rather than folded into one monolithic discovery prompt.
  */
+/**
+ * `descriptorName` is only here for mssql.ts's own network-join mechanism
+ * (see that file's header comment) — it needs the descriptor's own top-level
+ * `name` to find `targets/<name>/.aqap/resolved.json` and read the real
+ * Docker network the target's compose service lives on. No other builder
+ * reads this today; adding it as an optional field here (rather than a
+ * parallel signature just for mssqlBuilder) keeps every component builder
+ * on one shared shape.
+ */
+export interface BuilderContext {
+  descriptorName?: string;
+}
+
 export interface ComponentBuilder<C extends SystemComponent> {
   mcpServers?(component: C, key: string): McpServerConfig[];
-  tools?(component: C, key: string): CustomTool[];
+  tools?(component: C, key: string, ctx: BuilderContext): CustomTool[];
   promptSection(component: C, key: string): string;
 }
 
@@ -50,6 +63,7 @@ export function assembleDiscovery(descriptor: SystemDescriptor): AssembledDiscov
   const mcpServers: McpServerConfig[] = [];
   const tools: CustomTool[] = [];
   const componentPromptSections: string[] = [];
+  const ctx: BuilderContext = { descriptorName: descriptor.name };
 
   for (const component of descriptor.components) {
     const key = componentKey(component);
@@ -58,7 +72,7 @@ export function assembleDiscovery(descriptor: SystemDescriptor): AssembledDiscov
     const builder = componentRegistry[component.type] as ComponentBuilder<typeof component>;
 
     mcpServers.push(...(builder.mcpServers?.(component, key) ?? []));
-    tools.push(...(builder.tools?.(component, key) ?? []));
+    tools.push(...(builder.tools?.(component, key, ctx) ?? []));
     componentPromptSections.push(builder.promptSection(component, key));
   }
 

@@ -9,7 +9,7 @@
     {
       "type": "mssql",
       "name": "nopcommerce_db",
-      "connectionString": "mssql://sa:nopCommerce_db_password@host.docker.internal:1433/nopCommerce"
+      "connectionString": "mssql://sa:nopCommerce_db_password@nopcommerce_database:1433/nopCommerce"
     }
   ]
 }
