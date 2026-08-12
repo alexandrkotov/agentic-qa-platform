@@ -101,15 +101,37 @@
     border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
   }
   #descriptor-list li + li { border-top: 1px solid var(--line); }
-  #descriptor-list li { display: flex; align-items: stretch; }
+  /* position:relative — the anchor .descriptor-badge's own absolute
+     corner placement below is relative to. */
+  #descriptor-list li { display: flex; align-items: stretch; position: relative; }
   #descriptor-list .descriptor-name-btn {
-    flex: 1; min-width: 0; text-align: left; padding: 0.5rem 0.65rem;
+    /* Extra top padding (vs. bottom) makes room for .descriptor-badge's
+       own corner overlay above — without it the badge's bottom edge sat
+       right on top of the name text's own ascenders, caught live
+       (uptime-kuma's "t"/"k" visibly touching the badge). */
+    flex: 1; min-width: 0; text-align: left; padding: 0.85rem 0.65rem 0.5rem;
     border: none; background: none; color: var(--text); cursor: pointer; font-size: 0.87rem;
     font-family: ui-monospace, "SF Mono", Consolas, monospace;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #descriptor-list .descriptor-name-btn:hover { background: var(--surface-2); }
   #descriptor-list .descriptor-name-btn.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  /* Miniature corner tag, not an inline pill — an inline badge (this
+     feature's first version) ate so much of this narrow column's width
+     that names truncated to 3-4 characters; live-caught and replaced with
+     this instead. Top-LEFT (not right — the user's own call, reads as
+     attached to the name it's tagging rather than floating off toward the
+     delete ×) — absolutely positioned flush in that corner (needs li's
+     own position:relative above) so it costs no horizontal space from the
+     name/delete-× layout at all, just floats on top, small enough to
+     clear both. */
+  #descriptor-list .descriptor-badge {
+    position: absolute; top: 0; left: 0; pointer-events: none;
+    padding: 0.03rem 0.32rem; font-size: 0.5rem; font-weight: 700; line-height: 1.4;
+    text-transform: uppercase; letter-spacing: 0.02em; border-radius: 5px 0 5px 0;
+    background: var(--accent-bg); color: var(--accent);
+  }
+  #descriptor-list .descriptor-badge.badge-mute { background: var(--surface-2); color: var(--text-mute); }
   #descriptor-list .descriptor-delete-btn {
     flex-shrink: 0; border: none; background: none; color: var(--text-mute);
     cursor: pointer; padding: 0 0.65rem; font-size: 1rem; line-height: 1;
@@ -619,15 +641,43 @@ async function streamNdjson(path, opts, onEvent) {
 
 async function loadList() {
   state.names = await api('/api/descriptors');
+
+  // Whether each descriptor has a docker-compose component — fetched ONCE
+  // here (each descriptor's full body, in parallel; the names-only list
+  // above doesn't carry component types) and reused for two different
+  // things below: this list's own "deployable"/"regular" badge, and the
+  // Deploy target section's own select. Used to be fetched twice
+  // (independently, once per use) — merged into one pass, same result.
+  const hasDockerCompose = await Promise.all(state.names.map(async (n) => {
+    try {
+      const d = await api('/api/descriptors/' + encodeURIComponent(n));
+      return (d.components || []).some((c) => c.type === 'docker-compose');
+    } catch {
+      return false;
+    }
+  }));
+
   const ul = document.getElementById('descriptor-list');
   ul.innerHTML = '';
-  for (const name of state.names) {
+  state.names.forEach((name, i) => {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.className = 'descriptor-name-btn' + (name === state.current ? ' active' : '');
     btn.textContent = name;
     btn.onclick = () => selectDescriptor(name);
     li.appendChild(btn);
+
+    // "deployable" reads the same fact the Deploy target section below
+    // acts on (a docker-compose component) — the user's own idea, so this
+    // list doesn't require opening a descriptor just to find out whether
+    // it'll even show up in that section's own select.
+    const badge = document.createElement('span');
+    badge.className = 'descriptor-badge' + (hasDockerCompose[i] ? '' : ' badge-mute');
+    badge.textContent = hasDockerCompose[i] ? 'deployable' : 'unmanaged';
+    badge.title = hasDockerCompose[i]
+      ? 'Has a docker-compose component — Deploy target below can spin this up itself.'
+      : 'No docker-compose component — this app doesn\'t manage its lifecycle; Discovery just explores it wherever it already runs.';
+    li.appendChild(badge);
 
     const delBtn = document.createElement('button');
     delBtn.className = 'descriptor-delete-btn';
@@ -637,7 +687,7 @@ async function loadList() {
     li.appendChild(delBtn);
 
     ul.appendChild(li);
-  }
+  });
 
   const discoverySelect = document.getElementById('discovery-descriptor-select');
   const previous = discoverySelect.value;
@@ -647,20 +697,9 @@ async function loadList() {
   // Filtered to descriptors that actually have a docker-compose component
   // — the other component types have nothing for this tile to act on, so
   // listing them here would just be a way to hit the route's own 400 for
-  // no reason. Needs each descriptor's full body (the names-only list
-  // above doesn't carry component types), fetched in parallel; order is
-  // preserved by filtering against the parallel results afterward rather
-  // than pushing into an array as each fetch resolves.
+  // no reason.
   const deploySelect = document.getElementById('deploy-descriptor-select');
   const previousDeploy = deploySelect.value;
-  const hasDockerCompose = await Promise.all(state.names.map(async (n) => {
-    try {
-      const d = await api('/api/descriptors/' + encodeURIComponent(n));
-      return (d.components || []).some((c) => c.type === 'docker-compose');
-    } catch {
-      return false;
-    }
-  }));
   const deployNames = state.names.filter((_, i) => hasDockerCompose[i]);
   deploySelect.innerHTML = deployNames.map((n) => `<option value="${n}">${n}</option>`).join('');
   if (deployNames.includes(previousDeploy)) deploySelect.value = previousDeploy;
