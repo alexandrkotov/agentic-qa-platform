@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
-import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames } from '../bootstrap/deployTarget.ts';
+import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames, resolveTargetPaths } from '../bootstrap/deployTarget.ts';
+import type { DeployState } from '../bootstrap/deployTarget.ts';
 import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { runCommand } from '../util/runCommand.ts';
@@ -1809,6 +1810,64 @@ async function waitForOrderflowBackendReady(onProgress: (message: string) => voi
   }
   throw new Error(`${url} never became reachable from workbench after 15 attempts (30s) — see waitForOrderflowBackendReady()'s own comment.`);
 }
+
+// Same `docker ps --filter label=com.docker.compose.project=...` idiom as
+// getTargetContainerNames() (deployTarget.ts) — not reused directly since
+// that one derives the project name from projectNameFor(), which only
+// applies to docker-compose-component descriptors; OrderFlow's demo group
+// is a plain compose file with a hardcoded project name instead.
+async function getOrderflowDemoContainerNames(): Promise<string[]> {
+  const { code, output } = await runCommand(
+    'docker',
+    ['ps', '-a', '--filter', `label=com.docker.compose.project=${ORDERFLOW_DEMO_PROJECT}`, '--format', '{{.Names}}'],
+    APP_ROOT,
+    process.env,
+  );
+  if (code !== 0) return [];
+  return output.split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
+// hub/index.html's Demo section polls this (on load + periodically) to
+// know whether to show each tile as "Deploy ..." or "... — currently
+// deployed", and whether to reveal each tile's sub-cards (Frontend/Backend/
+// Kafka UI for OrderFlow, a live dashboard link for Uptime Kuma). Plain
+// JSON, not streamed — both checks below are quick (`docker ps` + one
+// small state-file read), same shape as the existing
+// `/api/descriptors/:name/deploy/status` route this mirrors.
+app.get('/api/demo/status', async (req, res) => {
+  try {
+    const orderflowContainers = await getOrderflowDemoContainerNames();
+    const kumaContainers = await getTargetContainerNames('uptime-kuma');
+
+    // Uptime Kuma's own published port is dynamically allocated
+    // (assignPorts() in deployTarget.ts) — unlike OrderFlow's fixed
+    // :5173/:3000/:8081, there's no way to know it without reading back
+    // the real deploy state this container itself wrote. Best-effort: a
+    // missing/unreadable state file (deploy still in flight, or a stale
+    // leftover with no state) just means no link yet, not an error for
+    // this route as a whole.
+    let kumaUrl: string | null = null;
+    if (kumaContainers.length > 0 && process.env.HOST_PROJECT_ROOT) {
+      try {
+        const { statePath } = resolveTargetPaths(join(process.env.HOST_PROJECT_ROOT, 'targets'), 'uptime-kuma');
+        const state = JSON.parse(await readFile(statePath, 'utf-8')) as DeployState;
+        const webPort = state.ports.find((p) => p.service === 'uptime-kuma')?.publishedPort;
+        // localhost, not host.docker.internal — this URL is for a real
+        // browser on the host clicking a link, not another container.
+        if (webPort) kumaUrl = `http://localhost:${webPort}`;
+      } catch {
+        kumaUrl = null;
+      }
+    }
+
+    res.json({
+      orderflow: { deployed: orderflowContainers.length > 0 },
+      uptimeKuma: { deployed: kumaContainers.length > 0, url: kumaUrl },
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
 
 app.post('/api/demo/switch', async (req, res) => {
   const { target } = req.body as { target?: string };

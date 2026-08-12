@@ -10,12 +10,14 @@
     --line: #dfe3e8; --accent: #3a63d8; --accent-bg: #e8edfc;
     --warn-fg: #8a5a1f; --warn-bg: rgba(201, 138, 63, 0.16);
     --danger: #b3261e; --danger-bg: #fbe9e7;
+    --ok: #2f8f5b; --ok-bg: rgba(47, 143, 91, 0.14);
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14161b; --surface: #1c1f26; --text: #e7e9ed; --mute: #8b93a1; --line: #2b2f38; --accent: #7c9bef; --accent-bg: #232c47;
       --warn-fg: #e0ac6c; --warn-bg: rgba(201, 138, 63, 0.18);
       --danger: #f0847c; --danger-bg: #3a1f1e;
+      --ok: #5fc98b; --ok-bg: rgba(95, 201, 139, 0.16);
     }
   }
   * { box-sizing: border-box; }
@@ -53,16 +55,14 @@
   .section-heading:first-of-type { margin-top: 0; }
   .section-note { color: var(--mute); margin: -0.4rem 0 1rem; line-height: 1.55; font-size: 0.87rem; max-width: 56ch; }
   .grid { display: grid; gap: 0.9rem; }
-  a.card, button.card {
+  a.card {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
     padding: 1.1rem 1.3rem; text-decoration: none; color: inherit;
     box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     transition: border-color 0.15s ease;
-    width: 100%; font: inherit; text-align: left; cursor: pointer;
   }
-  a.card:hover, button.card:hover:not(:disabled) { border-color: var(--accent); }
-  button.card:disabled { opacity: 0.6; cursor: not-allowed; }
+  a.card:hover { border-color: var(--accent); }
   .card-main { display: flex; align-items: center; gap: 1rem; min-width: 0; }
   .card-icon {
     flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px;
@@ -72,12 +72,24 @@
   .card-icon svg { width: 21px; height: 21px; }
   .card-name { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 700; font-size: 1.02rem; }
   .card-desc { color: var(--mute); font-size: 0.87rem; margin-top: 0.15rem; }
-  .card-note { color: var(--mute); font-size: 0.78rem; margin-top: 0.3rem; font-style: italic; }
   .badge-needs {
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
     color: var(--warn-fg); background: var(--warn-bg);
     padding: 0.15rem 0.5rem; border-radius: 999px; white-space: nowrap;
   }
+  .badge-active {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+    color: var(--ok); background: var(--ok-bg);
+    padding: 0.15rem 0.5rem; border-radius: 999px; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 0.3rem;
+  }
+  /* Same specificity as the UA stylesheet's own `[hidden] { display: none }`
+     (both are one class/attribute selector) — the LATER rule wins a tie,
+     so without this override, the `display: inline-flex` above would beat
+     the `hidden` attribute and the badge would stay visible regardless.
+     Confirmed live: this is exactly what happened before this rule existed. */
+  .badge-active[hidden] { display: none; }
+  .badge-active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--ok); }
   .card-url {
     flex-shrink: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace;
     font-size: 0.78rem; color: var(--accent); background: var(--accent-bg);
@@ -86,11 +98,42 @@
   footer { margin-top: 2.5rem; font-size: 0.8rem; color: var(--mute); }
   footer a { color: inherit; }
 
-  /* Deploy progress, shown only once a Demo button has been clicked. */
+  /* Composite Demo tiles — a clickable "Deploy ..." trigger row (a real
+     <button>, so a nested <a> below is a SIBLING, never a descendant of
+     it — nesting interactive elements inside a <button> is invalid HTML
+     and behaves unpredictably), plus a sub-cards area that's hidden until
+     the target is confirmed live (GET /api/demo/status). */
+  .demo-tile { padding: 0; overflow: hidden; }
+  .demo-tile-trigger {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    width: 100%; background: none; border: none; padding: 1.1rem 1.3rem;
+    cursor: pointer; text-align: left; font: inherit; color: inherit;
+  }
+  .demo-tile-trigger:hover:not(:disabled) { background: var(--accent-bg); }
+  .demo-tile-trigger:disabled { opacity: 0.6; cursor: not-allowed; }
+  .demo-subcards {
+    border-top: 1px solid var(--line); padding: 0.6rem;
+    display: grid; gap: 0.5rem;
+  }
+  .demo-subcards[hidden] { display: none; }
+  a.subcard {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.65rem 0.9rem; text-decoration: none; color: inherit;
+    transition: border-color 0.15s ease;
+  }
+  a.subcard:hover { border-color: var(--accent); }
+  .subcard-main { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+  .subcard-icon { flex-shrink: 0; width: 28px; height: 28px; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+  .subcard-icon svg { width: 16px; height: 16px; }
+  .subcard-name { font-weight: 600; font-size: 0.87rem; }
+  .subcard-desc { color: var(--mute); font-size: 0.78rem; }
+
+  /* Deploy progress, shown only once a Demo trigger has been clicked. */
   #demo-switch-panel { display: none; margin-top: 0.9rem; }
   #demo-switch-panel.open { display: block; }
   #demo-switch-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; }
-  #demo-switch-status.ok { color: #2f8f5b; }
+  #demo-switch-status.ok { color: var(--ok); }
   #demo-switch-status.err { color: var(--danger); }
   #demo-switch-log {
     margin: 0.5rem 0 0; padding: 0.8rem 1rem; background: var(--surface);
@@ -177,22 +220,6 @@
         <span class="card-url">:8080/usage</span>
       </a>
 
-      <a class="card" href="http://localhost:8081">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 12h4l2-7 4 14 2-7h6"></path>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Kafka UI</div>
-            <div class="card-desc">Cluster admin — topics, messages, consumer groups</div>
-            <div class="card-note">Reflects whichever Demo target is deployed below — shows disconnected while Uptime Kuma is active (it has no Kafka).</div>
-          </div>
-        </div>
-        <span class="card-url">:8081</span>
-      </a>
-
       <a class="card" href="http://localhost:4400">
         <div class="card-main">
           <span class="card-icon">
@@ -211,76 +238,117 @@
 
     <div class="section-heading">Demo</div>
     <p class="section-note">Bundled example, proving the pipeline end to end — the platform itself
-      works with any target system, see the Workbench's Discovery tab.</p>
+      works with any target system, see the Workbench's Discovery tab. Kafka is part of this demo,
+      not the platform — Kafka UI lives below, inside whichever demo is currently deployed.</p>
 
     <div class="grid">
-      <a class="card" href="http://localhost:5173">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-              <line x1="3" y1="9" x2="21" y2="9"></line>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Frontend</div>
-            <div class="card-desc">OrderFlow — the app under test</div>
+      <div class="card demo-tile" id="tile-orderflow">
+        <button class="demo-tile-trigger" id="trigger-orderflow" onclick="switchDemo('orderflow', this)">
+          <div class="card-main">
+            <span class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                <path d="M21 3v5h-5"></path>
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                <path d="M3 21v-5h5"></path>
+              </svg>
+            </span>
+            <div>
+              <div class="card-name">
+                <span id="tile-orderflow-name">Deploy OrderFlow and its BDD suite</span>
+                <span class="badge-active" id="tile-orderflow-badge" hidden>active</span>
+              </div>
+              <div class="card-desc" id="tile-orderflow-desc">Tears down whichever demo is currently deployed, deploys OrderFlow, restores and runs its suite</div>
+            </div>
           </div>
+        </button>
+        <div class="demo-subcards" id="tile-orderflow-subcards" hidden>
+          <a class="subcard" href="http://localhost:5173">
+            <div class="subcard-main">
+              <span class="subcard-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+                  <line x1="3" y1="9" x2="21" y2="9"></line>
+                </svg>
+              </span>
+              <div>
+                <div class="subcard-name">Frontend</div>
+                <div class="subcard-desc">The app under test</div>
+              </div>
+            </div>
+            <span class="card-url">:5173</span>
+          </a>
+          <a class="subcard" href="http://localhost:3000/docs">
+            <div class="subcard-main">
+              <span class="subcard-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path>
+                  <path d="M14 3v4h4"></path>
+                  <line x1="9" y1="13" x2="15" y2="13"></line>
+                  <line x1="9" y1="17" x2="15" y2="17"></line>
+                </svg>
+              </span>
+              <div>
+                <div class="subcard-name">Backend API + Swagger</div>
+                <div class="subcard-desc">OpenAPI docs</div>
+              </div>
+            </div>
+            <span class="card-url">:3000/docs</span>
+          </a>
+          <a class="subcard" href="http://localhost:8081">
+            <div class="subcard-main">
+              <span class="subcard-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12h4l2-7 4 14 2-7h6"></path>
+                </svg>
+              </span>
+              <div>
+                <div class="subcard-name">Kafka UI</div>
+                <div class="subcard-desc">Cluster admin — topics, messages, consumer groups</div>
+              </div>
+            </div>
+            <span class="card-url">:8081</span>
+          </a>
         </div>
-        <span class="card-url">:5173</span>
-      </a>
+      </div>
 
-      <a class="card" href="http://localhost:3000/docs">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path>
-              <path d="M14 3v4h4"></path>
-              <line x1="9" y1="13" x2="15" y2="13"></line>
-              <line x1="9" y1="17" x2="15" y2="17"></line>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Backend API + Swagger</div>
-            <div class="card-desc">OpenAPI docs for the OrderFlow backend</div>
+      <div class="card demo-tile" id="tile-uptime-kuma">
+        <button class="demo-tile-trigger" id="trigger-uptime-kuma" onclick="switchDemo('uptime-kuma', this)">
+          <div class="card-main">
+            <span class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                <path d="M21 3v5h-5"></path>
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                <path d="M3 21v-5h5"></path>
+              </svg>
+            </span>
+            <div>
+              <div class="card-name">
+                <span id="tile-uptime-kuma-name">Deploy Uptime Kuma and its BDD suite</span>
+                <span class="badge-active" id="tile-uptime-kuma-badge" hidden>active</span>
+              </div>
+              <div class="card-desc" id="tile-uptime-kuma-desc">Tears down whichever demo is currently deployed, deploys Uptime Kuma, restores and runs its suite</div>
+            </div>
           </div>
+        </button>
+        <div class="demo-subcards" id="tile-uptime-kuma-subcards" hidden>
+          <a class="subcard" id="tile-uptime-kuma-link" href="#">
+            <div class="subcard-main">
+              <span class="subcard-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12h3l2.5-7L14 19l2.5-7H21"></path>
+                </svg>
+              </span>
+              <div>
+                <div class="subcard-name">Open Uptime Kuma</div>
+                <div class="subcard-desc">Its own dashboard — real target, real external repo</div>
+              </div>
+            </div>
+            <span class="card-url" id="tile-uptime-kuma-port"></span>
+          </a>
         </div>
-        <span class="card-url">:3000/docs</span>
-      </a>
-
-      <button class="card" id="deploy-orderflow-btn" onclick="switchDemo('orderflow', this)">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-              <path d="M21 3v5h-5"></path>
-              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-              <path d="M3 21v-5h5"></path>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Deploy OrderFlow and its BDD suite</div>
-            <div class="card-desc">Tears down whichever demo is currently deployed, deploys OrderFlow, restores and runs its suite</div>
-          </div>
-        </div>
-      </button>
-
-      <button class="card" id="deploy-uptime-kuma-btn" onclick="switchDemo('uptime-kuma', this)">
-        <div class="card-main">
-          <span class="card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-              <path d="M21 3v5h-5"></path>
-              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-              <path d="M3 21v-5h5"></path>
-            </svg>
-          </span>
-          <div>
-            <div class="card-name">Deploy Uptime Kuma and its BDD suite</div>
-            <div class="card-desc">Tears down whichever demo is currently deployed, deploys Uptime Kuma, restores and runs its suite</div>
-          </div>
-        </div>
-      </button>
+      </div>
     </div>
 
     <div id="demo-switch-panel">
@@ -358,16 +426,75 @@ async function streamNdjson(path, opts, onEvent) {
 }
 
 const DEMO_LABELS = { orderflow: 'OrderFlow', 'uptime-kuma': 'Uptime Kuma' };
+const DEMO_DEPLOY_NAME = {
+  orderflow: 'Deploy OrderFlow and its BDD suite',
+  'uptime-kuma': 'Deploy Uptime Kuma and its BDD suite',
+};
+const DEMO_DEPLOY_DESC = {
+  orderflow: 'Tears down whichever demo is currently deployed, deploys OrderFlow, restores and runs its suite',
+  'uptime-kuma': 'Tears down whichever demo is currently deployed, deploys Uptime Kuma, restores and runs its suite',
+};
+const DEMO_ACTIVE_DESC = 'Click to tear down and redeploy fresh (suite included).';
+
+// Tracked so switchDemo()'s own confirm-dialog wording can say "redeploy
+// OrderFlow" vs "remove Uptime Kuma and deploy OrderFlow" accurately,
+// rather than always using the generic cross-target phrasing.
+let currentActiveDemo = null;
+
+// Applies one GET /api/demo/status response to both tiles — called on
+// load, on a ~20s poll (state can change outside this page, e.g. someone
+// running docker commands directly), and right after a switch completes
+// (no need to wait for the next poll tick then).
+function applyDemoStatus(status) {
+  const ofDeployed = !!status.orderflow?.deployed;
+  document.getElementById('tile-orderflow-name').textContent = ofDeployed
+    ? `${DEMO_LABELS.orderflow} — currently deployed` : DEMO_DEPLOY_NAME.orderflow;
+  document.getElementById('tile-orderflow-desc').textContent = ofDeployed
+    ? DEMO_ACTIVE_DESC : DEMO_DEPLOY_DESC.orderflow;
+  document.getElementById('tile-orderflow-badge').hidden = !ofDeployed;
+  document.getElementById('tile-orderflow-subcards').hidden = !ofDeployed;
+
+  const kumaDeployed = !!status.uptimeKuma?.deployed;
+  document.getElementById('tile-uptime-kuma-name').textContent = kumaDeployed
+    ? `${DEMO_LABELS['uptime-kuma']} — currently deployed` : DEMO_DEPLOY_NAME['uptime-kuma'];
+  document.getElementById('tile-uptime-kuma-desc').textContent = kumaDeployed
+    ? DEMO_ACTIVE_DESC : DEMO_DEPLOY_DESC['uptime-kuma'];
+  document.getElementById('tile-uptime-kuma-badge').hidden = !kumaDeployed;
+  // Kuma's own published port is dynamically allocated (unlike OrderFlow's
+  // fixed :5173/:3000/:8081) — no link to show until the server actually
+  // reports one, even if the container itself is already up (e.g. mid-way
+  // through a deploy, before its state file is written).
+  const kumaUrl = status.uptimeKuma?.url;
+  document.getElementById('tile-uptime-kuma-subcards').hidden = !kumaDeployed || !kumaUrl;
+  if (kumaUrl) {
+    const link = document.getElementById('tile-uptime-kuma-link');
+    link.href = kumaUrl;
+    document.getElementById('tile-uptime-kuma-port').textContent = ':' + kumaUrl.split(':').pop();
+  }
+
+  currentActiveDemo = ofDeployed ? 'orderflow' : kumaDeployed ? 'uptime-kuma' : null;
+}
+
+async function refreshDemoStatus() {
+  try {
+    const res = await fetch('/api/demo/status');
+    if (!res.ok) return;
+    applyDemoStatus(await res.json());
+  } catch {
+    // Network hiccup — leave the UI as it was, the next poll will retry.
+  }
+}
 
 async function switchDemo(target, triggerBtn) {
   const label = DEMO_LABELS[target];
-  const ok = await confirmModal(
-    `This will remove whatever demo is currently running and deploy ${label} instead — its BDD suite will be restored and run fresh. Continue?`
-  );
+  const message = currentActiveDemo === target
+    ? `This will tear down ${label} and redeploy it fresh, including a fresh run of its BDD suite. Continue?`
+    : `This will remove whatever demo is currently running and deploy ${label} instead — its BDD suite will be restored and run fresh. Continue?`;
+  const ok = await confirmModal(message);
   if (!ok) return;
 
-  const orderflowBtn = document.getElementById('deploy-orderflow-btn');
-  const kumaBtn = document.getElementById('deploy-uptime-kuma-btn');
+  const orderflowBtn = document.getElementById('trigger-orderflow');
+  const kumaBtn = document.getElementById('trigger-uptime-kuma');
   orderflowBtn.disabled = true;
   kumaBtn.disabled = true;
 
@@ -407,8 +534,12 @@ async function switchDemo(target, triggerBtn) {
   } finally {
     orderflowBtn.disabled = false;
     kumaBtn.disabled = false;
+    refreshDemoStatus();
   }
 }
+
+refreshDemoStatus();
+setInterval(refreshDemoStatus, 20000);
 </script>
 </body>
 </html>
