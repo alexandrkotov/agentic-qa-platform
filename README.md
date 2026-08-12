@@ -352,15 +352,16 @@ managing the QA framework's own configuration):
   ([`agent-service/src/agents/workflow/`](agent-service/src/agents/workflow/)) — unlike
   Discovery/Generate/E2E it has no CLI entry point, reachable only through this page.
 - **Test Suite** (`/generate.html`) — the Generate Agent's three human-approved stages in detail
-  above (Grouping → Generate → Write & Run), plus a Corrections tab, a small editor for a target
-  system's `*.corrections.json`. Write & Run renders the approved spec to real `.feature`/
-  `.steps.ts` files under `tests/`, and its own "Run tests" button runs the real Playwright suite
-  against the live app stack straight from the browser, live progress streamed the same way
-  Discovery's run does. Write & Run itself offers a "Save snapshot" confirm step first — it copies
-  whatever's about to be overwritten (the current `tests/`, the descriptor and its sidecars
+  above (Grouping → Generate → Write & Run), plus a Corrections tab (a small editor for a target
+  system's `*.corrections.json`) and a Snapshots tab. Write & Run renders the approved spec to real
+  `.feature`/`.steps.ts` files under `tests/`, and its own "Run tests" button runs the real
+  Playwright suite against the live app stack straight from the browser, live progress streamed the
+  same way Discovery's run does. Write & Run itself offers a "Save snapshot" confirm step first — it
+  copies whatever's about to be overwritten (the current `tests/`, the descriptor and its sidecars
   corrections/UAT/env/setup-script, and the discovery report/grouping/spec that produced them) into
   a permanent, timestamped folder under [`archive/`](archive/), since Write & Run's own overwrite-
-  in-place otherwise leaves no history of a prior suite once a newer one is written.
+  in-place otherwise leaves no history of a prior suite once a newer one is written. The Snapshots
+  tab is where that history actually lives — see "The test suite" below for the full detail.
 - **E2E** (`/e2e.html`) — the E2E Agent's two stages (below), from the browser instead of the CLI.
   Pick one or more scenarios and run them for real, live progress streamed the same way as
   Discovery/Test Suite; a failure shows Claude's classification, reasoning, and step-by-step
@@ -400,17 +401,36 @@ source content in its own right). `tests/.current-descriptor` names which one, a
   (`POST /api/generate/render`), updating `tests/.current-descriptor` to match.
 - **[`tests/support/restore-suite.mjs`](tests/support/restore-suite.mjs)** copies a suite back out
   of one of its own past snapshots instead of regenerating it — the one real mechanism CI, the
-  hub's "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons, and manual local setup (Quick
-  Start above) all share. Takes an optional descriptor name (defaults to reading
-  `tests/.current-descriptor`).
+  hub's "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons, manual local setup (Quick Start
+  above), and the Snapshots tab's own Restore button (below) all share. Takes an optional
+  descriptor name (defaults to reading `tests/.current-descriptor`) and an optional exact snapshot
+  name (defaults to that descriptor's latest).
 
 Every past suite still has its own permanent, timestamped copy under [`archive/`](archive/) — the
 Test Suite tab's snapshot action bundles the `.feature`/`.steps.ts` files alongside the
 descriptor/corrections/env/setup-script that produced them, so switching which suite is live in
-`tests/` never loses an earlier one. Only **two** of those snapshots are themselves git-tracked
-(OrderFlow's and Uptime Kuma's — the two the restore script and CI actually rely on existing on a
-fresh checkout); every other snapshot in `archive/` stays disk-only, gitignored, a point-in-time
-convenience rather than permanent history.
+`tests/` never loses an earlier one. The Snapshots tab (`/generate.html`, next to Write & Run) is
+the browser UI for all of this:
+
+- **Browse & save** — every snapshot listed with its descriptor and timestamp; "Save snapshot"
+  captures one on demand (without also writing files), for whenever something changed outside a
+  fresh render — a hand-edited correction, a fix the E2E tab applied.
+- **Export / Import** — download any snapshot as a `.zip`, or import one exported elsewhere (e.g.
+  from a different machine) as a new `archive/` entry.
+- **Restore** — either just the suite files (`tests/features`/`tests/steps`, the same thing
+  `restore-suite.mjs` above does), or "Full context," which also restores the descriptor/
+  corrections/UAT (auto-backing up the current copies first) and adds back the discovery report/
+  grouping/spec/analytics under `agent-service/reports/` if they're not already there — the case
+  that actually matters for a snapshot imported from a different machine. The one thing "Full
+  context" can't restore is the setup script itself: `agent-service/src/` is baked into the
+  `workbench` image at build time, not bind-mounted, so a write to it from inside the running
+  container never reaches the host — it's backed up for reference and flagged if it differs, not
+  silently "restored" as if the write actually worked.
+- **Delete** — removes a snapshot that's no longer needed. Only **two** of those snapshots are
+  themselves git-tracked (OrderFlow's and Uptime Kuma's — the two the restore script and CI
+  actually rely on existing on a fresh checkout); the Snapshots tab won't delete either of them,
+  even on request, and confirms the same server-side. Every other snapshot in `archive/` stays
+  disk-only, gitignored, a point-in-time convenience rather than permanent history.
 
 ### CI
 
