@@ -73,6 +73,16 @@
 
   .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
   .row label { font-size: 0.78rem; color: var(--text-mute); }
+  /* .row label's own muted+smaller styling above is for real field labels
+     — higher specificity than .primary's own color/font-size (one class +
+     one element vs. one class alone), so BOTH silently won here too: the
+     color read as low-contrast light-gray-on-blue, and the text sat
+     visibly smaller than every other .primary button/link next to it
+     (caught live, side by side with Export → .zip). This <label> is a
+     button trigger (the Snapshots tab's own Import control), not a field
+     label, despite sitting inside the same .row — restated explicitly
+     rather than relying on inheritance/no-op from the rule above. */
+  .row label.primary { color: #fff; font-size: 0.83rem; font-weight: 600; }
   select, input[type=text], input[type=number] {
     background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.4rem 0.55rem; font-size: 0.85rem; color: var(--text); font-family: inherit;
@@ -134,6 +144,14 @@
     font-weight: 600; cursor: pointer; font-family: inherit; margin-right: 0.6rem;
   }
   input[type="file"]::file-selector-button:hover, input[type="file"]::-webkit-file-upload-button:hover { filter: brightness(1.08); }
+  /* Standard "visually hidden but still really there" pattern — NOT
+     display:none/visibility:hidden, either of which stops a <label for="…">
+     from being able to open it (and would drop it from the tab order too).
+     Used by the Snapshots tab's own custom-labeled Import trigger. */
+  .visually-hidden-file-input {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
   /* Same bare-link look as button.link, but for a purely informational
      cross-reference (Generate tab -> Corrections tab), not a destructive
      action — var(--danger) there would misread as a warning. */
@@ -177,13 +195,30 @@
   .confirm-modal-actions button:focus {
     outline: 2px solid var(--text); outline-offset: 2px;
   }
+  /* Restore's own scope-choice modal — see that overlay's own HTML comment
+     for why this isn't a generic confirmModal() mode. Wider than the
+     generic .confirm-modal's 26rem — the "Full context" option's own
+     description (what it does NOT restore, and why) genuinely needs the
+     room; wrapping it any narrower read as a wall of text. */
+  #restore-modal-overlay .confirm-modal { max-width: 34rem; }
+  .restore-scope-options { display: flex; flex-direction: column; gap: 0.65rem; margin: 0 0 1rem; }
+  .restore-scope-option { display: flex; gap: 0.55rem; align-items: flex-start; font-size: 0.82rem; line-height: 1.4; cursor: pointer; }
+  .restore-scope-option input { margin-top: 0.2rem; flex-shrink: 0; }
 
   .banner { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.83rem; margin-bottom: 1rem; }
 
   .group-card { border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
-  .group-card .head { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
+  .group-card .head { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.4rem; }
   .group-card .head input { font-weight: 600; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
   .group-card .rationale { font-size: 0.75rem; color: var(--text-mute); margin-bottom: 0.6rem; }
+  /* Reused by the Snapshots tab's own list — same .group-card shell as
+     Grouping's own cards above, just with a badge + link/button row instead
+     of an editable name+scenario list. */
+  .badge {
+    display: inline-block; border-radius: 999px; padding: 0.15rem 0.65rem;
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap; background: var(--accent-bg); color: var(--accent);
+  }
   .scenario-row { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0; font-size: 0.85rem; }
   .scenario-row .name { flex: 1; }
   .scenario-row select { font-size: 0.78rem; }
@@ -269,6 +304,7 @@
     <button class="stage-tab" id="tab-generate">Generate</button>
     <button class="stage-tab" id="tab-corrections">Corrections</button>
     <button class="stage-tab" id="tab-render">Write &amp; Run</button>
+    <button class="stage-tab" id="tab-snapshots">Snapshots</button>
   </nav>
 
   <section id="stage-grouping">
@@ -442,6 +478,75 @@
       </div>
     </div>
   </section>
+
+  <section id="stage-snapshots" hidden>
+    <!-- Same "distinct card per step" language as stage-render above: one
+         card per action (save now / browse+restore / import), not one big
+         card mixing "create" with "browse the results of creating" —
+         caught live, side by side, as genuinely two different concerns
+         sharing a card for no real reason. -->
+    <div class="corrections-block">
+      <h2>Save snapshot</h2>
+      <p style="margin:0 0 0.75rem; color:var(--text-mute); font-size:0.78rem">
+        Bundles whatever's CURRENTLY in <code>tests/features</code> and <code>tests/steps</code> — plus the
+        descriptor, corrections, UAT notes, discovery report, and grouping — into a new entry below. Write &amp;
+        Run's own "Save snapshot" prompt only offers this at the moment files are written; this covers
+        everything else (a hand edit to corrections, a fix the E2E tab applied, anything else with no new
+        render to trigger that prompt).
+      </p>
+      <!-- Reuses the exact same /api/generate/snapshot/preview +
+           /api/generate/snapshot routes Write & Run's own flow calls — same
+           bundling logic, just without also rendering. The spec that gets
+           attached is read-only info, not a picker — see
+           refreshSnapshotSpecInfo()'s own comment for why (it used to be a
+           dropdown scoped to Stage 1's own grouping selection, which could
+           silently disagree with what's actually on disk). -->
+      <div class="row">
+        <span id="snapshot-spec-info" style="font-size:0.8rem; color:var(--text-mute)"></span>
+      </div>
+      <div class="row">
+        <button class="primary" id="save-snapshot-now-btn" style="display:none">Save snapshot now</button>
+        <span id="save-snapshot-now-status"></span>
+      </div>
+    </div>
+
+    <div class="corrections-block">
+      <h2>Test-suite snapshots</h2>
+      <p style="margin:0 0 0.75rem; color:var(--text-mute); font-size:0.78rem">
+        Point-in-time bundles, whether saved above, by Write &amp; Run's own "Save snapshot" prompt, or
+        imported below. "latest" marks the snapshot <code>tests/support/restore-suite.mjs</code> picks when no
+        specific timestamp is given (CI, the hub's demo-switch buttons).
+      </p>
+      <div class="row">
+        <span id="snapshots-status"></span>
+      </div>
+      <div id="snapshots-list"></div>
+    </div>
+
+    <div class="corrections-block">
+      <h2>Import snapshot</h2>
+      <p style="margin:0 0 0.75rem; color:var(--text-mute); font-size:0.78rem">
+        Brings in a snapshot exported elsewhere (via an Export link above, on this machine or another) as a
+        new archive/ entry. Only adds — never overwrites an existing snapshot with the same descriptor and
+        timestamp.
+      </p>
+      <div class="row">
+        <!-- The real <input> stays functionally untouched (same id, same
+             change listener below) — only visually hidden, since a form
+             control's own native button text ("Choose File"/"Browse", OS-
+             and locale-dependent) can't be relabeled via CSS, only its
+             visual chrome can (see this file's own ::file-selector-button
+             rule, still used as-is by the UAT tab's own file input above).
+             A <label for="…"> natively opens the same file picker on click
+             with zero JS, so this needed no new event wiring — just a
+             visible custom-labeled trigger standing in for the invisible
+             real one, matching Export's own "→" wording. -->
+        <input type="file" id="import-zip-input" accept=".zip" class="visually-hidden-file-input">
+        <label for="import-zip-input" class="primary">.zip → Import</label>
+        <span id="import-zip-status"></span>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div class="confirm-modal-overlay" id="confirm-modal-overlay">
@@ -458,10 +563,47 @@
   </div>
 </div>
 
+<!-- Restore's own scope-choice modal — same overlay/box shell as
+     confirm-modal-overlay above, but with a radio group instead of a plain
+     message, since "Restore" now needs to ask WHAT to restore, not just
+     whether to. Kept as its own separate overlay/element set rather than
+     teaching confirmModal() a generic "radio options" mode — every other
+     caller site-wide is a plain message, and this is the only one that
+     needs a choice baked in. -->
+<div class="confirm-modal-overlay" id="restore-modal-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-modal-icon" id="restore-modal-icon"></div>
+    <div class="confirm-modal-body">
+      <p id="restore-modal-message"></p>
+      <div class="restore-scope-options">
+        <label class="restore-scope-option">
+          <input type="radio" name="restore-scope" value="suite" checked>
+          <span><strong>Features &amp; steps only</strong> — overwrites <code>tests/features</code> and <code>tests/steps</code>.</span>
+        </label>
+        <label class="restore-scope-option">
+          <input type="radio" name="restore-scope" value="full">
+          <span>
+            <strong>Full context</strong> — also overwrites the live descriptor, corrections, and UAT notes for
+            this descriptor (current copies backed up first), and adds back the snapshot's discovery report/
+            grouping/spec/analytics files under <code>reports/</code> <strong>only if they're not already there</strong>
+            (matters mainly for a snapshot imported from another machine — see the log for what, if anything,
+            was actually added). Does <strong>not</strong> restore <code>setup-script.ts</code> (backed up only —
+            can't actually be written back, see the log if it applies here).
+          </span>
+        </label>
+      </div>
+      <div class="confirm-modal-actions">
+        <button class="primary" id="restore-modal-cancel">Cancel</button>
+        <button class="primary" id="restore-modal-ok">Restore</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // --- Stage navigation --------------------------------------------------
 
-const STAGE_NAMES = ['grouping', 'generate', 'corrections', 'render'];
+const STAGE_NAMES = ['grouping', 'generate', 'corrections', 'render', 'snapshots'];
 function showStage(name) {
   for (const s of STAGE_NAMES) {
     document.getElementById('stage-' + s).hidden = s !== name;
@@ -483,6 +625,19 @@ function showStage(name) {
   }
   if (name === 'render') {
     loadTestEnvIfNeeded(document.getElementById('descriptor-name').value);
+  }
+  // loadSnapshots/refreshSnapshotSpecInfo/start|stopSnapshotsPolling are
+  // defined further down with the rest of the Snapshots tab's own logic,
+  // same forward-reference reasoning as above. Polling only ever runs
+  // while this tab is the one actually showing — stopped unconditionally
+  // on every switch (a no-op if it wasn't running), started fresh only when
+  // switching TO snapshots, so it never keeps ticking in the background
+  // once the human has moved on to a different stage.
+  stopSnapshotsPolling();
+  if (name === 'snapshots') {
+    loadSnapshots();
+    refreshSnapshotSpecInfo();
+    startSnapshotsPolling();
   }
 }
 for (const s of STAGE_NAMES) {
@@ -1113,6 +1268,10 @@ async function onGroupingChanged() {
   btn.textContent = 'Show last approved generation';
   existingApprovedGeneration = null;
   refreshRenderSpecOptions();
+  // The Snapshots tab's own spec info is deliberately NOT refreshed here —
+  // it's scoped to tests/.current-descriptor now, not to Stage 1's own
+  // grouping selection (see refreshSnapshotSpecInfo()'s own comment), so
+  // this state change is no longer relevant to it.
   const grouping = document.getElementById('spec-grouping-select').value;
   const specDescriptorInput = document.getElementById('spec-descriptor');
   specDescriptorInput.value = '';
@@ -1491,6 +1650,348 @@ document.getElementById('run-tests-btn').onclick = async () => {
     btn.disabled = false;
   }
 };
+
+// --- Snapshots ---------------------------------------------------------
+// Browse/download/restore existing archive/bdd-test-suite-* snapshots, and
+// import one from a .zip exported elsewhere. Restore reuses the exact same
+// tests/support/restore-suite.mjs subprocess CI and the hub's demo-switch
+// buttons already trust for "which files go where" (see /api/generate/
+// snapshots/:name/restore in server.ts) — this tab never recomputes that
+// logic itself, just picks which snapshot name to hand it.
+
+function formatSnapshotTimestamp(raw) {
+  // raw looks like 2026-08-11T06-22-17-222Z (the same
+  // new Date().toISOString().replace(/[:.]/g, '-') shape the snapshot-create
+  // routes already produce) — turn it back into a real Date for a
+  // human-readable label, falling back to the raw string if that ever fails.
+  const iso = raw.replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, 'T$1:$2:$3.$4Z');
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? raw : d.toLocaleString();
+}
+
+// There's no Refresh button — the list keeps itself current two ways: (1)
+// every mutating action here (Save snapshot now, Restore, Import) calls
+// loadSnapshots() itself right after; (2) a snapshot created OUTSIDE this
+// exact browser tab (Write & Run in a different tab/window, CI, a manual
+// curl) is caught by polling below, while this tab is actually visible.
+let snapshotsListNames = []; // last-rendered names, so a poll tick can skip a no-op re-render
+let snapshotActionInFlight = false; // true during Restore/Import — a poll re-render mid-action would blow away that action's own live log element
+let snapshotsPollTimer = null;
+
+function startSnapshotsPolling() {
+  stopSnapshotsPolling();
+  snapshotsPollTimer = setInterval(async () => {
+    if (snapshotActionInFlight) return;
+    try {
+      const snapshots = await api('/api/generate/snapshots');
+      const names = snapshots.map((s) => s.name).join('\n');
+      if (names === snapshotsListNames.join('\n')) return; // unchanged — skip the re-render
+      renderSnapshotsList(snapshots);
+    } catch (e) {
+      // A background poll failing shouldn't interrupt/alarm the human with
+      // an error banner — loadSnapshots()'s own manual path (switching to
+      // this tab) still surfaces a real, persistent problem.
+      console.warn('Snapshot list poll failed:', e.message);
+    }
+  }, 15000);
+}
+
+function stopSnapshotsPolling() {
+  if (snapshotsPollTimer) {
+    clearInterval(snapshotsPollTimer);
+    snapshotsPollTimer = null;
+  }
+}
+
+function renderSnapshotsList(snapshots) {
+  const listEl = document.getElementById('snapshots-list');
+  snapshotsListNames = snapshots.map((s) => s.name);
+  listEl.innerHTML = '';
+  if (snapshots.length === 0) {
+    listEl.innerHTML = '<p style="color:var(--text-mute); font-size:0.85rem">No snapshots yet — save one from Write &amp; Run, or import a .zip below.</p>';
+  } else {
+    for (const snap of snapshots) listEl.appendChild(renderSnapshotCard(snap));
+  }
+}
+
+async function loadSnapshots() {
+  const statusEl = document.getElementById('snapshots-status');
+  setStatus(statusEl, 'Loading…');
+  try {
+    const snapshots = await api('/api/generate/snapshots');
+    renderSnapshotsList(snapshots);
+    setStatus(statusEl, '');
+  } catch (e) {
+    setStatus(statusEl, 'Failed to load: ' + e.message, 'err');
+  }
+}
+
+// Same .group-card shell Grouping's own cards use (see that CSS rule's own
+// comment) — built with DOM calls rather than a template string since
+// snap.name/descriptor flow into href/textContent and this avoids having to
+// hand-escape them for HTML.
+function renderSnapshotCard(snap) {
+  const card = document.createElement('div');
+  card.className = 'group-card';
+
+  const head = document.createElement('div');
+  head.className = 'head';
+
+  const title = document.createElement('span');
+  title.style.fontWeight = '600';
+  title.style.fontFamily = 'ui-monospace, "SF Mono", Consolas, monospace';
+  title.textContent = snap.descriptor;
+  head.appendChild(title);
+
+  if (snap.isLatestForDescriptor) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = 'latest';
+    head.appendChild(badge);
+  }
+
+  const spacer = document.createElement('span');
+  spacer.style.flex = '1';
+  head.appendChild(spacer);
+
+  // Same .primary (white-on-blue) look for both actions here — the user's
+  // own call to unify rather than let a plain link and a button read as
+  // different weights of action. Restore before Export (the user's own
+  // call) — Export is the one that's always safe/non-destructive, so it
+  // sits rightmost, furthest from the badge/title, as the "calm" end of
+  // the row.
+  const restoreBtn = document.createElement('button');
+  restoreBtn.className = 'primary';
+  restoreBtn.textContent = 'Restore';
+  restoreBtn.title = 'Restores this snapshot — choose what to restore in the dialog.';
+  restoreBtn.onclick = () => restoreSnapshot(snap, card);
+  head.appendChild(restoreBtn);
+
+  const exportLink = document.createElement('a');
+  exportLink.className = 'primary';
+  exportLink.href = '/api/generate/snapshots/' + encodeURIComponent(snap.name) + '/download';
+  exportLink.textContent = 'Export → .zip';
+  head.appendChild(exportLink);
+
+  card.appendChild(head);
+
+  const meta = document.createElement('div');
+  meta.className = 'rationale';
+  meta.textContent = formatSnapshotTimestamp(snap.timestamp) + ' · archive/' + snap.name;
+  card.appendChild(meta);
+
+  const logEl = document.createElement('pre');
+  logEl.className = 'gen-log';
+  logEl.style.display = 'none';
+  logEl.dataset.role = 'restore-log';
+  card.appendChild(logEl);
+
+  return card;
+}
+
+// The scope-choice modal itself — a bare Promise-returning function like
+// confirmModal() (not built on top of it — see that overlay's own HTML
+// comment for why), resolving to 'suite' | 'full' | null (cancel/Escape/
+// backdrop click). Always reopens on the SAFE default ("suite" radio
+// checked) regardless of what was picked last time.
+function restoreScopeModal(message) {
+  return new Promise((resolve) => {
+    document.getElementById('restore-modal-message').textContent = message;
+    const icon = document.getElementById('restore-modal-icon');
+    icon.innerHTML = MODAL_ICONS.warning;
+    icon.className = 'confirm-modal-icon warning';
+    const overlay = document.getElementById('restore-modal-overlay');
+    const okBtn = document.getElementById('restore-modal-ok');
+    const cancelBtn = document.getElementById('restore-modal-cancel');
+    const radios = document.getElementsByName('restore-scope');
+    for (const r of radios) r.checked = r.value === 'suite';
+    overlay.classList.add('open');
+    cancelBtn.focus();
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(null); };
+    cancelBtn.onclick = () => cleanup(null);
+    okBtn.onclick = () => cleanup([...radios].find((r) => r.checked)?.value ?? 'suite');
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(null); };
+  });
+}
+
+// One Restore button, one modal — the human picks the scope there (the
+// user's own call, over two separate buttons for "suite only" vs. "full
+// context"). "full" hits /restore-full (auto-backs up the live descriptor/
+// corrections/UAT first, see that route's own comment in server.ts); both
+// scopes always restore tests/features+steps via the same restore-suite.mjs
+// subprocess underneath.
+async function restoreSnapshot(snap, card) {
+  const scope = await restoreScopeModal(`Restore "${snap.descriptor}" from ${snap.name}?`);
+  if (!scope) return;
+
+  const logEl = card.querySelector('[data-role="restore-log"]');
+  logEl.textContent = '';
+  logEl.style.display = '';
+  const statusEl = document.getElementById('snapshots-status');
+  snapshotActionInFlight = true;
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    const path = '/api/generate/snapshots/' + encodeURIComponent(snap.name) + (scope === 'full' ? '/restore-full' : '/restore');
+    await streamNdjson(
+      path,
+      { method: 'POST' },
+      (evt) => {
+        if (evt.type === 'progress') {
+          logEl.textContent += evt.message + '\n';
+          logEl.scrollTop = logEl.scrollHeight;
+        } else if (evt.type === 'done') {
+          doneEvent = evt;
+        } else if (evt.type === 'error') {
+          errorMessage = evt.error;
+        }
+      },
+    );
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    if (scope === 'full') {
+      const backupNote = doneEvent.backupPath ? ` Previous copies backed up to ${doneEvent.backupPath}.` : '';
+      const historyNote = doneEvent.restoredHistory?.length
+        ? ` Also added (weren't present locally): ${doneEvent.restoredHistory.join(', ')}.`
+        : '';
+      setStatus(statusEl, `Restored ${doneEvent.restored.join(', ')} for ${doneEvent.descriptor}.${backupNote}${historyNote}`, 'ok');
+    } else {
+      setStatus(statusEl, `Restored ${doneEvent.descriptor} from ${doneEvent.snapshot}.`, 'ok');
+    }
+    // No loadSnapshots() call here — a restore doesn't create/remove a
+    // snapshot, and re-rendering the whole list right now would wipe out
+    // the log element (data-role="restore-log") this very card just
+    // populated above, before the human has a chance to read it.
+  } catch (e) {
+    setStatus(statusEl, 'Restore failed: ' + e.message, 'err');
+  } finally {
+    snapshotActionInFlight = false;
+  }
+}
+
+// --- Snapshot current suite on demand -----------------------------------
+// Write & Run's own "Save snapshot" prompt only fires at the moment "Write
+// files" is clicked — there was previously no way to snapshot whatever's
+// CURRENTLY on disk otherwise (e.g. after a hand edit to corrections, or
+// after the E2E tab patched a .steps.ts file, with no new render to trigger
+// it).
+//
+// The spec this attaches as provenance is READ-ONLY info, not a dropdown to
+// pick from — it used to be a <select> scoped to whatever grouping was
+// selected in Stage 1, which the user caught as a real bug, not just
+// confusing UX: Stage 1's selection is independent UI state that can
+// silently disagree with tests/.current-descriptor (the suite ACTUALLY on
+// disk right now) — e.g. browsing a different target's grouping in Stage 1
+// without rendering it would offer THAT target's spec here, and clicking
+// it would snapshot the CURRENT suite bundled with a different target's
+// descriptor/report/grouping as if they matched. /api/generate/specs-for-
+// current-suite (server.ts) fixes the scoping (derives the descriptor from
+// tests/.current-descriptor itself) and returns every candidate sorted
+// newest-first; this always uses the newest one, same as picking "latest"
+// would have meant with the old dropdown in the common one-spec case.
+let currentSuiteSpecName = null;
+
+async function refreshSnapshotSpecInfo() {
+  const infoEl = document.getElementById('snapshot-spec-info');
+  const btn = document.getElementById('save-snapshot-now-btn');
+  currentSuiteSpecName = null;
+  btn.style.display = 'none';
+  try {
+    const { descriptor, specs } = await api('/api/generate/specs-for-current-suite');
+    if (!descriptor) {
+      infoEl.textContent = 'No suite currently on disk (tests/.current-descriptor is empty) — nothing to snapshot yet.';
+      return;
+    }
+    if (specs.length === 0) {
+      infoEl.textContent = `Suite on disk belongs to "${descriptor}", but no approved spec was found for it — ` +
+        `Save snapshot now needs one to attach as provenance.`;
+      return;
+    }
+    currentSuiteSpecName = specs[0].name; // newest — see this function's own header comment
+    const newestLabel = `approved ${new Date(specs[0].approvedAt).toLocaleString()} (${specs[0].groups.join(', ')})`;
+    infoEl.textContent = specs.length === 1
+      ? `Suite on disk: "${descriptor}" — captured from the spec ${newestLabel}.`
+      : `Suite on disk: "${descriptor}" — captured from the most recent of ${specs.length} approved spec ` +
+        `rounds, ${newestLabel}. Earlier rounds for this descriptor exist too but aren't used here.`;
+    btn.style.display = '';
+  } catch (e) {
+    infoEl.textContent = '';
+    setStatus(document.getElementById('save-snapshot-now-status'), 'Failed to look up the current suite\'s spec: ' + e.message, 'err');
+  }
+}
+
+document.getElementById('save-snapshot-now-btn').onclick = async () => {
+  if (!currentSuiteSpecName) return;
+  const btn = document.getElementById('save-snapshot-now-btn');
+  const statusEl = document.getElementById('save-snapshot-now-status');
+  btn.disabled = true;
+  try {
+    const preview = await api('/api/generate/snapshot/preview', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spec: currentSuiteSpecName }),
+    });
+    const msg = 'Save a snapshot of the CURRENT tests/features and tests/steps — plus the descriptor, ' +
+      'corrections, UAT notes, discovery report, and grouping tied to this spec — to ' + preview.path + '?';
+    if (!(await confirmModal(msg, 'time', { okLabel: 'Save snapshot', defaultOk: true }))) {
+      return;
+    }
+    setStatus(statusEl, 'Saving…');
+    await api('/api/generate/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec: currentSuiteSpecName, timestamp: preview.timestamp }),
+    });
+    setStatus(statusEl, 'Saved → ' + preview.path, 'ok');
+    loadSnapshots();
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// Triggers on file selection itself (same as the UAT tab's own file input
+// above) rather than needing a separate "upload" button — but unlike that
+// one, this can't commit immediately: /import/preview only inspects the zip
+// in memory, then a confirmModal shows the real detected descriptor and
+// destination before /import actually writes anything, mirroring Write &
+// Run's own snapshot-before-overwrite preview/confirm split.
+document.getElementById('import-zip-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = ''; // let the same file be picked again after a failed/aborted import
+  if (!file) return;
+  const statusEl = document.getElementById('import-zip-status');
+  try {
+    setStatus(statusEl, 'Inspecting zip…');
+    const previewData = new FormData();
+    previewData.append('file', file);
+    const preview = await api('/api/generate/snapshots/import/preview', { method: 'POST', body: previewData });
+    const msg = `Import "${file.name}" as a new snapshot for descriptor "${preview.descriptor}"? It will be ` +
+      `saved to ${preview.path} (contents: ${preview.topLevelNames.join(', ')}). This only adds a new ` +
+      `archive/ entry — it does not touch tests/ by itself; use Restore afterward for that.`;
+    if (!(await confirmModal(msg, 'time', { okLabel: 'Import', defaultOk: true }))) {
+      setStatus(statusEl, '');
+      return;
+    }
+    setStatus(statusEl, 'Importing…');
+    snapshotActionInFlight = true; // guards the poll tick below from re-rendering #snapshots-list mid-import
+    const commitData = new FormData();
+    commitData.append('file', file);
+    commitData.append('timestamp', preview.timestamp);
+    const result = await api('/api/generate/snapshots/import', { method: 'POST', body: commitData });
+    setStatus(statusEl, 'Imported → ' + result.path, 'ok');
+    loadSnapshots();
+  } catch (e) {
+    setStatus(statusEl, 'Import failed: ' + e.message, 'err');
+  } finally {
+    snapshotActionInFlight = false;
+  }
+});
 
 // --- Corrections -----------------------------------------------------------
 

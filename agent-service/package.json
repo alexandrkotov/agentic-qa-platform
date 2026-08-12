@@ -22,6 +22,7 @@
     "@modelcontextprotocol/sdk": "^1.15.0",
     "@openai/agents": "^0.13.5",
     "@playwright/mcp": "^0.0.78",
+    "adm-zip": "^0.6.0",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "mammoth": "^1.12.0",
@@ -36,9 +37,9 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/mssql": "^12.3.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
-    "@types/mssql": "^12.3.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0"
   }

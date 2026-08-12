@@ -1,6 +1,6 @@
 import express from 'express';
-import { readFile, writeFile, readdir, mkdir, unlink, cp } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, writeFile, readdir, mkdir, unlink, cp, rm, stat } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { lookup } from 'node:dns/promises';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,7 @@ import { loadUatContext, saveUatContext } from '../agents/generate/uat.ts';
 import { loadTestEnvOverrides, loadTestEnvText, saveTestEnvText } from '../agents/generate/testEnv.ts';
 import { extractTextFromFile, extractTextFromGoogleUrl } from '../agents/generate/uatExtract.ts';
 import multer from 'multer';
+import AdmZip from 'adm-zip';
 import { proposeWorkflow } from '../agents/workflow/propose.ts';
 import { proposeUiFlow } from '../agents/workflow/proposeUiFlow.ts';
 import { proposeSequenceFlow } from '../agents/workflow/proposeSequenceFlow.ts';
@@ -1575,6 +1576,70 @@ async function resolveSnapshotContext(specName: string): Promise<{ descriptor: s
   return { descriptor, groupingPath, reportPath: grouping.sourceReportPath };
 }
 
+/**
+ * Which approved spec(s) actually produced whatever's CURRENTLY in
+ * tests/features and tests/steps — for the Snapshots tab's own
+ * "Save snapshot now" control. Deliberately scoped by
+ * tests/.current-descriptor (the one honest record of what's really on
+ * disk right now — see /api/demo/status's own comment on the same file),
+ * NOT by whatever grouping happens to be selected in Stage 1's UI at the
+ * moment: those are two independent pieces of state, and a snapshot built
+ * from the Stage-1 selection's spec while it disagreed with the real
+ * on-disk descriptor would bundle the CURRENT suite together with a
+ * different target's descriptor/report/grouping — wrong metadata, not
+ * just a confusing picker. Same one-pass-over-every-spec-file approach as
+ * /api/generate/specs above, just filtered by descriptor instead of by one
+ * exact grouping (a descriptor can have several groupings over time, and
+ * each grouping can have several approved-spec rounds — see this route's
+ * own "specs" array, sorted newest-first, for the human to see all of it).
+ */
+app.get('/api/generate/specs-for-current-suite', async (req, res) => {
+  try {
+    let descriptor: string | null = null;
+    try {
+      descriptor = (await readFile(join(TESTS_ROOT, '.current-descriptor'), 'utf-8')).trim() || null;
+    } catch {
+      descriptor = null;
+    }
+    if (!descriptor) {
+      res.json({ descriptor: null, specs: [] });
+      return;
+    }
+    const files = await readdir(config.reportsDir).catch(() => [] as string[]);
+    const candidates = files.filter((f) => SPEC_APPROVED_NAME_PATTERN.test(f));
+    const results: { name: string; approvedAt: string; groups: string[] }[] = [];
+    for (const name of candidates) {
+      const raw = JSON.parse(await readFile(join(config.reportsDir, name), 'utf-8'));
+      const groupingName = typeof raw.sourceGroupingPath === 'string' ? raw.sourceGroupingPath.split('/').pop() : undefined;
+      if (!groupingName || (await descriptorForGroupingFile(groupingName)) !== descriptor) continue;
+      // A handful of real, pre-existing files on disk predate the current
+      // `groups` shape (an older `scenarios` shape from before Generate's
+      // per-group batching existed) and fail this parse — genuinely not
+      // usable here regardless (the snapshot-creation route itself parses
+      // a chosen spec the same way, so picking one of these would already
+      // fail at snapshot time too), so skipped rather than failing this
+      // whole route over files that were never valid candidates to begin
+      // with. /api/generate/specs above has the same latent parse risk,
+      // just scoped to one grouping at a time so it rarely actually hits
+      // one of these; this route scans every grouping for a descriptor at
+      // once, so it hits them far more often — worth someone's own look at
+      // some point, not fixed here since it's a pre-existing, unrelated
+      // latent issue in the older route too.
+      let approved;
+      try {
+        approved = ApprovedGenerationSchema.parse(raw);
+      } catch {
+        continue;
+      }
+      results.push({ name, approvedAt: approved.approvedAt, groups: approved.groups.map((g) => g.key) });
+    }
+    results.sort((a, b) => b.approvedAt.localeCompare(a.approvedAt)); // newest first
+    res.json({ descriptor, specs: results });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/generate/snapshot/preview', async (req, res) => {
   try {
     const { spec: specName } = req.body as { spec?: string };
@@ -1649,6 +1714,432 @@ app.post('/api/generate/snapshot', async (req, res) => {
     if (sequencePath) await cp(sequencePath, join(snapshotDir, 'analytics-sequence-flow.json')).catch(() => {});
 
     res.json({ path: `archive/bdd-test-suite-${descriptor}-${timestamp}` });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Test-suite snapshot — browse, zip export/import, restore. Still the user's
+// own idea from the same round as the snapshot-creation routes above; this
+// is the part of it that was still open (see project_test_suite_snapshot_idea
+// in memory, and D:\_My_Claude_files\Suite Snapshot ImportExport\plan-en.md
+// for the full design writeup).
+//
+// A snapshot's own directory name (archive/bdd-test-suite-<descriptor>-
+// <timestamp>) is the ONLY thing any of these routes trust as a "name" —
+// always resolved by checking it's literally present in a real readdir() of
+// APP_ARCHIVE_DIR, never by pattern-validating a client-supplied string and
+// joining it into a path. That removes path traversal as a concern entirely
+// (there is no path to validate — only a lookup into an enumerated list),
+// rather than merely guarding against it.
+// ---------------------------------------------------------------------------
+
+const SNAPSHOT_DIR_PREFIX = 'bdd-test-suite-';
+// Matches the timestamp format /api/generate/snapshot/preview already
+// produces (`new Date().toISOString().replace(/[:.]/g, '-')`), e.g.
+// 2026-08-11T06-22-17-222Z. The descriptor group is greedy — correct even
+// for a hyphenated descriptor like "uptime-kuma", since the fixed-shape
+// timestamp anchored at the end is what the regex engine backtracks to find.
+const SNAPSHOT_DIR_NAME_PATTERN = /^bdd-test-suite-(.+)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)$/;
+
+function parseSnapshotDirName(name: string): { descriptor: string; timestamp: string } | null {
+  const m = SNAPSHOT_DIR_NAME_PATTERN.exec(name);
+  return m ? { descriptor: m[1], timestamp: m[2] } : null;
+}
+
+async function listSnapshotDirNames(): Promise<string[]> {
+  const entries = await readdir(APP_ARCHIVE_DIR, { withFileTypes: true }).catch(() => []);
+  return entries.filter((e) => e.isDirectory() && e.name.startsWith(SNAPSHOT_DIR_PREFIX)).map((e) => e.name);
+}
+
+/** Resolves a snapshot name to its absolute directory path — 404s rather
+ *  than joining an unverified name into a path (see the module comment above). */
+async function resolveSnapshotDirByName(name: string): Promise<string> {
+  const names = await listSnapshotDirNames();
+  if (!names.includes(name)) {
+    throw Object.assign(new Error(`No snapshot named "${name}"`), { status: 404 });
+  }
+  return join(APP_ARCHIVE_DIR, name);
+}
+
+app.get('/api/generate/snapshots', async (req, res) => {
+  try {
+    const names = await listSnapshotDirNames();
+    const entries = names
+      .map((name) => ({ name, parsed: parseSnapshotDirName(name) }))
+      .filter((e): e is { name: string; parsed: { descriptor: string; timestamp: string } } => e.parsed !== null);
+    // Same string-sort-on-ISO-timestamp latest-wins logic
+    // restore-suite.mjs's own findLatestSnapshot() already relies on — not
+    // reimplemented differently here, just applied per-descriptor to flag
+    // which entry the "latest" badge/restore-without-a-name-arg would pick.
+    const latestByDescriptor = new Map<string, string>();
+    for (const { name, parsed } of [...entries].sort((a, b) => a.name.localeCompare(b.name))) {
+      latestByDescriptor.set(parsed.descriptor, name);
+    }
+    const snapshots = entries
+      .map(({ name, parsed: { descriptor, timestamp } }) => ({
+        name,
+        descriptor,
+        timestamp,
+        isLatestForDescriptor: latestByDescriptor.get(descriptor) === name,
+      }))
+      .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+    res.json(snapshots);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/generate/snapshots/:name/download', async (req, res) => {
+  try {
+    const snapshotDir = await resolveSnapshotDirByName(req.params.name);
+    // Synchronous, in-memory zip build — fine at this size (a snapshot is a
+    // handful of JSON/feature/steps text files, at most low hundreds of KB);
+    // no need for streaming complexity for this workload.
+    const zip = new AdmZip();
+    zip.addLocalFolder(snapshotDir);
+    const buffer = zip.toBuffer();
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.name}.zip"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/generate/snapshots/:name/restore', async (req, res) => {
+  try {
+    const snapshotName = req.params.name;
+    const parsed = parseSnapshotDirName(snapshotName);
+    if (!parsed) {
+      res.status(400).json({ error: `"${snapshotName}" doesn't look like a snapshot directory name` });
+      return;
+    }
+    // Confirms it's a REAL snapshot (not just a well-formed name) before
+    // spawning anything — resolveSnapshotDirByName's own 404 covers that.
+    await resolveSnapshotDirByName(snapshotName);
+
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+    send({ type: 'progress', message: `Restoring from ${snapshotName}…` });
+    // Same subprocess restore-suite.mjs is already invoked through elsewhere
+    // (/api/demo/switch, CI, README's Quick Start) — reused here rather than
+    // re-deriving "which files go where" a second time in this file. The
+    // second positional arg (an exact snapshot directory name) is new; every
+    // existing call site omits it and keeps restoring "latest for this
+    // descriptor", unchanged.
+    const restoreResult = await runCommand(
+      'node',
+      ['tests/support/restore-suite.mjs', parsed.descriptor, snapshotName],
+      APP_ROOT,
+      process.env,
+      (message) => send({ type: 'progress', message }),
+    );
+    if (restoreResult.code !== 0) {
+      send({ type: 'error', error: `restore-suite.mjs failed (exit ${restoreResult.code}): ${restoreResult.output.slice(-800)}` });
+    } else {
+      send({ type: 'done', descriptor: parsed.descriptor, snapshot: snapshotName });
+    }
+    res.end();
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// The riskier sibling of the plain Restore route above — the user's own
+// follow-up finding: a snapshot bundles the descriptor, corrections, and
+// UAT notes too, but plain Restore only ever touched tests/features/tests/
+// steps, leaving the rest stranded in the snapshot forever. This restores
+// those too, into their LIVE per-descriptor locations (descriptorPath()
+// and its .corrections.json/.uat.md siblings) — genuinely risky, since
+// (unlike tests/features/tests/steps, which Write & Run's own prompt
+// already offers to snapshot before every overwrite) nothing has ever
+// protected these specific files before now. Mitigated two ways: an
+// automatic backup of whatever's currently live for this descriptor into
+// archive/pre-restore-<descriptor>-<now>/ BEFORE anything is overwritten,
+// and requiring the caller to have already shown its own separate,
+// scarier confirm (see generate.html's own restoreFullSnapshot()) — this
+// route itself doesn't gate on confirmation, same as every other mutating
+// route in this file.
+//
+// Deliberately NOT restored:
+//  - setup-script.ts: live-verified this doesn't actually work, not just
+//    skipped as a judgment call like the two below. agent-service/src/ is
+//    baked into the workbench image at BUILD time (Dockerfile.workbench's
+//    own COPY) — unlike descriptors/reports/archive/, docker-compose.yml
+//    never bind-mounts it. A write here from inside the running container
+//    lands only on that container's own ephemeral writable layer: it looks
+//    like it succeeded (no error, the file reads back changed) but never
+//    reaches the host's real agent-service/src/bootstrap/setup/<name>.ts,
+//    and is gone the moment this container is next rebuilt. Silently
+//    "succeeding" at something this misleading is worse than not
+//    attempting it — still backed up (below) for reference, just never
+//    written back; a progress message says so when the snapshot's own copy
+//    actually differs from what's live, and the manual fix (copy
+//    archive/<snapshot>/setup-script.ts over agent-service/src/bootstrap/
+//    setup/<descriptor>.ts by hand) is the same either way.
+//  - test-env.env: this is a flattened base+overrides VIEW built by
+//    resolveTestEnvForSnapshot() (see that function's own comment), not a
+//    copy of the raw descriptors/<name>.env sidecar — writing it back would
+//    bake this container's own defaults (BACKEND_URL etc.) into that file
+//    as if they'd always been real per-descriptor overrides.
+// discovery-report.json/grouping.json/approved-spec.json/analytics-*.json
+// are handled differently from the above: restored, but ADDITIVELY ONLY —
+// written if (and only if) the file doesn't already exist at its
+// reconstructed real path under reports/, never overwriting one that does.
+// The original "skip these entirely" design assumed they're always already
+// permanently on disk locally (this app never deletes them — see the
+// snapshot-creation route's own comment above) — true for a same-machine
+// restore, but false for a snapshot IMPORTED from a different machine (see
+// /api/generate/snapshots/import): that machine's own reports/ almost
+// certainly never had these specific files, so skipping them there would
+// mean the Analysis tab could never show this snapshot's own workflow/UI-
+// flow/sequence diagrams no matter how many times "Full context" runs. The
+// destination for each is read out of another bundled file's own
+// cross-reference, never independently re-derived (self-consistent by
+// construction, and sidesteps grouping filenames' own optional descriptor
+// suffix entirely — see restoreHistoricalArtifactIfMissing() below):
+//   - discovery-report.json -> basename of grouping.json's own sourceReportPath
+//   - grouping.json         -> basename of approved-spec.json's own sourceGroupingPath
+//   - approved-spec.json / analytics-*.json -> each has its own approvedAt,
+//     fed through the exact same `generate-<kind>-approved-<ts>.json`
+//     formula their own /approve routes already use above.
+app.post('/api/generate/snapshots/:name/restore-full', async (req, res) => {
+  try {
+    const snapshotName = req.params.name;
+    const parsed = parseSnapshotDirName(snapshotName);
+    if (!parsed) {
+      res.status(400).json({ error: `"${snapshotName}" doesn't look like a snapshot directory name` });
+      return;
+    }
+    const snapshotDir = await resolveSnapshotDirByName(snapshotName);
+    const { descriptor } = parsed;
+    const snapshotFiles = await readdir(snapshotDir).catch(() => [] as string[]);
+
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+    send({ type: 'progress', message: `Full restore of "${descriptor}" from ${snapshotName}…` });
+
+    // Step 1: back up whatever's currently live BEFORE any of it is
+    // overwritten below. Named pre-restore-, not bdd-test-suite-, so it
+    // never shows up in this tab's own snapshot list (that list only shows
+    // real point-in-time suite snapshots) — still a real, findable
+    // directory, and its path is in the "done" event below.
+    const backupTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = join(APP_ARCHIVE_DIR, `pre-restore-${descriptor}-${backupTimestamp}`);
+    await mkdir(backupDir, { recursive: true });
+    const backedUpDescriptor = await cp(descriptorPath(descriptor), join(backupDir, 'descriptor.json')).then(() => true).catch(() => false);
+    const backedUpCorrections = await cp(descriptorPath(descriptor).replace(/\.json$/, '.corrections.json'), join(backupDir, 'corrections.json')).then(() => true).catch(() => false);
+    const backedUpUat = await cp(descriptorPath(descriptor).replace(/\.json$/, '.uat.md'), join(backupDir, 'uat.md')).then(() => true).catch(() => false);
+    const backedUpSetup = await cp(setupScriptPath(descriptor), join(backupDir, 'setup-script.ts')).then(() => true).catch(() => false);
+    const backedUpAnything = backedUpDescriptor || backedUpCorrections || backedUpUat || backedUpSetup;
+    if (backedUpAnything) {
+      send({ type: 'progress', message: `Backed up the current descriptor/corrections/UAT/setup-script to archive/${basename(backupDir)}` });
+    } else {
+      // Nothing existed live yet (e.g. this descriptor's very first
+      // restore ever) — remove the now-empty backup dir rather than
+      // leaving a stray empty folder behind.
+      await rm(backupDir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    // Step 2: tests/features + tests/steps, via the exact same subprocess
+    // the plain Restore button already uses.
+    const restoreResult = await runCommand(
+      'node',
+      ['tests/support/restore-suite.mjs', descriptor, snapshotName],
+      APP_ROOT,
+      process.env,
+      (message) => send({ type: 'progress', message }),
+    );
+    if (restoreResult.code !== 0) {
+      send({ type: 'error', error: `restore-suite.mjs failed (exit ${restoreResult.code}): ${restoreResult.output.slice(-800)}` });
+      res.end();
+      return;
+    }
+
+    // Step 3: the live, editable per-descriptor files this snapshot
+    // bundled (see this route's own module comment for what's excluded).
+    const restored: string[] = ['tests/features', 'tests/steps'];
+    if (await cp(join(snapshotDir, 'descriptor.json'), descriptorPath(descriptor)).then(() => true).catch(() => false)) {
+      restored.push('descriptor.json');
+    }
+    if (await cp(join(snapshotDir, 'corrections.json'), descriptorPath(descriptor).replace(/\.json$/, '.corrections.json')).then(() => true).catch(() => false)) {
+      restored.push('corrections.json');
+    }
+    if (await cp(join(snapshotDir, 'uat.md'), descriptorPath(descriptor).replace(/\.json$/, '.uat.md')).then(() => true).catch(() => false)) {
+      restored.push('uat.md');
+    }
+    send({ type: 'progress', message: `Restored: ${restored.join(', ')}` });
+
+    // Step 4: discovery report / grouping / approved spec / analytics —
+    // additive only (see this route's own module comment for the full
+    // reasoning). Reads each destination out of another bundled file's own
+    // cross-reference rather than re-deriving it independently.
+    const restoredHistory: string[] = [];
+    async function restoreHistoricalArtifactIfMissing(srcName: string, destPath: string | null): Promise<void> {
+      if (!destPath || !snapshotFiles.includes(srcName)) return;
+      const alreadyExists = await stat(destPath).then(() => true).catch(() => false);
+      if (alreadyExists) return; // same-machine case — this app never deletes these, so it's already there
+      if (await cp(join(snapshotDir, srcName), destPath).then(() => true).catch(() => false)) {
+        restoredHistory.push(srcName);
+      }
+    }
+
+    const groupingRaw = await readFile(join(snapshotDir, 'grouping.json'), 'utf-8')
+      .then((text) => JSON.parse(text))
+      .catch(() => null);
+    const approvedSpecRaw = await readFile(join(snapshotDir, 'approved-spec.json'), 'utf-8')
+      .then((text) => JSON.parse(text))
+      .catch(() => null);
+
+    await restoreHistoricalArtifactIfMissing(
+      'discovery-report.json',
+      typeof groupingRaw?.sourceReportPath === 'string' ? join(config.reportsDir, basename(groupingRaw.sourceReportPath)) : null,
+    );
+    await restoreHistoricalArtifactIfMissing(
+      'grouping.json',
+      typeof approvedSpecRaw?.sourceGroupingPath === 'string' ? join(config.reportsDir, basename(approvedSpecRaw.sourceGroupingPath)) : null,
+    );
+    await restoreHistoricalArtifactIfMissing(
+      'approved-spec.json',
+      typeof approvedSpecRaw?.approvedAt === 'string'
+        ? join(config.reportsDir, `generate-spec-approved-${approvedSpecRaw.approvedAt.replace(/[:.]/g, '-')}.json`)
+        : null,
+    );
+    // Each analytics file carries its own approvedAt — read lazily, only
+    // for whichever of the three this particular snapshot actually bundled
+    // (most don't have all three; see the snapshot-creation route's own
+    // comment on why they're optional).
+    for (const [srcName, filePrefix] of [
+      ['analytics-workflow.json', 'generate-workflow-approved-'],
+      ['analytics-ui-flow.json', 'generate-ui-flow-approved-'],
+      ['analytics-sequence-flow.json', 'generate-sequence-approved-'],
+    ] as const) {
+      if (!snapshotFiles.includes(srcName)) continue;
+      const raw = await readFile(join(snapshotDir, srcName), 'utf-8').then((text) => JSON.parse(text)).catch(() => null);
+      await restoreHistoricalArtifactIfMissing(
+        srcName,
+        typeof raw?.approvedAt === 'string' ? join(config.reportsDir, `${filePrefix}${raw.approvedAt.replace(/[:.]/g, '-')}.json`) : null,
+      );
+    }
+    if (restoredHistory.length > 0) {
+      send({ type: 'progress', message: `Also added (weren't present locally): ${restoredHistory.join(', ')}` });
+    }
+
+    // Not restored (see this route's own module comment for why) — just
+    // flagged here if it would actually matter, i.e. the snapshot's own
+    // setup-script.ts genuinely differs from what's live right now. Diffing
+    // by content rather than just "the snapshot has one" avoids a false
+    // alarm on every full restore of a descriptor whose setup script simply
+    // hasn't changed since this snapshot was taken.
+    if (snapshotFiles.includes('setup-script.ts')) {
+      const [snapshotSetup, liveSetup] = await Promise.all([
+        readFile(join(snapshotDir, 'setup-script.ts'), 'utf-8').catch(() => null),
+        readFile(setupScriptPath(descriptor), 'utf-8').catch(() => null),
+      ]);
+      if (snapshotSetup !== null && snapshotSetup !== liveSetup) {
+        send({
+          type: 'progress',
+          message: `NOT restored: setup-script.ts — the live copy differs, but agent-service/src/ isn't ` +
+            `bind-mounted into this container, so a write here can't actually persist. Copy ` +
+            `archive/${snapshotName}/setup-script.ts over agent-service/src/bootstrap/setup/${descriptor}.ts ` +
+            `by hand if you want this reverted too.`,
+        });
+      }
+    }
+
+    send({
+      type: 'done',
+      descriptor,
+      snapshot: snapshotName,
+      restored,
+      restoredHistory,
+      backupPath: backedUpAnything ? `archive/${basename(backupDir)}` : null,
+    });
+    res.end();
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// Memory storage, not disk — mirrors uatUpload above. A snapshot zip is
+// bigger than a single UAT document (it bundles a discovery report,
+// full corrections/UAT history, and the whole rendered suite) so this gets
+// a larger cap than uatUpload's 10MB, but still comfortably in-memory-sized.
+const snapshotUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+/** Shared by both import routes below: reads the uploaded zip's own
+ *  descriptor.json (if present) to auto-detect which descriptor this
+ *  snapshot belongs to, and computes the same archive/bdd-test-suite-
+ *  <descriptor>-<timestamp> naming scheme /api/generate/snapshot/preview
+ *  already uses — so an imported snapshot's directory name looks exactly
+ *  like a locally-created one, not a special "imported" shape. */
+function inspectSnapshotZip(buffer: Buffer): { zip: AdmZip; descriptor: string; topLevelNames: string[] } {
+  let zip: AdmZip;
+  try {
+    zip = new AdmZip(buffer);
+  } catch (err) {
+    throw Object.assign(new Error(`Not a valid zip file: ${(err as Error).message}`), { status: 400 });
+  }
+  const entries = zip.getEntries();
+  const topLevelNames = [...new Set(entries.map((e) => e.entryName.split('/')[0]))].sort();
+  const descriptorEntry = entries.find((e) => e.entryName === 'descriptor.json');
+  if (!descriptorEntry) {
+    throw Object.assign(new Error('Zip has no descriptor.json at its root — this doesn\'t look like a suite snapshot.'), { status: 400 });
+  }
+  let descriptor: string;
+  try {
+    descriptor = JSON.parse(zip.readAsText(descriptorEntry)).name;
+  } catch (err) {
+    throw Object.assign(new Error(`descriptor.json in the zip isn't valid JSON: ${(err as Error).message}`), { status: 400 });
+  }
+  if (typeof descriptor !== 'string' || !descriptor) {
+    throw Object.assign(new Error('descriptor.json in the zip has no "name" field.'), { status: 400 });
+  }
+  if (!NAME_PATTERN.test(descriptor)) {
+    throw Object.assign(new Error(`descriptor.json's "name" ("${descriptor}") isn't a plain name — refusing to use it as part of a directory path.`), { status: 400 });
+  }
+  return { zip, descriptor, topLevelNames };
+}
+
+app.post('/api/generate/snapshots/import/preview', snapshotUpload.single('file'), async (req, res) => {
+  try {
+    const file = req.file as Express.Multer.File | undefined;
+    if (!file) {
+      res.status(400).json({ error: '"file" is required' });
+      return;
+    }
+    const { descriptor, topLevelNames } = inspectSnapshotZip(file.buffer);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.json({ descriptor, timestamp, path: `archive/bdd-test-suite-${descriptor}-${timestamp}`, topLevelNames });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/generate/snapshots/import', snapshotUpload.single('file'), async (req, res) => {
+  try {
+    const file = req.file as Express.Multer.File | undefined;
+    const { timestamp } = req.body as { timestamp?: string };
+    if (!file || !timestamp) {
+      res.status(400).json({ error: '"file" and "timestamp" are required' });
+      return;
+    }
+    const { zip, descriptor } = inspectSnapshotZip(file.buffer);
+    const dirName = `bdd-test-suite-${descriptor}-${timestamp}`;
+    const destDir = join(APP_ARCHIVE_DIR, dirName);
+    // Archive entries are immutable once created — an import never
+    // overwrites an existing snapshot, whether that snapshot was made
+    // locally or by a previous import. Refuse rather than silently merge.
+    const alreadyExists = (await listSnapshotDirNames()).includes(dirName);
+    if (alreadyExists) {
+      res.status(409).json({ error: `${dirName} already exists — refusing to overwrite an existing snapshot.` });
+      return;
+    }
+    await mkdir(destDir, { recursive: true });
+    zip.extractAllTo(destDir, /* overwrite */ false);
+    res.status(201).json({ path: `archive/${dirName}` });
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }

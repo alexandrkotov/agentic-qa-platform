@@ -2,15 +2,25 @@ import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Restores tests/features + tests/steps from whichever archived snapshot
-// (archive/bdd-test-suite-<descriptor>-<timestamp>/) is the most recent for
-// the given descriptor, and updates tests/.current-descriptor to match.
+// Restores tests/features + tests/steps from an archived snapshot
+// (archive/bdd-test-suite-<descriptor>-<timestamp>/) and updates
+// tests/.current-descriptor to match. Usage:
+//   node restore-suite.mjs [descriptor] [snapshotName]
+// - No args: descriptor comes from tests/.current-descriptor, restores its
+//   most recent snapshot.
+// - descriptor only: restores that descriptor's most recent snapshot.
+// - descriptor + snapshotName: restores that ONE exact archive/ directory
+//   (must belong to the given descriptor) instead of always "latest" — this
+//   is what lets the workbench's browse/restore UI restore an older
+//   timestamp, not just the newest.
 // tests/features/tests/steps are no longer git-tracked themselves — the two
 // archive/ snapshots are (see the root .gitignore's own comment) — so this
 // script is the one real way tests/ gets real suite content, shared by:
 //   - CI (.github/workflows/tests.yml, right after checkout — nothing else
 //     it does depends on pnpm/workbench being ready yet)
 //   - the hub's POST /api/demo/switch route (agent-service/src/admin/server.ts)
+//   - the workbench's POST /api/generate/snapshots/:name/restore route,
+//     which always passes both args
 //   - the README's own Quick Start, run by hand
 // Deliberately dependency-free (only node:fs/node:path/node:url) so CI can
 // call it before `pnpm install` even runs.
@@ -64,10 +74,38 @@ async function findLatestSnapshot(descriptor) {
   return join(ARCHIVE_DIR, matches[matches.length - 1]);
 }
 
+// Restores ONE specific snapshot by its exact archive/ directory name,
+// instead of always "latest" — used by the workbench's own browse/restore
+// UI (POST /api/generate/snapshots/:name/restore in server.ts), which lets
+// a human pick an older timestamp, not just the newest. Still validated
+// against a real readdir() (not just resolved by string-joining process.argv
+// into a path) and cross-checked against the given descriptor, the same
+// defense-in-depth server.ts's own resolveSnapshotDirByName() applies before
+// ever spawning this script.
+async function findNamedSnapshot(descriptor, name) {
+  let entries;
+  try {
+    entries = await readdir(ARCHIVE_DIR, { withFileTypes: true });
+  } catch (err) {
+    throw new Error(`Can't read ${ARCHIVE_DIR}: ${err.message}`);
+  }
+  const match = entries.find((e) => e.isDirectory() && e.name === name);
+  if (!match) {
+    throw new Error(`No ${ARCHIVE_DIR}/${name} snapshot found.`);
+  }
+  if (!name.startsWith(`bdd-test-suite-${descriptor}-`)) {
+    throw new Error(`"${name}" doesn't belong to descriptor "${descriptor}" (expected prefix "bdd-test-suite-${descriptor}-").`);
+  }
+  return join(ARCHIVE_DIR, name);
+}
+
 async function main() {
   const argDescriptor = process.argv[2];
+  const argSnapshotName = process.argv[3];
   const descriptor = await resolveDescriptor(argDescriptor);
-  const snapshotDir = await findLatestSnapshot(descriptor);
+  const snapshotDir = argSnapshotName
+    ? await findNamedSnapshot(descriptor, argSnapshotName)
+    : await findLatestSnapshot(descriptor);
   console.log(`Restoring "${descriptor}"'s suite from ${snapshotDir}`);
 
   for (const sub of ['features', 'steps']) {
