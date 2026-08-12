@@ -219,6 +219,11 @@
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
     white-space: nowrap; background: var(--accent-bg); color: var(--accent);
   }
+  /* Same shape as .badge above, muted instead of accent — "this fact is
+     true" (git-tracked/protected), not "this is the highlighted one" the
+     way the "latest" badge's accent color reads. Both can sit on the same
+     card at once (one of the two demo snapshots is both). */
+  .badge-mute { background: var(--surface-2); color: var(--text-mute); }
   .scenario-row { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0; font-size: 0.85rem; }
   .scenario-row .name { flex: 1; }
   .scenario-row select { font-size: 0.78rem; }
@@ -1743,6 +1748,17 @@ function renderSnapshotCard(snap) {
   title.textContent = snap.descriptor;
   head.appendChild(title);
 
+  // git-tracked first, "latest" second — the user's own call: a more
+  // fundamental, rarely-changing fact about the snapshot outranks a
+  // relative/transient one in reading order.
+  if (snap.isGitTracked) {
+    const trackedBadge = document.createElement('span');
+    trackedBadge.className = 'badge badge-mute';
+    trackedBadge.textContent = 'git-tracked';
+    trackedBadge.title = 'Committed to this repo (see the root .gitignore\'s own allowlist) — CI, the hub\'s demo-switch buttons, and the README\'s Quick Start all depend on it. Not deletable from here.';
+    head.appendChild(trackedBadge);
+  }
+
   if (snap.isLatestForDescriptor) {
     const badge = document.createElement('span');
     badge.className = 'badge';
@@ -1772,6 +1788,27 @@ function renderSnapshotCard(snap) {
   exportLink.href = '/api/generate/snapshots/' + encodeURIComponent(snap.name) + '/download';
   exportLink.textContent = 'Export → .zip';
   head.appendChild(exportLink);
+
+  // Furthest right of all — the one genuinely irreversible action in this
+  // row, kept past Export (the "calm" end) rather than next to it. Always
+  // rendered, even for a git-tracked snapshot — the user's own call, over
+  // this button's first version (which omitted it entirely there): every
+  // card keeps the same 3-button shape, and a disabled button with a
+  // title explaining WHY reads better than a card that's just quietly
+  // missing an action a human might otherwise wonder about. The server's
+  // own DELETE route still independently refuses a git-tracked snapshot
+  // (isSnapshotGitTracked()) — this is belt-and-suspenders, not the only guard.
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'primary';
+  deleteBtn.textContent = 'Delete';
+  if (snap.isGitTracked) {
+    deleteBtn.disabled = true;
+    deleteBtn.title = 'Git-tracked — can\'t be deleted here.';
+  } else {
+    deleteBtn.title = 'Permanently deletes this archive/ entry. Cannot be undone.';
+    deleteBtn.onclick = () => deleteSnapshot(snap, card);
+  }
+  head.appendChild(deleteBtn);
 
   card.appendChild(head);
 
@@ -1870,6 +1907,33 @@ async function restoreSnapshot(snap, card) {
     // populated above, before the human has a chance to read it.
   } catch (e) {
     setStatus(statusEl, 'Restore failed: ' + e.message, 'err');
+  } finally {
+    snapshotActionInFlight = false;
+  }
+}
+
+// Retention — the user's own idea. Never offered at all for a git-tracked
+// snapshot (renderSnapshotCard skips the button entirely); the server's
+// own DELETE route refuses those too, so this is belt-and-suspenders, not
+// the only guard. No "type the name to confirm" step — the confirm
+// modal's own wording already spells out that it's permanent and points
+// at Export first, matching how every other destructive action on this
+// page (Write files, Restore) is gated by a plain confirm, not a typed
+// challenge.
+async function deleteSnapshot(snap, card) {
+  const msg = `Permanently delete ${snap.descriptor}'s snapshot ${snap.name}? This cannot be undone — the ` +
+    `whole archive/ entry (suite files, descriptor, corrections, discovery report, everything bundled in ` +
+    `it) is gone for good. Use Export → .zip first if you might want this back.`;
+  if (!(await confirmModal(msg, 'warning'))) return;
+
+  const statusEl = document.getElementById('snapshots-status');
+  snapshotActionInFlight = true;
+  try {
+    await api('/api/generate/snapshots/' + encodeURIComponent(snap.name), { method: 'DELETE' });
+    setStatus(statusEl, `Deleted ${snap.name}.`, 'ok');
+    loadSnapshots();
+  } catch (e) {
+    setStatus(statusEl, 'Delete failed: ' + e.message, 'err');
   } finally {
     snapshotActionInFlight = false;
   }

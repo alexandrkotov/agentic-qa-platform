@@ -1763,6 +1763,27 @@ async function resolveSnapshotDirByName(name: string): Promise<string> {
   return join(APP_ARCHIVE_DIR, name);
 }
 
+/** True iff `archive/<name>` is actually committed in this repo's own git
+ *  index — the two demo snapshots (see the root .gitignore's own selective
+ *  allowlist) are the only real examples today. Asks the real `git`
+ *  (docker-compose.yml's own .git:ro mount) rather than re-parsing
+ *  .gitignore's exact allow/deny syntax by hand — the one real source of
+ *  truth, and the one thing standing between DELETE and destroying a
+ *  tracked demo snapshot that CI/the hub's own demo-switch buttons depend
+ *  on. `git ls-files --error-unmatch` exits 0 only when the path is
+ *  tracked; anything else (untracked, a spawn error if git or the mount is
+ *  ever missing) is treated as "not tracked" — the safer default for a
+ *  check that gates a destructive delete, not "assume it's protected". */
+async function isSnapshotGitTracked(name: string): Promise<boolean> {
+  // -c safe.directory=... (per-invocation, not a persistent global config
+  // write): the bind-mounted .git/ is owned by the HOST user, this
+  // container runs as its own "node" user (Dockerfile.workbench) — without
+  // this, git refuses every call with "detected dubious ownership" (its
+  // own CVE-2022-24765 protection), confirmed live.
+  const result = await runCommand('git', ['-c', `safe.directory=${APP_ROOT}`, '-C', APP_ROOT, 'ls-files', '--error-unmatch', `archive/${name}`], APP_ROOT, process.env).catch(() => null);
+  return result !== null && result.code === 0;
+}
+
 app.get('/api/generate/snapshots', async (req, res) => {
   try {
     const names = await listSnapshotDirNames();
@@ -1777,14 +1798,17 @@ app.get('/api/generate/snapshots', async (req, res) => {
     for (const { name, parsed } of [...entries].sort((a, b) => a.name.localeCompare(b.name))) {
       latestByDescriptor.set(parsed.descriptor, name);
     }
-    const snapshots = entries
-      .map(({ name, parsed: { descriptor, timestamp } }) => ({
-        name,
-        descriptor,
-        timestamp,
-        isLatestForDescriptor: latestByDescriptor.get(descriptor) === name,
-      }))
-      .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+    const snapshots = await Promise.all(
+      entries
+        .map(({ name, parsed: { descriptor, timestamp } }) => ({
+          name,
+          descriptor,
+          timestamp,
+          isLatestForDescriptor: latestByDescriptor.get(descriptor) === name,
+        }))
+        .sort((a, b) => b.name.localeCompare(a.name)) // newest first
+        .map(async (snap) => ({ ...snap, isGitTracked: await isSnapshotGitTracked(snap.name) })),
+    );
     res.json(snapshots);
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
@@ -2070,6 +2094,32 @@ app.post('/api/generate/snapshots/:name/restore-full', async (req, res) => {
       backupPath: backedUpAnything ? `archive/${basename(backupDir)}` : null,
     });
     res.end();
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// Retention — the user's own follow-up idea, same live-review round as the
+// restore-scope log fix above: snapshots otherwise accumulate forever with
+// no way to prune them. Deliberately narrow: refuses outright on either of
+// the two git-tracked demo snapshots (isSnapshotGitTracked() above) — those
+// are depended on by CI, the hub's own demo-switch buttons, and the
+// README's Quick Start, so deleting one isn't a "this one archive entry"
+// decision the Snapshots tab gets to make alone. Anything else is a real,
+// permanent `rm -rf` — no trash/undo directory, matching this route's own
+// name ("Delete", not "Archive" or "Hide") and the confirm modal's own
+// wording (generate.html's own deleteSnapshot()) that says exactly that
+// and suggests Export first.
+app.delete('/api/generate/snapshots/:name', async (req, res) => {
+  try {
+    const snapshotName = req.params.name;
+    const snapshotDir = await resolveSnapshotDirByName(snapshotName);
+    if (await isSnapshotGitTracked(snapshotName)) {
+      res.status(403).json({ error: `"${snapshotName}" is git-tracked (a shared demo snapshot) — refusing to delete it here.` });
+      return;
+    }
+    await rm(snapshotDir, { recursive: true, force: true });
+    res.status(204).end();
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }

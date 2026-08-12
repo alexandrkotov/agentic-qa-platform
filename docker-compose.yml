@@ -189,6 +189,14 @@ services:
       # whatever the image already baked in at build time, not empty.
       - playwright-browsers:/ms-playwright
       - /var/run/docker.sock:/var/run/docker.sock
+      # Lets server.ts ask the real `git` (already installed for
+      # deployTarget.ts's own clones — see Dockerfile.workbench) whether a
+      # given archive/ snapshot is one of the two git-tracked ones, rather
+      # than re-deriving that from .gitignore's own exact syntax by hand —
+      # the DELETE snapshot route refuses to touch a git-tracked entry.
+      # Read-only: this container only ever reads git's own tracked-file
+      # state, never commits/writes through this mount.
+      - ./.git:/usr/src/app/.git:ro
 
 volumes:
   playwright-browsers:
