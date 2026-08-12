@@ -982,6 +982,31 @@ function wizardAddressValid(address) {
   return wizardUrlValid(address) || wizardIpValid(address);
 }
 
+// The "front door" for onboarding a target that needs deploying from
+// source, not one that's already live — backlog item, deliberately
+// deferred at build-order step (3) ("a natural step 3.5-ish follow-up,
+// not attempted"). A git-repo address is still a syntactically valid URL
+// (wizardUrlValid accepts it fine), but it can never honestly become a
+// web-ui/rest-api baseUrl the way a live app's own address can — there's
+// nothing running at it yet. Detected two ways: an explicit `.git` clone
+// URL, or a bare repo root on a known git-forge host (exactly two path
+// segments, "org/repo" — anything deeper, like a specific file or issue
+// page, is ambiguous enough to fall back to the normal address handling
+// instead of guessing). Every real docker-compose-component target this
+// project has ever onboarded (wger/uptime-kuma/snipe-it/wekan/nopcommerce)
+// is a plain `https://github.com/<org>/<repo>` with no `.git` suffix —
+// this pattern is what actually needs to keep matching, not a guess.
+const GIT_FORGE_HOSTS = /^(www\.)?(github\.com|gitlab\.com|bitbucket\.org)$/i;
+function wizardIsGitRepoUrl(address) {
+  if (!wizardUrlValid(address)) return false;
+  let url;
+  try { url = new URL(address); } catch { return false; }
+  if (/\.git$/i.test(url.pathname)) return true;
+  if (!GIT_FORGE_HOSTS.test(url.hostname)) return false;
+  const segments = url.pathname.split('/').filter(Boolean);
+  return segments.length === 2;
+}
+
 // "Create" starts disabled and stays disabled until every required field
 // is filled AND, for the address, valid — a real IP or a real URL, the
 // user's own confirmed framing of what a target system always is, checked
@@ -1051,6 +1076,19 @@ function wizardExtraInstructions(checked, address) {
 // confirmed live.
 function wizardValidComponents(checked, address) {
   const components = [];
+  // A docker-compose component only ever needs repoUrl to be genuinely
+  // complete (ref/composeFile are both optional in descriptor/schema.ts,
+  // defaulting to the repo's own default branch / docker-compose.yml) —
+  // unlike web-ui/rest-api below, nothing here needs a human to fill in
+  // anything before this can go straight into the initial POST. Nothing
+  // else is honestly knowable yet (there's no live address to propose a
+  // web-ui/rest-api component from) — deploy it, then use the existing
+  // "Propose components" button to pick those up for real, same as every
+  // other docker-compose-component target already does.
+  if (wizardIsGitRepoUrl(address)) {
+    components.push({ type: 'docker-compose', repoUrl: address });
+    return components;
+  }
   if (checked.includes('wizard-type-ui') && wizardUrlValid(address)) {
     components.push({ type: 'web-ui', baseUrl: address, routes: ['/'] });
   }
@@ -1072,6 +1110,11 @@ function wizardValidComponents(checked, address) {
 //   human fills in a real baseUrl by hand instead of the wizard guessing.
 function wizardSkeletonComponents(checked, address) {
   const components = [];
+  // A git-repo address is already fully covered by wizardValidComponents'
+  // own docker-compose component above — no rest-api/web-ui skeleton to
+  // add here, there's genuinely nothing to onboard yet before a real
+  // deploy exists.
+  if (wizardIsGitRepoUrl(address)) return components;
   const addressIsUrl = wizardUrlValid(address);
   if (checked.includes('wizard-type-api')) {
     const c = { type: 'rest-api' };
