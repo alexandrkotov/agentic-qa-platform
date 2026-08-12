@@ -7,12 +7,14 @@ on:
       - 'agent-service/**'
       - 'tests/**'
       - 'docker-compose.yml'
+      - 'docker-compose.demo-orderflow.yml'
       - '.github/workflows/tests.yml'
   pull_request:
     paths:
       - 'agent-service/**'
       - 'tests/**'
       - 'docker-compose.yml'
+      - 'docker-compose.demo-orderflow.yml'
       - '.github/workflows/tests.yml'
   workflow_dispatch:
 
@@ -26,10 +28,15 @@ jobs:
       # Descriptor-agnostic by design: tests/features/ can hold ANY
       # descriptor's generated suite (the platform's own capability is
       # generating+swapping these), and this job deploys+tests whichever one
-      # tests/.current-descriptor names — no target-specific step here.
-      # /api/generate/render (agent-service/src/admin/server.ts) keeps that
-      # file in sync automatically every time a suite gets rendered, so a
-      # future suite swap doesn't need a matching edit to this workflow.
+      # tests/.current-descriptor names. /api/generate/render
+      # (agent-service/src/admin/server.ts) keeps that file in sync
+      # automatically every time a suite gets rendered, so a future suite
+      # swap doesn't need a matching edit to this workflow — with one
+      # deliberate exception, "orderflow" specifically: it isn't a
+      # docker-compose-component descriptor, so the deploy/undeploy steps
+      # below branch on that one literal name to use a different mechanism
+      # (see their own comments). Any OTHER descriptor name still needs no
+      # workflow edit.
       - name: Read which descriptor the checked-in suite belongs to
         id: descriptor
         run: echo "name=$(cat tests/.current-descriptor)" >> "$GITHUB_OUTPUT"
@@ -100,13 +107,32 @@ jobs:
             sleep 5
           done
 
+      # OrderFlow is NOT a docker-compose-component descriptor — it's the
+      # platform's own bundled demo (docker-compose.demo-orderflow.yml),
+      # not an external target deployTarget.ts clones — so
+      # /api/descriptors/orderflow/deploy 400s with "no docker-compose
+      # component to deploy" (a real CI failure hit live, 2026-08-12,
+      # right after tests/.current-descriptor got committed as "orderflow"
+      # from local testing). Deployed directly via `docker compose`
+      # instead, the same mechanism the hub's own /api/demo/switch route
+      # uses for this leg — the runner already has plain `docker compose`
+      # access, no docker-outside-of-docker hop needed the way running
+      # this from inside the workbench container locally would. Needs the
+      # platform's own network already created (`docker compose up
+      # workbench` above already did that) since this file joins it as
+      # `external: true`.
+      - name: Deploy OrderFlow (not a docker-compose-component descriptor)
+        if: steps.descriptor.outputs.name == 'orderflow'
+        run: docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build --wait
+
       # Same NDJSON-stream-then-check-the-last-line idiom used throughout
       # this project's own interactive development (see
       # bootstrap/deployTarget.ts's own callers) — the very last line is
       # always {"type":"done",...} on success or {"type":"error",...} on
       # failure, never a plain non-2xx status (the route opens the stream
       # before anything can fail).
-      - name: Deploy the target
+      - name: Deploy the target (docker-compose-component descriptors)
+        if: steps.descriptor.outputs.name != 'orderflow'
         run: |
           curl -s -N -X POST "http://localhost:4400/api/descriptors/${{ steps.descriptor.outputs.name }}/deploy" | tee deploy.log
           if ! tail -1 deploy.log | grep -q '"type":"done"'; then
@@ -114,6 +140,31 @@ jobs:
             docker compose logs workbench
             exit 1
           fi
+
+      # `--wait` above already gates on db/kafka/app's own healthchecks
+      # (docker-compose.demo-orderflow.yml), but confirmed live locally
+      # (2026-08-11, waitForOrderflowBackendReady()'s own comment in
+      # server.ts) that a container's own loopback-based healthcheck can
+      # still pass before it's reachable from a genuinely separate
+      # process — this runner's own shell is exactly that, so the same
+      # short extra probe applies here, against OrderFlow's fixed
+      # `app` port (not dynamically allocated, unlike the
+      # docker-compose-component path below).
+      - name: Wait for OrderFlow to be ready
+        if: steps.descriptor.outputs.name == 'orderflow'
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null "http://localhost:3000/"; then
+              echo "localhost:3000 is up"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "localhost:3000 did not become ready in time"
+              docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml logs
+              exit 1
+            fi
+            sleep 2
+          done
 
       # Deliberately NOT the descriptor's own FRONTEND_URL (descriptors/<name>.env)
       # here — that value is written for use INSIDE workbench (which has its
@@ -123,7 +174,8 @@ jobs:
       # `{"type":"done",...}` line — the same live remap deployTarget.ts may
       # have applied, e.g. on a port conflict) is the actually-correct,
       # always-current source for a plain `localhost:<port>` check here.
-      - name: Wait for the deployed target to be ready
+      - name: Wait for the deployed target to be ready (docker-compose-component descriptors)
+        if: steps.descriptor.outputs.name != 'orderflow'
         run: |
           PORT=$(tail -1 deploy.log | jq -r '.ports[0].publishedPort')
           for i in $(seq 1 30); do
@@ -221,8 +273,12 @@ jobs:
         if: failure()
         run: docker compose logs workbench
 
-      - name: Undeploy the target
-        if: always()
+      - name: Undeploy OrderFlow (not a docker-compose-component descriptor)
+        if: always() && steps.descriptor.outputs.name == 'orderflow'
+        run: docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml down -v || true
+
+      - name: Undeploy the target (docker-compose-component descriptors)
+        if: always() && steps.descriptor.outputs.name != 'orderflow'
         run: curl -s -N -X POST "http://localhost:4400/api/descriptors/${{ steps.descriptor.outputs.name }}/undeploy" || true
 
       - name: Stop workbench
