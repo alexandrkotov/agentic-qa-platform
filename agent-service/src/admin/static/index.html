@@ -13,6 +13,7 @@
     --accent: #3a63d8; --accent-bg: #e8edfc;
     --danger: #b3261e; --danger-bg: #fbe9e7;
     --warn: #9a6700; --warn-bg: #fff3d6;
+    --good: #1a7f37; --good-bg: #e6f4ea;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -21,6 +22,7 @@
       --accent: #7c9bef; --accent-bg: #232c47;
       --danger: #f0847c; --danger-bg: #3a1f1e;
       --warn: #e0b04d; --warn-bg: #332a10;
+      --good: #6fcf97; --good-bg: #1e3a24;
     }
   }
   * { box-sizing: border-box; }
@@ -116,22 +118,28 @@
   }
   #descriptor-list .descriptor-name-btn:hover { background: var(--surface-2); }
   #descriptor-list .descriptor-name-btn.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
-  /* Miniature corner tag, not an inline pill — an inline badge (this
+  /* Miniature corner tag(s), not an inline pill — an inline badge (this
      feature's first version) ate so much of this narrow column's width
      that names truncated to 3-4 characters; live-caught and replaced with
      this instead. Top-LEFT (not right — the user's own call, reads as
      attached to the name it's tagging rather than floating off toward the
-     delete ×) — absolutely positioned flush in that corner (needs li's
-     own position:relative above) so it costs no horizontal space from the
-     name/delete-× layout at all, just floats on top, small enough to
-     clear both. */
+     delete ×) — the wrapper is absolutely positioned flush in that corner
+     (needs li's own position:relative above) so it costs no horizontal
+     space from the name/delete-× layout at all, just floats on top, small
+     enough to clear both. A flex row, not a single badge, since a
+     descriptor can carry more than one of these tags (e.g. deployable AND
+     auto-setup) — individual .descriptor-badge pills no longer position
+     themselves, the wrapper does that once for however many there are. */
+  #descriptor-list .descriptor-badges {
+    position: absolute; top: 0; left: 0; display: flex; gap: 0.15rem; pointer-events: none;
+  }
   #descriptor-list .descriptor-badge {
-    position: absolute; top: 0; left: 0; pointer-events: none;
     padding: 0.03rem 0.32rem; font-size: 0.5rem; font-weight: 700; line-height: 1.4;
-    text-transform: uppercase; letter-spacing: 0.02em; border-radius: 5px 0 5px 0;
+    text-transform: uppercase; letter-spacing: 0.02em; border-radius: 4px;
     background: var(--accent-bg); color: var(--accent);
   }
   #descriptor-list .descriptor-badge.badge-mute { background: var(--surface-2); color: var(--text-mute); }
+  #descriptor-list .descriptor-badge.badge-good { background: var(--good-bg); color: var(--good); }
   #descriptor-list .descriptor-delete-btn {
     flex-shrink: 0; border: none; background: none; color: var(--text-mute);
     cursor: pointer; padding: 0 0.65rem; font-size: 1rem; line-height: 1;
@@ -657,6 +665,18 @@ async function loadList() {
     }
   }));
 
+  // "AUTO-SETUP" badge — independent of hasDockerCompose above (a
+  // descriptor's own bootstrap/setup/<name>.ts registration has nothing to
+  // do with whether it has a docker-compose component), so its own cheap
+  // per-descriptor route.
+  const hasSetupScript = await Promise.all(state.names.map(async (n) => {
+    try {
+      return (await api('/api/descriptors/' + encodeURIComponent(n) + '/has-setup')).hasSetup;
+    } catch {
+      return false;
+    }
+  }));
+
   const ul = document.getElementById('descriptor-list');
   ul.innerHTML = '';
   state.names.forEach((name, i) => {
@@ -666,6 +686,9 @@ async function loadList() {
     btn.textContent = name;
     btn.onclick = () => selectDescriptor(name);
     li.appendChild(btn);
+
+    const badges = document.createElement('span');
+    badges.className = 'descriptor-badges';
 
     // "deployable" reads the same fact the Deploy target section below
     // acts on (a docker-compose component) — the user's own idea, so this
@@ -677,7 +700,23 @@ async function loadList() {
     badge.title = hasDockerCompose[i]
       ? 'Has a docker-compose component — Deploy target below can spin this up itself.'
       : 'No docker-compose component — this app doesn\'t manage its lifecycle; Discovery just explores it wherever it already runs.';
-    li.appendChild(badge);
+    badges.appendChild(badge);
+
+    // "AUTO-SETUP" — this descriptor has a registered first-run setup
+    // script (bootstrap/setup/<name>.ts), so its wizard gets driven
+    // automatically on every fresh deploy instead of needing a human
+    // click-through. Green/"good" on purpose, distinct from the
+    // blue/mute deployable-vs-unmanaged pair above — reads as "handled",
+    // not "needs attention" (that's --warn's job elsewhere on this page).
+    if (hasSetupScript[i]) {
+      const setupBadge = document.createElement('span');
+      setupBadge.className = 'descriptor-badge badge-good';
+      setupBadge.textContent = 'auto-setup';
+      setupBadge.title = 'Has a registered first-run setup script (bootstrap/setup/' + name + '.ts) — its wizard runs automatically on every fresh deploy.';
+      badges.appendChild(setupBadge);
+    }
+
+    li.appendChild(badges);
 
     const delBtn = document.createElement('button');
     delBtn.className = 'descriptor-delete-btn';

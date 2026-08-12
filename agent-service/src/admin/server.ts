@@ -159,6 +159,16 @@ app.get('/api/descriptors/:name', async (req, res) => {
   }
 });
 
+// Backs the descriptor list's own "AUTO-SETUP" corner badge (index.html) —
+// a target with a registered bootstrap/setup/<name>.ts script gets its
+// first-run wizard handled automatically on every fresh deploy, no human
+// click-through needed. Doesn't require the descriptor to exist (hasSetup()
+// is a plain filesystem check, same reasoning as the deploy-status route's
+// own comment above it), so this never 404s even for a stale/mistyped name.
+app.get('/api/descriptors/:name/has-setup', (req, res) => {
+  res.json({ hasSetup: hasSetup(req.params.name) });
+});
+
 app.put('/api/descriptors/:name', async (req, res) => {
   try {
     const path = descriptorPath(req.params.name);
