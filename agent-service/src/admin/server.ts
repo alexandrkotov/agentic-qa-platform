@@ -1822,6 +1822,13 @@ app.post('/api/generate/snapshots/:name/restore', async (req, res) => {
 
     res.setHeader('Content-Type', 'application/x-ndjson');
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+    // Stated explicitly, not left implicit — the rest of this log is just
+    // restore-suite.mjs's own raw output, which only ever touches
+    // tests/features/tests/steps and says nothing about the archive's own
+    // much larger bundle (descriptor/corrections/UAT/reports/analytics) —
+    // confusing on its own to anyone who doesn't remember which radio
+    // option they picked in the confirm modal that led here.
+    send({ type: 'progress', message: 'Scope: Features & steps only' });
     send({ type: 'progress', message: `Restoring from ${snapshotName}…` });
     // Same subprocess restore-suite.mjs is already invoked through elsewhere
     // (/api/demo/switch, CI, README's Quick Start) — reused here rather than
@@ -1919,6 +1926,11 @@ app.post('/api/generate/snapshots/:name/restore-full', async (req, res) => {
 
     res.setHeader('Content-Type', 'application/x-ndjson');
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+    // Same reasoning as the plain Restore route's own "Scope:" line — stated
+    // explicitly so the rest of this log is self-contained, not something
+    // that only makes sense if the human remembers which radio option they
+    // picked in the confirm modal.
+    send({ type: 'progress', message: 'Scope: Full context' });
     send({ type: 'progress', message: `Full restore of "${descriptor}" from ${snapshotName}…` });
 
     // Step 1: back up whatever's currently live BEFORE any of it is
