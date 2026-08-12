@@ -32,10 +32,16 @@ import { resolveTargetPaths, type DeployState, type PortMapping } from './deploy
 //    (`.../repo/data` -> `/app/data`); the file only exists once the app
 //    has run and created it. So sqlite detection has to actually look
 //    inside each bind-mounted directory, not string-match a volume path.
-// 3. Only `postgres`/`sqlite` exist as DB-shaped component types in
-//    descriptor/schema.ts today — a detected MySQL/MariaDB/Mongo image
-//    has nowhere valid to propose into, so it's reported unclassified
-//    too rather than fabricating an invalid component type.
+// 3. `postgres`/`sqlite`/`mysql`/`mongo` all exist as DB-shaped component
+//    types in descriptor/schema.ts (mysql/mongo shipped 2026-08-11, proven
+//    live against Snipe-IT/Wekan — see memory `project_external_target_demo_idea`)
+//    — a detected image for any of those four becomes a real candidate.
+//    `mssql` also exists as a type, but DB_IMAGE_PATTERNS below still has
+//    no pattern for it (a real host.docker.internal connectivity
+//    limitation for this engine in this environment, same memory entry,
+//    makes a confidently-proposed candidate premature) — an MSSQL image
+//    is simply not recognized at all right now, out of scope for today's
+//    fix, left for later.
 // ---------------------------------------------------------------------------
 
 export interface ProbeCandidate {
@@ -122,9 +128,9 @@ async function readJsonFile<T>(path: string): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 1 — database images. Only `postgres` can actually become a
-// candidate today (see the module comment above for why non-postgres
-// engines and unpublished ports become unclassified notes instead).
+// Pass 1 — database images. postgres/mysql/mongo can all become real
+// candidates (see the module comment above for why mssql and unpublished
+// ports still become unclassified notes instead).
 // ---------------------------------------------------------------------------
 
 const DB_IMAGE_PATTERNS: Array<{ engine: string; test: (image: string) => boolean }> = [
@@ -158,34 +164,103 @@ function detectDbCandidates(
       continue;
     }
 
-    if (match.engine !== 'postgres') {
-      unclassified.push({
-        label,
-        reason: `looks like ${match.engine}, but there is no matching component type in this app's schema yet — add one by hand to descriptor/schema.ts, or wire the component up manually once a type exists.`,
-      });
-      continue;
-    }
-
     const env = service.environment ?? {};
-    const user = env.POSTGRES_USER;
-    const password = env.POSTGRES_PASSWORD;
-    const db = env.POSTGRES_DB;
-    if (!user || !password || !db) {
-      unclassified.push({
-        label,
-        reason: 'looks like postgres with a published port, but POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB were not all found in the compose environment — add the component by hand with the real credentials rather than guessing.',
+
+    if (match.engine === 'postgres') {
+      const user = env.POSTGRES_USER;
+      const password = env.POSTGRES_PASSWORD;
+      const db = env.POSTGRES_DB;
+      if (!user || !password || !db) {
+        unclassified.push({
+          label,
+          reason: 'looks like postgres with a published port, but POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB were not all found in the compose environment — add the component by hand with the real credentials rather than guessing.',
+        });
+        continue;
+      }
+      claimedPorts.add(published);
+      candidates.push({
+        component: {
+          type: 'postgres',
+          name: serviceName,
+          connectionString: `postgresql://${user}:${password}@host.docker.internal:${published}/${db}`,
+        },
+        evidence: `image ${image} on published port ${published}, credentials found in the compose environment`,
       });
       continue;
     }
 
-    claimedPorts.add(published);
-    candidates.push({
-      component: {
-        type: 'postgres',
-        name: serviceName,
-        connectionString: `postgresql://${user}:${password}@host.docker.internal:${published}/${db}`,
-      },
-      evidence: `image ${image} on published port ${published}, credentials found in the compose environment`,
+    if (match.engine === 'mysql/mariadb') {
+      // Same official-image env var names for both mysql and mariadb
+      // (MariaDB's own MARIADB_* aliases are newer; MYSQL_* still always
+      // works) — confirmed live against Snipe-IT's real `mariadb:11.4.7`.
+      const user = env.MYSQL_USER;
+      const password = env.MYSQL_PASSWORD;
+      const db = env.MYSQL_DATABASE;
+      if (!user || !password || !db) {
+        unclassified.push({
+          label,
+          reason: 'looks like mysql/mariadb with a published port, but MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE were not all found in the compose environment — add the component by hand with the real credentials rather than guessing.',
+        });
+        continue;
+      }
+      claimedPorts.add(published);
+      candidates.push({
+        component: {
+          type: 'mysql',
+          name: serviceName,
+          connectionString: `mysql://${user}:${password}@host.docker.internal:${published}/${db}`,
+        },
+        evidence: `image ${image} on published port ${published}, credentials found in the compose environment`,
+      });
+      continue;
+    }
+
+    if (match.engine === 'mongodb') {
+      // Unlike postgres/mysql, a real mongo deployment commonly runs with
+      // NO root auth configured at all — confirmed live, Wekan's own
+      // real-mongo compose (docker-compose-mongodb-v7.yml) sets none.
+      // That's a legitimate, connectable state, not missing information
+      // to fall back to unclassified for — only include the auth/database
+      // segments in the connection string when they're actually present.
+      const user = env.MONGO_INITDB_ROOT_USERNAME;
+      const password = env.MONGO_INITDB_ROOT_PASSWORD;
+      const db = env.MONGO_INITDB_DATABASE;
+      const hasAuth = Boolean(user && password);
+      const auth = hasAuth ? `${user}:${password}@` : '';
+      const dbPath = db ? `/${db}` : '';
+      // directConnection=true — confirmed live (2026-08-12) this is NOT
+      // optional: Wekan's own mongod runs as a single-node replica set,
+      // and the official driver's admin-level commands (listDatabases,
+      // etc. — the exact shape the mongodb-mcp-server component tool
+      // itself issues) trigger full topology discovery, which then tries
+      // to follow the replica set's own internal hostname
+      // ("wekandb:27017") reported by its config — unreachable from
+      // outside the compose network, `getaddrinfo ENOTFOUND`. A plain
+      // query without this flag can appear to work (matches an earlier,
+      // narrower observation for this same target) but the connection
+      // string proposed here needs to hold up for real component usage,
+      // not just the simplest possible query.
+      claimedPorts.add(published);
+      candidates.push({
+        component: {
+          type: 'mongo',
+          name: serviceName,
+          connectionString: `mongodb://${auth}host.docker.internal:${published}${dbPath}?directConnection=true`,
+        },
+        evidence: hasAuth
+          ? `image ${image} on published port ${published}, credentials found in the compose environment`
+          : `image ${image} on published port ${published}, no root auth configured in the compose environment — connecting without credentials`,
+      });
+      continue;
+    }
+
+    // DB_IMAGE_PATTERNS currently only has entries for the three engines
+    // handled above — this stays as an honest fallback rather than
+    // silently dropping a future pattern that lands here without a
+    // matching branch.
+    unclassified.push({
+      label,
+      reason: `looks like ${match.engine}, but there is no matching component type in this app's schema yet — add one by hand to descriptor/schema.ts, or wire the component up manually once a type exists.`,
     });
   }
 
