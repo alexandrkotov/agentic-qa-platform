@@ -85,7 +85,13 @@ export async function createSetupPage(
       // something a human can actually navigate to (and sort/find later).
       const finalPath = join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}.webm`);
       await rename(await video.path(), finalPath);
-      return finalPath;
+      // config.reportsDir itself is relative to this container's own
+      // cwd (/usr/src/app, i.e. agent-service/ on the host) — logged as
+      // the real path a human would actually navigate from the repo
+      // root, not this process's own relative one, which read as
+      // ambiguous ("reports/..." — reports/ under what?) when it showed
+      // up in a real run's log, caught live by the user.
+      return join('agent-service', finalPath);
     },
   };
 }
