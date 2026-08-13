@@ -105,8 +105,8 @@ const setupUptimeKuma: SetupFn = async (env, onProgress, onFrame) => {
       await page.waitForURL(/\/dashboard$/, { timeout: 30000 });
       log(`Setup complete — landed on ${page.url()}.`);
     } finally {
-      const videoPath = await finish();
-      if (videoPath) log(`Recording saved: ${videoPath}`);
+      const recording = await finish();
+      if (recording) log(`Recording saved: ${recording.path} (open: ${recording.url})`);
     }
   } finally {
     await browser.close();

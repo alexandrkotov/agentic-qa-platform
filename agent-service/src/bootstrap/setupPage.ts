@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { rename } from 'node:fs/promises';
 import type { Browser, Page } from 'playwright';
 import { config } from '../config.ts';
@@ -32,12 +32,25 @@ import { config } from '../config.ts';
  *   bind-mounted into `workbench` (docker-compose.yml) — no new mount, no
  *   new .gitignore rule needed for this feature at all.
  */
+export interface RecordingResult {
+  /** Repo-root-relative, for a human reading the log as plain text
+   *  (e.g. a CI run, or the raw NDJSON before the UI renders it). */
+  path: string;
+  /** Relative to this same server's own origin — admin/server.ts serves
+   *  agent-service/reports/setup-videos/ at /videos/, so the "Record
+   *  setup" UI can turn this straight into a clickable, playable link
+   *  instead of a human having to go find the file by hand — the user's
+   *  own ask, after the plain-path version still read as "now what do I
+   *  do with this." */
+  url: string;
+}
+
 export interface SetupPageHandle {
   page: Page;
   /** Closes the context (flushing the video file) and stops the
-   *  screencast, if either was active. Returns the real saved video
-   *  path, or null if no recording was requested. */
-  finish(): Promise<string | null>;
+   *  screencast, if either was active. Returns the real saved video's
+   *  path/url, or null if no recording was requested. */
+  finish(): Promise<RecordingResult | null>;
 }
 
 export async function createSetupPage(
@@ -83,15 +96,19 @@ export async function createSetupPage(
       if (!video) return null;
       // Playwright's own generated filename is a random hash — rename to
       // something a human can actually navigate to (and sort/find later).
-      const finalPath = join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}.webm`);
+      const fileName = `${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+      const finalPath = join(dir, fileName);
       await rename(await video.path(), finalPath);
-      // config.reportsDir itself is relative to this container's own
-      // cwd (/usr/src/app, i.e. agent-service/ on the host) — logged as
-      // the real path a human would actually navigate from the repo
-      // root, not this process's own relative one, which read as
-      // ambiguous ("reports/..." — reports/ under what?) when it showed
-      // up in a real run's log, caught live by the user.
-      return join('agent-service', finalPath);
+      return {
+        // config.reportsDir itself is relative to this container's own
+        // cwd (/usr/src/app, i.e. agent-service/ on the host) — this is
+        // the real path a human would actually navigate from the repo
+        // root, not this process's own relative one, which read as
+        // ambiguous ("reports/..." — reports/ under what?) when it
+        // first showed up in a real run's log, caught live by the user.
+        path: join('agent-service', finalPath),
+        url: `/videos/${descriptorName}/${basename(fileName)}`,
+      };
     },
   };
 }

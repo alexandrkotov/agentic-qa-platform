@@ -1914,6 +1914,21 @@ document.getElementById('record-setup-save-source').onclick = async () => {
   }
 };
 
+// Turns a bootstrap/setupPage.ts-style "Recording saved: <path> (open:
+// <url>)" line into a real clickable link to admin/server.ts's own
+// /videos static route, instead of a human having to go find the file
+// on disk by hand — the user's own ask, after the plain-path version
+// still read as "now what do I do with this." Scoped to this one log
+// (not the shared #operation-log Deploy/Discovery use) since this is the
+// only progress stream that ever emits a /videos/ path. HTML-escaped
+// first so nothing else in a message (an actual "<"/"&" a target's own
+// page title might contain, say) can break the markup.
+function appendRecordSetupLogLine(logEl, message) {
+  const escaped = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const linked = escaped.replace(/\/videos\/[^\s)]+\.webm/g, (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+  logEl.insertAdjacentHTML('beforeend', linked + '\n');
+}
+
 // A real live run of whatever's currently saved on disk — same
 // NDJSON-streamed /api/descriptors/:name/setup route the "AUTO-SETUP"
 // badge's own target already runs through in CI, same streamNdjson()
@@ -1946,7 +1961,7 @@ document.getElementById('record-setup-run').onclick = async () => {
       body: JSON.stringify({ record: true }),
     }, (evt) => {
       if (evt.type === 'progress') {
-        logEl.textContent += evt.message + '\n';
+        appendRecordSetupLogLine(logEl, evt.message);
         logEl.scrollTop = logEl.scrollHeight;
       } else if (evt.type === 'frame') {
         frameEl.src = 'data:image/jpeg;base64,' + evt.data;

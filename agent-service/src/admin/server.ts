@@ -137,6 +137,12 @@ async function descriptorForGroupingFile(name: string): Promise<string | null> {
 const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, 'static')));
+// Serves bootstrap/setupPage.ts's own saved recordings (agent-service/
+// reports/setup-videos/<name>/<file>.webm) so the "Record setup" UI can
+// link straight to a playable URL instead of just a filesystem path the
+// user has to go find by hand — same local-only, no-auth trust model as
+// every other route here.
+app.use('/videos', express.static(join(config.reportsDir, 'setup-videos')));
 
 app.get('/api/descriptors', async (_req, res) => {
   const files = await readdir(DESCRIPTORS_DIR);

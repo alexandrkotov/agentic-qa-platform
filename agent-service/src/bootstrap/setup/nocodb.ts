@@ -100,8 +100,8 @@ const setupNocodb: SetupFn = async (env, onProgress, onFrame) => {
       }
       log(`Setup complete — landed on ${page.url()}, baseHasAdmin now true.`);
     } finally {
-      const videoPath = await finish();
-      if (videoPath) log(`Recording saved: ${videoPath}`);
+      const recording = await finish();
+      if (recording) log(`Recording saved: ${recording.path} (open: ${recording.url})`);
     }
   } finally {
     await browser.close();
