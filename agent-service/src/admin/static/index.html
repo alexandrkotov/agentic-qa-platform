@@ -69,6 +69,13 @@
   #operation-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; margin-top: 0.3rem; }
   #operation-status.ok { color: #2f8f5b; }
   #operation-status.err { color: var(--danger); }
+  /* Same status-line convention as #operation-status above, reused here
+     since Record setup's own "Run" deliberately stays on its own view
+     instead of switching to #operation-panel — see that button's own
+     comment for why. */
+  #record-setup-run-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; margin-top: 0.3rem; }
+  #record-setup-run-status.ok { color: #2f8f5b; }
+  #record-setup-run-status.err { color: var(--danger); }
   /* Live progress feed while Deploy/Stop or Discovery's own long call runs — same look as generate.html's .gen-log. */
   .gen-log {
     width: 100%; margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; max-height: 11rem; overflow-y: auto;
@@ -86,6 +93,14 @@
   }
   #probe-results .probe-line { color: var(--text-mute); }
   #probe-results .probe-line + .probe-line { margin-top: 0.3rem; }
+  /* Same neutral-box language as #probe-results — a generated draft's own
+     honest limitations, meant to be read, not an error state. */
+  #record-setup-warnings, #record-setup-envvars {
+    margin: 0 0 0.6rem; padding: 0.6rem 0.8rem; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 6px; font-size: 0.8rem; line-height: 1.5;
+    color: var(--text-mute);
+  }
+  #record-setup-warnings .probe-line + .probe-line { margin-top: 0.3rem; }
   /* Same pill shape/colors as generate.html's .gen-badge-unconfirmed — this
      app's one established "heads up" badge pattern, reused rather than
      invented fresh. Shown next to "Propose components" when the currently
@@ -339,6 +354,14 @@
            depending on state. The badge just explains why it's disabled. -->
       <button class="primary" id="probe-btn" disabled>Propose components</button>
       <span id="probe-badge" class="badge-warn" style="display:none" title="This target has no running containers yet — deploy it first.">Not deployed yet</span>
+      <!-- Tier 1 of "Record setup" (see memory `project_setup_script_autogen_idea`) — same
+           "needs a live deploy to read" gate as Propose components above, reusing the identical
+           hasContainers signal (see updateDeployRemoveLabel()). Mechanical only: no Claude call,
+           no real idempotency research — see #record-setup-view's own rendered warnings. Opens
+           its own standalone view (#record-setup-view further down), not a nested panel here —
+           it only ever touches the setup SCRIPT, never this descriptor form. -->
+      <button class="primary" id="record-setup-btn" disabled>Record setup</button>
+      <span id="record-setup-badge" class="badge-warn" style="display:none" title="This target has no running containers yet — deploy it first.">Not deployed yet</span>
     </div>
 
     <div class="side-tile">
@@ -392,6 +415,79 @@
         <span id="status"></span>
       </div>
       <div id="issues"></div>
+    </div>
+
+    <!-- Its own standalone view (not nested in #editor) — deliberately:
+         this only ever touches a target's setup SCRIPT (bootstrap/setup/
+         <name>.ts), never the descriptor JSON #editor above owns
+         (extra instructions, components, Save/Undo) — the user's own
+         call, catching an earlier version that crowded both into one
+         screen. Generate → Run → (if wrong) Edit → Save → Run again all
+         happen right here without ever leaving this view — the whole
+         point of docker-compose.yml's own bootstrap/setup/ bind mount is
+         that none of this needs a rebuild in between. -->
+    <div id="record-setup-view" style="display:none">
+      <button class="primary" id="record-setup-back">&larr; Back</button>
+      <h2 id="record-setup-title"></h2>
+
+      <div class="field">
+        <label>1. Run this on your OWN machine <span class="hint">(not this container — it needs a real browser window)</span></label>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <!-- Most targets only ever publish one port, so this is a
+               no-op most of the time — kept as a real select (not
+               hidden when there's only one option) for the rarer
+               multi-port target, where the wizard could be on any of
+               them and a human has to say which. The "Port:" label +
+               title exist specifically so a single-option dropdown
+               doesn't read as mysterious UI with nothing to explain
+               itself — caught live, the user's own call. -->
+          <label for="record-setup-port" style="font-size:0.75rem; color:var(--text-mute); white-space:nowrap;" title="Which of this target's published ports to point codegen at — most targets only have one.">Port:</label>
+          <select id="record-setup-port" title="Which of this target's published ports to point codegen at — most targets only have one." style="flex:0 0 auto; width:auto;"></select>
+          <code id="record-setup-command" style="flex:1; padding:0.4rem 0.6rem; background:var(--surface-2); border-radius:6px; font-size:0.8rem; overflow-x:auto; white-space:nowrap;"></code>
+          <button class="ghost" id="record-setup-copy-cmd">Copy</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>2. Drive the real wizard, then paste the code from Playwright Inspector here</label>
+        <textarea id="record-setup-input" rows="8" placeholder="import { test, expect } from '@playwright/test';..."></textarea>
+      </div>
+      <button class="primary" id="record-setup-generate">Generate &amp; save draft</button>
+      <div id="record-setup-warnings"></div>
+
+      <!-- Suggested env var names from the last Generate — real values
+           still typed by hand (never guessed/auto-filled — these are
+           credentials), then written into the same descriptors/<name>.env
+           sidecar Test Suite's own env editor already uses, via the same
+           GET/PUT /api/generate/env/:name route. Empty/hidden until a
+           Generate actually produced at least one. -->
+      <div id="record-setup-envvars-field" class="field" style="display:none">
+        <label>3. Set real values for the suggested env vars <span class="hint">(written to descriptors/&lt;name&gt;.env)</span></label>
+        <div id="record-setup-envvars"></div>
+        <button class="primary" id="record-setup-save-env">Save to .env</button>
+      </div>
+
+      <div class="field">
+        <label>4. Source <span class="hint">(bootstrap/setup/&lt;name&gt;.ts — edit and Save, then Run again, no rebuild needed)</span></label>
+        <textarea id="record-setup-source" rows="16" placeholder="No setup script yet — paste a recording above and Generate, or write one by hand here."></textarea>
+      </div>
+      <div style="display:flex; gap:0.5rem;">
+        <button class="primary" id="record-setup-save-source">Save</button>
+        <button class="primary" id="record-setup-run">Run</button>
+      </div>
+      <div id="record-setup-run-status"></div>
+      <!-- Live CDP screencast frames (bootstrap/setupPage.ts's own
+           Page.startScreencast) — hidden until the first one actually
+           arrives, so a plain non-live run (record not requested, or the
+           script itself skipped the browser entirely via its own
+           idempotency check) never shows an empty/stale image. Not a
+           real video stream, just the latest JPEG frame overwritten
+           repeatedly — choppy but genuinely live, no VNC/display server
+           anywhere in this picture. A saved .webm of the same run lands
+           under agent-service/reports/setup-videos/<name>/ and shows up
+           as a path in the ordinary log text below, not here. -->
+      <img id="record-setup-frame" style="display:none; max-width:100%; border:1px solid var(--line); border-radius:6px; margin-top:0.5rem;">
+      <pre id="record-setup-log" class="gen-log" style="display:none"></pre>
     </div>
   </main>
   </div>
@@ -525,6 +621,7 @@ function showMainView(view) {
   document.getElementById('empty').style.display = view === 'empty' ? 'block' : 'none';
   document.getElementById('editor').style.display = view === 'editor' ? 'block' : 'none';
   document.getElementById('operation-panel').style.display = view === 'operation' ? 'block' : 'none';
+  document.getElementById('record-setup-view').style.display = view === 'record-setup' ? 'block' : 'none';
 }
 
 // JSON snapshot of {components, extraInstructions} as of the last time the
@@ -777,6 +874,8 @@ async function updateDeployRemoveLabel() {
   const undeployBtn = document.getElementById('undeploy-btn');
   const probeBtn = document.getElementById('probe-btn');
   const probeBadge = document.getElementById('probe-badge');
+  const recordSetupBtn = document.getElementById('record-setup-btn');
+  const recordSetupBadge = document.getElementById('record-setup-badge');
   if (deployActionBusy) return; // runDeployAction's own finally re-derives this once it's done, not mid-flight
   undeployBtn.textContent = 'Remove';
   const name = document.getElementById('deploy-descriptor-select').value;
@@ -784,19 +883,24 @@ async function updateDeployRemoveLabel() {
     undeployBtn.disabled = true;
     probeBtn.disabled = true;
     probeBadge.style.display = 'none';
+    recordSetupBtn.disabled = true;
+    recordSetupBadge.style.display = 'none';
     return;
   }
   try {
     const status = await api('/api/descriptors/' + encodeURIComponent(name) + '/deploy/status');
     const hasContainers = status.containerNames.length > 0;
-    // Same real-containers-exist signal for both — Remove needs something
-    // to tear down, Propose needs a live deploy to actually read. The
-    // badge (same condition, deliberately) is what explains *why* it's
-    // disabled — the user's own call: simpler and more predictable than
-    // an earlier version where this button offered to deploy on click.
+    // Same real-containers-exist signal for all three — Remove needs
+    // something to tear down, Propose/Record setup both need a live
+    // deploy to actually read. The badge (same condition, deliberately)
+    // is what explains *why* it's disabled — the user's own call:
+    // simpler and more predictable than an earlier version where this
+    // button offered to deploy on click.
     undeployBtn.disabled = !hasContainers;
     probeBtn.disabled = !hasContainers;
     probeBadge.style.display = hasContainers ? 'none' : 'inline-block';
+    recordSetupBtn.disabled = !hasContainers;
+    recordSetupBadge.style.display = hasContainers ? 'none' : 'inline-block';
   } catch {
     // best-effort — a transient fetch failure just leaves the previous disabled/badge state in place
   }
@@ -827,7 +931,9 @@ async function selectDescriptor(name) {
   document.getElementById('editor-title').textContent = name + '.json';
   document.getElementById('extra-instructions').value = descriptor.extraInstructions || '';
   // Stale results from probing a DIFFERENT descriptor shouldn't linger
-  // visible once the editor switches to this one.
+  // visible once the editor switches to this one. (Record setup's own
+  // view resets itself on open, not here — it's a separate top-level
+  // view now, not nested inside this one.)
   document.getElementById('probe-results').style.display = 'none';
   // Baseline captured now, from what the server actually just returned —
   // before renderComponents() below, whose own updateSaveUndoDisabled()
@@ -1627,6 +1733,239 @@ document.getElementById('probe-btn').onclick = async () => {
     alert('Propose failed: ' + e.message);
   } finally {
     await updateDeployRemoveLabel(); // re-derives probe-btn's own disabled state, not just a blind re-enable
+  }
+};
+
+// Tier 1 of "Record setup" — see this button's own HTML comment and
+// convertRecording.ts's header for the full design. Same "operate on
+// whichever descriptor the Deploy target select names" convention
+// probe-btn's own onclick already uses above, for the identical reason
+// (this whole tile acts on that select, not necessarily whatever's open
+// in the editor).
+// Which target the standalone Record-setup view is currently open for —
+// deliberately NOT state.current (that's the descriptor editor's own
+// notion of "open," a different concern this view no longer shares, see
+// its own HTML comment). Re-derived from the Deploy tile's select at open
+// time; the tile stays visible in the left sidebar regardless of which
+// right-hand view is showing, so reading it live (not just once) is safe.
+let recordSetupTarget = null;
+
+async function refreshRecordSetupSource() {
+  const { text } = await api('/api/descriptors/' + encodeURIComponent(recordSetupTarget) + '/setup/source');
+  document.getElementById('record-setup-source').value = text ?? '';
+}
+
+document.getElementById('record-setup-btn').onclick = async () => {
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (!name) return;
+  recordSetupTarget = name;
+  showMainView('record-setup');
+  document.getElementById('record-setup-title').textContent = name + '.json — setup script';
+  document.getElementById('record-setup-input').value = '';
+  document.getElementById('record-setup-warnings').innerHTML = '';
+  document.getElementById('record-setup-envvars-field').style.display = 'none';
+  document.getElementById('record-setup-run-status').textContent = '';
+  document.getElementById('record-setup-log').style.display = 'none';
+  document.getElementById('record-setup-log').textContent = '';
+
+  const portSelect = document.getElementById('record-setup-port');
+  const commandEl = document.getElementById('record-setup-command');
+  const rebuildCommand = () => {
+    const port = portSelect.value;
+    // `install chromium` first, chained — a no-op in well under a second
+    // if the browser's already there (the common case, e.g. running from
+    // this repo's own agent-service/ where it's already a dependency),
+    // but self-heals the real "Executable doesn't exist" failure a fresh
+    // machine/global npx hits otherwise, with its own native download
+    // progress bar right there in the same terminal — caught live, the
+    // user's own idea, not a made-up edge case.
+    commandEl.textContent = port
+      ? `npx playwright install chromium && npx playwright codegen http://localhost:${port}`
+      : '(no published port found)';
+  };
+  try {
+    const { ports } = await api('/api/descriptors/' + encodeURIComponent(name) + '/ports');
+    portSelect.innerHTML = ports.map((p) => `<option value="${p.publishedPort}">${p.service}:${p.publishedPort}</option>`).join('');
+    rebuildCommand();
+  } catch (e) {
+    portSelect.innerHTML = '';
+    commandEl.textContent = 'Could not read the live port: ' + e.message;
+  }
+  portSelect.onchange = rebuildCommand;
+
+  try {
+    await refreshRecordSetupSource();
+  } catch (e) {
+    document.getElementById('record-setup-source').value = '';
+  }
+};
+
+document.getElementById('record-setup-back').onclick = () => {
+  showMainView(state.current ? 'editor' : 'empty');
+};
+
+document.getElementById('record-setup-copy-cmd').onclick = () => {
+  navigator.clipboard.writeText(document.getElementById('record-setup-command').textContent);
+};
+
+// Generate & save draft — Tier 1 of "Record setup" (see memory
+// `project_setup_script_autogen_idea`): purely mechanical, no Claude
+// call. Writes straight to bootstrap/setup/<name>.ts on the server side
+// (docker-compose.yml's own bind mount on that one directory is the whole
+// reason this works without a rebuild) — this handler's own job is just
+// to show what happened: the warnings convertRecording.ts always returns
+// (this tier's own honest limitations, same neutral-but-visible treatment
+// #probe-results already gives its evidence/unclassified lines), which
+// env vars still need real values, and the freshly-written source itself
+// (re-fetched, not echoed back — one source of truth).
+document.getElementById('record-setup-generate').onclick = async () => {
+  const recording = document.getElementById('record-setup-input').value.trim();
+  if (!recording) return;
+  const btn = document.getElementById('record-setup-generate');
+  btn.disabled = true;
+  try {
+    const { envVars, warnings } = await api(`/api/descriptors/${encodeURIComponent(recordSetupTarget)}/setup/generate-draft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recording }),
+    });
+    document.getElementById('record-setup-warnings').innerHTML =
+      warnings.map((w) => `<div class="probe-line">&middot; ${w}</div>`).join('');
+    const envVarsField = document.getElementById('record-setup-envvars-field');
+    if (envVars.length > 0) {
+      document.getElementById('record-setup-envvars').innerHTML = envVars.map((v) =>
+        `<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.3rem;">` +
+        `<code style="flex:0 0 auto;">${v}</code>` +
+        `<input type="text" data-envvar="${v}" placeholder="real value" style="flex:1;">` +
+        `</div>`,
+      ).join('');
+      envVarsField.style.display = 'block';
+    } else {
+      envVarsField.style.display = 'none';
+    }
+    await refreshRecordSetupSource();
+  } catch (e) {
+    alert('Generate draft failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// Plain KEY=value line merge, same dotenv-text shape testEnv.ts's own
+// sidecar already uses — replaces an existing KEY= line's value in place,
+// appends new keys at the end. No parsing library needed for that.
+function mergeEnvText(existingText, updates) {
+  const lines = existingText.split('\n');
+  const seen = new Set();
+  const merged = lines.map((line) => {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    if (m && Object.prototype.hasOwnProperty.call(updates, m[1])) {
+      seen.add(m[1]);
+      return `${m[1]}=${updates[m[1]]}`;
+    }
+    return line;
+  });
+  for (const [k, v] of Object.entries(updates)) {
+    if (!seen.has(k)) merged.push(`${k}=${v}`);
+  }
+  return merged.join('\n').replace(/\n+$/, '\n');
+}
+
+document.getElementById('record-setup-save-env').onclick = async () => {
+  const updates = {};
+  document.querySelectorAll('#record-setup-envvars [data-envvar]').forEach((input) => {
+    if (input.value.trim()) updates[input.dataset.envvar] = input.value.trim();
+  });
+  if (Object.keys(updates).length === 0) return;
+  const btn = document.getElementById('record-setup-save-env');
+  btn.disabled = true;
+  try {
+    const { text } = await api('/api/generate/env/' + encodeURIComponent(recordSetupTarget));
+    const merged = mergeEnvText(text || '', updates);
+    await api('/api/generate/env/' + encodeURIComponent(recordSetupTarget), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: merged }),
+    });
+    btn.textContent = 'Saved';
+    setTimeout(() => { btn.textContent = 'Save to .env'; }, 1500);
+  } catch (e) {
+    alert('Saving .env failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('record-setup-save-source').onclick = async () => {
+  const btn = document.getElementById('record-setup-save-source');
+  btn.disabled = true;
+  try {
+    await api(`/api/descriptors/${encodeURIComponent(recordSetupTarget)}/setup/source`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: document.getElementById('record-setup-source').value }),
+    });
+    btn.textContent = 'Saved';
+    setTimeout(() => { btn.textContent = 'Save'; }, 1500);
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// A real live run of whatever's currently saved on disk — same
+// NDJSON-streamed /api/descriptors/:name/setup route the "AUTO-SETUP"
+// badge's own target already runs through in CI, same streamNdjson()
+// helper Run Discovery uses. Deliberately stays ON this view (doesn't
+// switch to #operation-panel the way Deploy/Discovery do) — the whole
+// point of this loop is generate/edit → run → look → edit again without
+// ever navigating away.
+document.getElementById('record-setup-run').onclick = async () => {
+  const btn = document.getElementById('record-setup-run');
+  const statusEl = document.getElementById('record-setup-run-status');
+  const logEl = document.getElementById('record-setup-log');
+  const frameEl = document.getElementById('record-setup-frame');
+  btn.disabled = true;
+  statusEl.className = '';
+  statusEl.textContent = `Running setup for "${recordSetupTarget}"…`;
+  logEl.style.display = 'block';
+  logEl.textContent = '';
+  frameEl.style.display = 'none';
+  frameEl.src = '';
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    // `record: true` is what actually turns on the live CDP screencast +
+    // saved video on the server side (bootstrap/setupPage.ts) — CI's own
+    // real call to this same route never sends it, so this button is the
+    // only place that ever does.
+    await streamNdjson(`/api/descriptors/${encodeURIComponent(recordSetupTarget)}/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record: true }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'frame') {
+        frameEl.src = 'data:image/jpeg;base64,' + evt.data;
+        frameEl.style.display = 'block';
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    statusEl.className = 'ok';
+    statusEl.textContent = 'Done.';
+  } catch (e) {
+    statusEl.className = 'err';
+    statusEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
   }
 };
 

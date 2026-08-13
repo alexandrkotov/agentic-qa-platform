@@ -26,3 +26,13 @@ agent-service/.playwright-mcp/
 # root, mounted at an identical absolute path on both host and container
 # sides; see docker-compose.yml's own comment on this mount for why.
 /targets/
+# Per-target first-run setup scripts (bootstrap/setupTarget.ts) — same
+# targeted-exclusion trick as /archive/* above, same reason: the "Record
+# setup" UI (docker-compose.yml's own comment on this directory's mount)
+# writes new ones straight to disk, and most of those are exploratory/
+# per-user, not meant to land in git automatically. These three are the
+# real, reviewed, worked examples that actually ship with the demo.
+/agent-service/src/bootstrap/setup/*
+!/agent-service/src/bootstrap/setup/uptime-kuma.ts
+!/agent-service/src/bootstrap/setup/trilium.ts
+!/agent-service/src/bootstrap/setup/nocodb.ts

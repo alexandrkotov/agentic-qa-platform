@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import type { SetupFn } from '../setupTarget.ts';
+import { createSetupPage } from '../setupPage.ts';
 
 /**
  * File name IS the registration — setupTarget.ts's runSetup() dynamically
@@ -35,7 +36,7 @@ import type { SetupFn } from '../setupTarget.ts';
  * something that wasn't undeployed) is a fast no-op instead of trying to
  * re-run a wizard that no longer exists.
  */
-const setupUptimeKuma: SetupFn = async (env, onProgress) => {
+const setupUptimeKuma: SetupFn = async (env, onProgress, onFrame) => {
   const baseUrl = env.FRONTEND_URL;
   if (!baseUrl) throw new Error('uptime-kuma setup needs FRONTEND_URL in descriptors/uptime-kuma.env');
   const password = env.UPTIME_KUMA_PASSWORD;
@@ -76,32 +77,37 @@ const setupUptimeKuma: SetupFn = async (env, onProgress) => {
 
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage();
-    await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    const { page, finish } = await createSetupPage(browser, 'uptime-kuma', onFrame);
+    try {
+      await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 30000 });
 
-    // Step 1: database choice — this descriptor's own sqlite component
-    // (descriptors/uptime-kuma.json) is the only backend actually wired
-    // up here, so SQLite is the only real option; the other two radios
-    // (embedded-mariadb, mariadb) would need components this descriptor
-    // doesn't have.
-    log('Selecting SQLite on the database-choice step...');
-    await page.getByText('SQLite', { exact: true }).click();
-    await page.getByRole('button', { name: 'Next' }).click();
+      // Step 1: database choice — this descriptor's own sqlite component
+      // (descriptors/uptime-kuma.json) is the only backend actually wired
+      // up here, so SQLite is the only real option; the other two radios
+      // (embedded-mariadb, mariadb) would need components this descriptor
+      // doesn't have.
+      log('Selecting SQLite on the database-choice step...');
+      await page.getByText('SQLite', { exact: true }).click();
+      await page.getByRole('button', { name: 'Next' }).click();
 
-    // Step 2: "Setting up the database..." transitional screen, auto-advances
-    // once done — confirmed live it can take a real few seconds, not instant.
-    log('Waiting for database setup to finish...');
-    await page.waitForSelector('#floatingInput', { timeout: 60000 });
+      // Step 2: "Setting up the database..." transitional screen, auto-advances
+      // once done — confirmed live it can take a real few seconds, not instant.
+      log('Waiting for database setup to finish...');
+      await page.waitForSelector('#floatingInput', { timeout: 60000 });
 
-    // Step 3: real account creation.
-    log('Creating the admin account...');
-    await page.fill('#floatingInput', 'admin');
-    await page.fill('#floatingPassword', password);
-    await page.fill('#repeat', password);
-    await page.getByRole('button', { name: 'Create' }).click();
+      // Step 3: real account creation.
+      log('Creating the admin account...');
+      await page.fill('#floatingInput', 'admin');
+      await page.fill('#floatingPassword', password);
+      await page.fill('#repeat', password);
+      await page.getByRole('button', { name: 'Create' }).click();
 
-    await page.waitForURL(/\/dashboard$/, { timeout: 30000 });
-    log(`Setup complete — landed on ${page.url()}.`);
+      await page.waitForURL(/\/dashboard$/, { timeout: 30000 });
+      log(`Setup complete — landed on ${page.url()}.`);
+    } finally {
+      const videoPath = await finish();
+      if (videoPath) log(`Recording saved: ${videoPath}`);
+    }
   } finally {
     await browser.close();
   }

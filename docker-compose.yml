@@ -130,6 +130,19 @@ services:
     volumes:
       - ./agent-service/descriptors:/usr/src/app/descriptors
       - ./agent-service/reports:/usr/src/app/reports
+      # Per-target first-run setup scripts (bootstrap/setupTarget.ts's own
+      # hasSetup()/runSetup() convention) — deliberately its OWN mount, not
+      # part of the rest of agent-service/src/ (baked into the image via
+      # COPY, not mounted, see Dockerfile.workbench). This container runs
+      # straight off `npx tsx src/admin/server.ts` with no build step, and
+      # runSetup() already dynamic-`import()`s per call, so a file the
+      # "Record setup" UI writes here at runtime is importable on the very
+      # next request — no rebuild needed, unlike everything else under
+      # src/. Only a handful of these are actually git-tracked (see
+      # .gitignore's own targeted-exclusion block, same trick already used
+      # for archive/'s two demo snapshots) — anything newly generated
+      # starts as an untracked file here, same as a fresh archive/ snapshot.
+      - ./agent-service/src/bootstrap/setup:/usr/src/app/src/bootstrap/setup
       # Point-in-time snapshots of the test suite + its source artifacts,
       # written before "Write files" overwrites tests/ — at the repo ROOT
       # (the user's own call), not nested under agent-service/: the bundle

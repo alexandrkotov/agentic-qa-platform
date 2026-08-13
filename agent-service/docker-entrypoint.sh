@@ -53,6 +53,7 @@ for dir in \
   /usr/src/app/reports \
   /usr/src/app/archive \
   /usr/src/app/tests \
+  /usr/src/app/src/bootstrap/setup \
   "${HOST_PROJECT_ROOT:+$HOST_PROJECT_ROOT/targets}"; do
   if [ -n "$dir" ]; then
     mkdir -p "$dir"

@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import type { SetupFn } from '../setupTarget.ts';
+import { createSetupPage } from '../setupPage.ts';
 
 /**
  * File name IS the registration — see setupTarget.ts's own top comment.
@@ -39,7 +40,7 @@ import type { SetupFn } from '../setupTarget.ts';
  * real signed-up instance afterward, same shape as Kuma's `/api/entry-page`
  * and Trilium's `/api/setup/status`.
  */
-const setupNocodb: SetupFn = async (env, onProgress) => {
+const setupNocodb: SetupFn = async (env, onProgress, onFrame) => {
   const baseUrl = env.FRONTEND_URL;
   if (!baseUrl) throw new Error('nocodb setup needs FRONTEND_URL in descriptors/nocodb.env');
   const email = env.NOCODB_EMAIL;
@@ -73,30 +74,35 @@ const setupNocodb: SetupFn = async (env, onProgress) => {
 
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage();
-    await page.goto(`${baseUrl}/signup`, { waitUntil: 'networkidle', timeout: 30000 });
+    const { page, finish } = await createSetupPage(browser, 'nocodb', onFrame);
+    try {
+      await page.goto(`${baseUrl}/signup`, { waitUntil: 'networkidle', timeout: 30000 });
 
-    log('Signing up as the first user (becomes super admin)...');
-    await page.getByRole('textbox', { name: '* E-mail' }).fill(email);
-    await page.getByRole('textbox', { name: 'Password' }).fill(password);
-    await page.getByRole('button', { name: 'SIGN UP' }).click();
+      log('Signing up as the first user (becomes super admin)...');
+      await page.getByRole('textbox', { name: '* E-mail' }).fill(email);
+      await page.getByRole('textbox', { name: 'Password' }).fill(password);
+      await page.getByRole('button', { name: 'SIGN UP' }).click();
 
-    // No fixed dashboard URL to wait for (NocoDB lands on "/" either way) —
-    // the real, honest completion signal is the same idempotency check
-    // above flipping to true, not a URL guess.
-    let confirmed = false;
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      const after = (await fetch(`${baseUrl}/api/v2/meta/nocodb/info`).then((r) => r.json())) as { baseHasAdmin?: boolean };
-      if (after.baseHasAdmin) {
-        confirmed = true;
-        break;
+      // No fixed dashboard URL to wait for (NocoDB lands on "/" either way) —
+      // the real, honest completion signal is the same idempotency check
+      // above flipping to true, not a URL guess.
+      let confirmed = false;
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        const after = (await fetch(`${baseUrl}/api/v2/meta/nocodb/info`).then((r) => r.json())) as { baseHasAdmin?: boolean };
+        if (after.baseHasAdmin) {
+          confirmed = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
       }
-      await new Promise((r) => setTimeout(r, 1000));
+      if (!confirmed) {
+        throw new Error('Signed up, but /api/v2/meta/nocodb/info never reported baseHasAdmin: true afterward.');
+      }
+      log(`Setup complete — landed on ${page.url()}, baseHasAdmin now true.`);
+    } finally {
+      const videoPath = await finish();
+      if (videoPath) log(`Recording saved: ${videoPath}`);
     }
-    if (!confirmed) {
-      throw new Error('Signed up, but /api/v2/meta/nocodb/info never reported baseHasAdmin: true afterward.');
-    }
-    log(`Setup complete — landed on ${page.url()}, baseHasAdmin now true.`);
   } finally {
     await browser.close();
   }

@@ -11,6 +11,8 @@ import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTa
 import type { DeployState } from '../bootstrap/deployTarget.ts';
 import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
+import { targetsDirFromEnv } from '../bootstrap/targetsDir.ts';
+import { convertRecording } from '../bootstrap/convertRecording.ts';
 import { runCommand } from '../util/runCommand.ts';
 import { expandHostProjectRoot } from '../util/expandHostProjectRoot.ts';
 import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
@@ -167,6 +169,92 @@ app.get('/api/descriptors/:name', async (req, res) => {
 // own comment above it), so this never 404s even for a stale/mistyped name.
 app.get('/api/descriptors/:name/has-setup', (req, res) => {
   res.json({ hasSetup: hasSetup(req.params.name) });
+});
+
+// Backs the "Record setup" panel's own codegen-command builder (index.html)
+// — needs the target's real currently-published port(s), the same
+// state.json a real deploy already wrote (see deployTarget.ts's own
+// DeployState). Same read-only resolveTargetPaths()+state.json pattern
+// already used by the hub-status code further down this file (search
+// "kumaUrl") and by probeTarget.ts, just generalized to any descriptor
+// instead of hardcoding "uptime-kuma".
+app.get('/api/descriptors/:name/ports', async (req, res) => {
+  try {
+    const { statePath } = resolveTargetPaths(targetsDirFromEnv(), req.params.name);
+    const state = JSON.parse(await readFile(statePath, 'utf-8')) as DeployState;
+    res.json({ ports: state.ports });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(400).json({ error: 'No deployed configuration found for this target yet — deploy it first.' });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// Tier 1 of "Record setup" (see memory `project_setup_script_autogen_idea`)
+// — a purely mechanical, no-Claude-call transform from a pasted
+// `playwright codegen` recording into a draft SetupFn. See
+// convertRecording.ts's own header comment for what this deliberately does
+// NOT attempt (a real idempotency check, deciding which recorded steps are
+// optional) — that stays a human/Claude-in-chat research step, same as it
+// was for setup/trilium.ts and setup/nocodb.ts.
+//
+// Writes straight to bootstrap/setup/<name>.ts, not just returned for
+// copy-paste — docker-compose.yml now bind-mounts that one directory
+// specifically (unlike the rest of agent-service/src/, baked into the
+// image), so this is a real, persisted write the very next `/setup` (run)
+// or `/setup/source` (read/edit) call can see immediately, no rebuild.
+// `code` itself isn't echoed back in the response — the UI's own Source
+// view re-reads it fresh via GET .../setup/source right after this call,
+// so there's no reason to duplicate it in two places that could drift.
+app.post('/api/descriptors/:name/setup/generate-draft', async (req, res) => {
+  try {
+    const { recording } = req.body as { recording?: string };
+    if (!recording) {
+      res.status(400).json({ error: '"recording" is required' });
+      return;
+    }
+    const { code, envVars, warnings } = convertRecording(recording, req.params.name);
+    await writeFile(setupScriptPath(req.params.name), code, 'utf-8');
+    res.json({ envVars, warnings });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// The setup script's own raw source — read/edit half of the same
+// generate → run → edit → save loop above. `text: null` (not a 404) when
+// none exists yet mirrors hasSetup()'s own "most targets don't need one"
+// framing — the UI shows an empty/placeholder editor, not an error.
+app.get('/api/descriptors/:name/setup/source', async (req, res) => {
+  try {
+    const text = await readFile(setupScriptPath(req.params.name), 'utf-8');
+    res.json({ text });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.json({ text: null });
+      return;
+    }
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// No schema validation beyond "is a string" — this is TypeScript source,
+// not JSON; a syntax/type error just surfaces the next time /setup (run)
+// actually imports it, same as any hand-edited file would today.
+app.put('/api/descriptors/:name/setup/source', async (req, res) => {
+  try {
+    const { text } = req.body as { text?: string };
+    if (typeof text !== 'string') {
+      res.status(400).json({ error: '"text" is required' });
+      return;
+    }
+    await writeFile(setupScriptPath(req.params.name), text, 'utf-8');
+    res.json({ text });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 app.put('/api/descriptors/:name', async (req, res) => {
@@ -375,8 +463,18 @@ app.post('/api/descriptors/:name/setup', async (req, res) => {
     res.setHeader('Content-Type', 'application/x-ndjson');
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
+    // Only the "Record setup" UI's own Run button sends `record: true` —
+    // CI's own real call to this exact route (.github/workflows/tests.yml)
+    // sends a plain POST with no body, so `onFrame` stays undefined there
+    // and bootstrap/setupPage.ts's own screencast/video-recording path
+    // never runs at all: zero added cost for every CI run. See that
+    // file's own header comment for why live view and the saved
+    // recording share one flag instead of two.
+    const { record } = (req.body ?? {}) as { record?: boolean };
+    const onFrame = record ? (data: string) => send({ type: 'frame', data }) : undefined;
+
     try {
-      await runSetup(name, env, (message) => send({ type: 'progress', message }));
+      await runSetup(name, env, (message) => send({ type: 'progress', message }), onFrame);
       send({ type: 'done' });
     } catch (err) {
       send({ type: 'error', error: (err as Error).message });

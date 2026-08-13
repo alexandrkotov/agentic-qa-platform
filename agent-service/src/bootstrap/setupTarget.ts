@@ -28,7 +28,17 @@ import { fileURLToPath } from 'node:url';
  * own real prompt-engineering code, so a lookup-by-convention would buy
  * nothing there.)
  */
-export type SetupFn = (env: Record<string, string>, onProgress?: (message: string) => void) => Promise<void>;
+// onFrame (base64 JPEG per call) is the "Record setup" UI's own live-view
+// + saved-recording hook — see bootstrap/setupPage.ts's own header
+// comment for the full story. Undefined at every call site that doesn't
+// ask for it (including CI's own real one, admin/server.ts's /setup
+// route) — a SetupFn that doesn't check for it just never gets called
+// with it, no behavior change for existing scripts that don't use it.
+export type SetupFn = (
+  env: Record<string, string>,
+  onProgress?: (message: string) => void,
+  onFrame?: (base64Jpeg: string) => void,
+) => Promise<void>;
 
 const SETUP_DIR = join(dirname(fileURLToPath(import.meta.url)), 'setup');
 
@@ -43,7 +53,12 @@ export function hasSetup(name: string): boolean {
   return existsSync(setupScriptPath(name));
 }
 
-export async function runSetup(name: string, env: Record<string, string>, onProgress?: (message: string) => void): Promise<void> {
+export async function runSetup(
+  name: string,
+  env: Record<string, string>,
+  onProgress?: (message: string) => void,
+  onFrame?: (base64Jpeg: string) => void,
+): Promise<void> {
   if (!hasSetup(name)) {
     throw Object.assign(
       new Error(
@@ -61,5 +76,5 @@ export async function runSetup(name: string, env: Record<string, string>, onProg
   if (typeof mod.default !== 'function') {
     throw new Error(`bootstrap/setup/${name}.ts must have a default export matching SetupFn's shape (env, onProgress?) => Promise<void>.`);
   }
-  await mod.default(env, onProgress);
+  await mod.default(env, onProgress, onFrame);
 }
