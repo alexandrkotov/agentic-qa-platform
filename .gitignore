@@ -30,9 +30,17 @@ agent-service/.playwright-mcp/
 # targeted-exclusion trick as /archive/* above, same reason: the "Record
 # setup" UI (docker-compose.yml's own comment on this directory's mount)
 # writes new ones straight to disk, and most of those are exploratory/
-# per-user, not meant to land in git automatically. These three are the
-# real, reviewed, worked examples that actually ship with the demo.
+# per-user, not meant to land in git automatically. Only artifacts of
+# targets in the hub page's own demo block belong in git — uptime-kuma is
+# one, nocodb is the record-and-convert workflow's own worked example kept
+# alongside it. Trilium (the OTHER record-and-convert validation target)
+# was untracked on the same basis 2026-08-14 — still a real local test
+# fixture, just not something that belongs in git.
 /agent-service/src/bootstrap/setup/*
 !/agent-service/src/bootstrap/setup/uptime-kuma.ts
-!/agent-service/src/bootstrap/setup/trilium.ts
 !/agent-service/src/bootstrap/setup/nocodb.ts
+# Same reasoning, same date — Trilium's own descriptor/env, not gitignored
+# by the general rules above (`.env` only matches a file literally named
+# `.env`, and there's no existing per-target rule for descriptors/*.json).
+/agent-service/descriptors/trilium.json
+/agent-service/descriptors/trilium.env
