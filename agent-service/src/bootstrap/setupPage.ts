@@ -90,6 +90,19 @@ export async function createSetupPage(
   return {
     page,
     finish: async () => {
+      // Give the page a moment to settle before finalizing anything —
+      // live-caught this session: a SetupFn's last action is typically a
+      // `.click()` that triggers navigation, but `.click()` itself only
+      // waits for the click event, not for what happens after. Closing the
+      // context right away (recordVideo writes frames asynchronously, and
+      // the CDP screencast is throttled too) finalized the video mid-action
+      // instead of showing the page the target actually landed on — both
+      // "Run (as-is)" and "Reset & Run" recordings ended mid password-entry
+      // rather than on the resulting page. `.catch()` here on purpose: the
+      // SetupFn's own `finally` calls this even after an error, when the
+      // page may already be closed/navigating/gone.
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(500);
       await stopScreencast?.();
       await context.close(); // finalizes the video file, if any
       const video = page.video();

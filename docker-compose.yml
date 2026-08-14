@@ -211,6 +211,43 @@ services:
       # state, never commits/writes through this mount.
       - ./.git:/usr/src/app/.git:ro
 
+  # A real, headed (not headless) Chromium + Playwright Inspector, watchable and clickable from a
+  # plain browser tab over noVNC — backs the "Record setup" view's own "Start recording" button
+  # (admin/server.ts's /api/recorder/start|stop). See codegen-recorder/Dockerfile's own header
+  # comment for why this needs a separate image from workbench's own Playwright install (this is
+  # the one place in the repo that runs a browser with a real window, not headless).
+  #
+  # Always-on, not built/started lazily on first use — the user's own call, backed by a real
+  # technical point: idling (Xvfb + fluxbox + x11vnc + websockify, no browser running yet) is
+  # genuinely cheap, tens of MB and near-zero CPU. The actual weight — a real Chromium process —
+  # only exists while a recording is in progress, started via `docker exec` on demand by the routes
+  # above, not at container boot. So this joins workbench/app/frontend/report as a normal
+  # always-up service instead of paying a first-click build/start wait every time.
+  #
+  # No docker.sock mount (unlike workbench) — this container never talks to the Docker daemon
+  # itself, only runs a browser pointed at whatever URL a request gives it.
+  codegen-recorder:
+    build:
+      context: ./codegen-recorder
+    # Compose's own default naming (agentic-qa-platform-codegen-recorder-1)
+    # would work too, but admin/server.ts's /api/recorder/* routes need a
+    # fixed, predictable name to `docker exec` into — this is a real
+    # single-instance service, never scaled, so pinning it costs nothing.
+    container_name: codegen-recorder
+    ports:
+      # localhost-only, deliberately — this is real, interactive remote-control of a browser;
+      # confirmed live in the throwaway spike that a real random password (start.sh's own
+      # VNC_PASSWORD, never a hardcoded default) plus this bind is what actually keeps it from
+      # being reachable off the host at all, not just "probably fine."
+      - "127.0.0.1:6080:6080"
+    # Needed to reach a deployed target's own published port from inside this container (same
+    # reason workbench's own service has this above) — automatic on Docker Desktop, but not
+    # guaranteed on plain Docker Engine (Engine 20.10+'s host-gateway sentinel), so spelled out
+    # explicitly rather than assumed.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
 volumes:
   playwright-browsers:
 

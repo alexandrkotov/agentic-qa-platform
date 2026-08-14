@@ -246,7 +246,10 @@ async function cloneOrUpdateRepo(
 // doesn't merge" behavior entirely, since there's nothing left to merge.
 // ---------------------------------------------------------------------------
 
-function projectNameFor(name: string): string {
+// Exported so clearTargetData.ts can find named volumes tied to this exact
+// target (via Compose's own automatic com.docker.compose.project label)
+// without duplicating this naming convention a third place.
+export function projectNameFor(name: string): string {
   return `bdd-target-${name}`;
 }
 

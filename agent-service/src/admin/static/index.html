@@ -162,7 +162,7 @@
   #descriptor-list .descriptor-delete-btn:hover { color: var(--danger); background: var(--surface-2); }
   button.primary {
     background: var(--accent); color: #fff; border: none; border-radius: 6px;
-    padding: 0.55rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
   }
   button.primary:hover { filter: brightness(1.08); }
   button.primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
@@ -260,7 +260,13 @@
     padding: 0.5rem 0.6rem; font-size: 0.87rem; color: var(--text); font-family: inherit;
   }
   .field textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; resize: vertical; min-height: 3.5rem; }
-  .field .hint { font-size: 0.72rem; color: var(--text-mute); }
+  /* Not scoped to .field — reused standalone too (the Run/Reset & Run
+     button row's own explanation isn't inside a .field wrapper). */
+  .hint { font-size: 0.72rem; color: var(--text-mute); }
+  /* Same convention as generate.html's own tooltip-bearing controls — a "?"
+     cursor on hover, consistent across every element that has a title,
+     regardless of what cursor that element type would otherwise default to. */
+  label[title], input[title], span[title] { cursor: help; }
   .required-mark { color: var(--danger); }
   .field input.invalid { border-color: var(--danger); }
 
@@ -431,8 +437,8 @@
       <h2 id="record-setup-title"></h2>
 
       <div class="field">
-        <label>1. Run this on your OWN machine <span class="hint">(not this container — it needs a real browser window)</span></label>
-        <div style="display:flex; gap:0.5rem; align-items:center;">
+        <label>Record setup <span class="hint">(runs the real wizard in a container this app manages — nothing to install. Stop recording pulls the code into the box below for you — no manual copying needed.)</span></label>
+        <div style="display:flex; align-items:center; gap:0.75rem;">
           <!-- Most targets only ever publish one port, so this is a
                no-op most of the time — kept as a real select (not
                hidden when there's only one option) for the rarer
@@ -441,18 +447,26 @@
                title exist specifically so a single-option dropdown
                doesn't read as mysterious UI with nothing to explain
                itself — caught live, the user's own call. -->
-          <label for="record-setup-port" style="font-size:0.75rem; color:var(--text-mute); white-space:nowrap;" title="Which of this target's published ports to point codegen at — most targets only have one.">Port:</label>
+          <label for="record-setup-port" style="font-size:0.75rem; color:var(--text-mute); white-space:nowrap;" title="Which of this target's published ports to point codegen at — most targets only have one.">Port: ⓘ</label>
           <select id="record-setup-port" title="Which of this target's published ports to point codegen at — most targets only have one." style="flex:0 0 auto; width:auto;"></select>
-          <code id="record-setup-command" style="flex:1; padding:0.4rem 0.6rem; background:var(--surface-2); border-radius:6px; font-size:0.8rem; overflow-x:auto; white-space:nowrap;"></code>
-          <button class="ghost" id="record-setup-copy-cmd">Copy</button>
+          <button class="primary" id="record-setup-recorder-start">Start recording</button>
+          <button class="primary" id="record-setup-recorder-stop" style="display:none;">Stop recording</button>
+          <span id="record-setup-recorder-status" class="hint"></span>
         </div>
+        <!-- autoconnect+password: noVNC's own documented query params —
+             skips the manual "click Connect, type the password" step,
+             the human lands straight in the live session. The password
+             itself is real and freshly parsed from the recorder's own
+             log each Start click (see /api/recorder/start), never
+             hardcoded here or anywhere else. -->
+        <iframe id="record-setup-recorder-frame" style="display:none; width:100%; height:640px; border:1px solid var(--line); border-radius:6px; margin-top:0.5rem;" title="Embedded recording session"></iframe>
       </div>
 
       <div class="field">
-        <label>2. Drive the real wizard, then paste the code from Playwright Inspector here</label>
+        <label>The recorded code <span class="hint">(auto-filled after Stop recording above — or paste a recording captured elsewhere)</span></label>
         <textarea id="record-setup-input" rows="8" placeholder="import { test, expect } from '@playwright/test';..."></textarea>
       </div>
-      <button class="primary" id="record-setup-generate">Generate &amp; save draft</button>
+      <button class="primary" id="record-setup-generate" disabled>Generate &amp; save draft</button>
       <div id="record-setup-warnings"></div>
 
       <!-- Suggested env var names from the last Generate — real values
@@ -462,19 +476,35 @@
            GET/PUT /api/generate/env/:name route. Empty/hidden until a
            Generate actually produced at least one. -->
       <div id="record-setup-envvars-field" class="field" style="display:none">
-        <label>3. Set real values for the suggested env vars <span class="hint">(written to descriptors/&lt;name&gt;.env)</span></label>
+        <label>Set real values for the suggested env vars <span class="hint">(written to descriptors/&lt;name&gt;.env)</span></label>
         <div id="record-setup-envvars"></div>
         <button class="primary" id="record-setup-save-env">Save to .env</button>
       </div>
 
       <div class="field">
-        <label>4. Source <span class="hint">(bootstrap/setup/&lt;name&gt;.ts — edit and Save, then Run again, no rebuild needed)</span></label>
+        <label>Source <span class="hint">(bootstrap/setup/&lt;name&gt;.ts — edit and Save, then Run again, no rebuild needed)</span></label>
         <textarea id="record-setup-source" rows="16" placeholder="No setup script yet — paste a recording above and Generate, or write one by hand here."></textarea>
       </div>
       <div style="display:flex; gap:0.5rem;">
-        <button class="primary" id="record-setup-save-source">Save</button>
-        <button class="primary" id="record-setup-run">Run</button>
+        <button class="primary" id="record-setup-save-source" disabled>Save</button>
+        <button class="primary" id="record-setup-run" disabled>Run (as-is)</button>
+        <!-- Recording the wizard via codegen doesn't just record actions,
+             it performs them for real (e.g. it really creates the
+             account) — caught live, the target is already configured the
+             instant a recording finishes, so plain Run right after can
+             only ever exercise the idempotent/no-op branch, never the
+             fresh-install path a script is actually meant to prove out.
+             This button undeploys, genuinely wipes whatever persists the
+             target's own state, redeploys, THEN runs — see
+             clearTargetData.ts. Deliberately a second button, not a
+             replacement for Run: verifying "already configured, no-op"
+             needs the target to stay configured, so a Run that always
+             reset first would make that case untestable. -->
+        <button class="primary" id="record-setup-reset-run" disabled>Reset deployment &amp; Run</button>
       </div>
+      <!-- Visible by default, not just a hover title — which button to
+           reach for isn't obvious from the labels alone, caught live. -->
+      <div class="hint" style="margin-top:0.3rem;">Run (as-is) checks the target as CI sees it. Reset deployment &amp; Run wipes it first, to test the fresh-install path.</div>
       <div id="record-setup-run-status"></div>
       <!-- Live CDP screencast frames (bootstrap/setupPage.ts's own
            Page.startScreencast) — hidden until the first one actually
@@ -1750,62 +1780,173 @@ document.getElementById('probe-btn').onclick = async () => {
 // right-hand view is showing, so reading it live (not just once) is safe.
 let recordSetupTarget = null;
 
+// Save/Run (as-is)/Reset deployment & Run all need actual source to act
+// on — an empty bootstrap/setup/<name>.ts (no script registered yet, or
+// deleted by hand) means there's nothing to save or run, same reasoning
+// as updateGenerateButtonState() below for the recording box. Called from
+// refreshRecordSetupSource() itself (every real place the textarea's
+// value changes already routes through there) plus the textarea's own
+// 'input' listener for manual edits.
+function updateSourceButtonsState() {
+  const disabled = !document.getElementById('record-setup-source').value.trim();
+  document.getElementById('record-setup-save-source').disabled = disabled;
+  document.getElementById('record-setup-run').disabled = disabled;
+  document.getElementById('record-setup-reset-run').disabled = disabled;
+}
+document.getElementById('record-setup-source').addEventListener('input', updateSourceButtonsState);
+
 async function refreshRecordSetupSource() {
   const { text } = await api('/api/descriptors/' + encodeURIComponent(recordSetupTarget) + '/setup/source');
   document.getElementById('record-setup-source').value = text ?? '';
+  updateSourceButtonsState();
 }
 
-document.getElementById('record-setup-btn').onclick = async () => {
-  const name = document.getElementById('deploy-descriptor-select').value;
-  if (!name) return;
+// Nothing to send until there's actually a recording in the box above (typed,
+// pasted, or auto-filled by Stop recording) — an enabled button that
+// silently no-ops on empty input read as broken, caught live by the user.
+// Kept as its own named function (not inlined into the input listener)
+// since every place that can change #record-setup-input's value — opening
+// the view, Stop recording's own auto-fill, and manual typing — needs to
+// call it, not just the one 'input' event.
+function updateGenerateButtonState() {
+  document.getElementById('record-setup-generate').disabled =
+    !document.getElementById('record-setup-input').value.trim();
+}
+document.getElementById('record-setup-input').addEventListener('input', updateGenerateButtonState);
+
+// Factored out of the button's own onclick below so the Deploy target
+// select's own 'change' listener (further down) can call the identical
+// logic — caught live, the user changed that dropdown while the Record
+// setup view was already open for a DIFFERENT descriptor, and the view
+// just sat there showing the old one instead of following the selection,
+// same class of staleness the button row above already guards against
+// (recordSetupBtn.disabled tracking the select's own live value).
+async function openRecordSetupView(name) {
   recordSetupTarget = name;
   showMainView('record-setup');
   document.getElementById('record-setup-title').textContent = name + '.json — setup script';
   document.getElementById('record-setup-input').value = '';
+  updateGenerateButtonState();
   document.getElementById('record-setup-warnings').innerHTML = '';
   document.getElementById('record-setup-envvars-field').style.display = 'none';
   document.getElementById('record-setup-run-status').textContent = '';
   document.getElementById('record-setup-log').style.display = 'none';
   document.getElementById('record-setup-log').textContent = '';
+  // A recording session started for a DIFFERENT descriptor shouldn't
+  // linger visible (or, worse, still driving the old target) once this
+  // switches to a new one — the human has to click Start again, which
+  // re-points /api/recorder/start at whichever target is open now.
+  document.getElementById('record-setup-recorder-frame').style.display = 'none';
+  document.getElementById('record-setup-recorder-frame').src = '';
+  document.getElementById('record-setup-recorder-start').style.display = '';
+  document.getElementById('record-setup-recorder-stop').style.display = 'none';
+  document.getElementById('record-setup-recorder-status').textContent = '';
 
   const portSelect = document.getElementById('record-setup-port');
-  const commandEl = document.getElementById('record-setup-command');
-  const rebuildCommand = () => {
-    const port = portSelect.value;
-    // `install chromium` first, chained — a no-op in well under a second
-    // if the browser's already there (the common case, e.g. running from
-    // this repo's own agent-service/ where it's already a dependency),
-    // but self-heals the real "Executable doesn't exist" failure a fresh
-    // machine/global npx hits otherwise, with its own native download
-    // progress bar right there in the same terminal — caught live, the
-    // user's own idea, not a made-up edge case.
-    commandEl.textContent = port
-      ? `npx playwright install chromium && npx playwright codegen http://localhost:${port}`
-      : '(no published port found)';
-  };
   try {
     const { ports } = await api('/api/descriptors/' + encodeURIComponent(name) + '/ports');
     portSelect.innerHTML = ports.map((p) => `<option value="${p.publishedPort}">${p.service}:${p.publishedPort}</option>`).join('');
-    rebuildCommand();
   } catch (e) {
     portSelect.innerHTML = '';
-    commandEl.textContent = 'Could not read the live port: ' + e.message;
+    document.getElementById('record-setup-recorder-status').textContent = 'Could not read the live port: ' + e.message;
   }
-  portSelect.onchange = rebuildCommand;
 
   try {
     await refreshRecordSetupSource();
   } catch (e) {
     document.getElementById('record-setup-source').value = '';
+    updateSourceButtonsState();
+  }
+}
+
+document.getElementById('record-setup-btn').onclick = async () => {
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (!name) return;
+  await openRecordSetupView(name);
+};
+
+// Keeps the already-open Record setup view in sync with the Deploy
+// target select above it, instead of silently going stale — a no-op
+// whenever some other view (or none) is showing, so this never yanks the
+// user into Record setup just because they changed the dropdown to
+// Deploy/Remove/Propose components something else.
+document.getElementById('deploy-descriptor-select').addEventListener('change', () => {
+  const name = document.getElementById('deploy-descriptor-select').value;
+  if (name && document.getElementById('record-setup-view').style.display !== 'none') {
+    openRecordSetupView(name);
+  }
+});
+
+document.getElementById('record-setup-recorder-start').onclick = async () => {
+  const port = document.getElementById('record-setup-port').value;
+  const statusEl = document.getElementById('record-setup-recorder-status');
+  const startBtn = document.getElementById('record-setup-recorder-start');
+  const stopBtn = document.getElementById('record-setup-recorder-stop');
+  const frame = document.getElementById('record-setup-recorder-frame');
+  if (!port) {
+    statusEl.textContent = 'No published port found for this target — deploy it first.';
+    return;
+  }
+  startBtn.disabled = true;
+  statusEl.textContent = 'Starting…';
+  try {
+    // host.docker.internal, not localhost — this request is made FROM the
+    // codegen-recorder container (a sibling to the target's own container),
+    // not from the human's own machine, so it needs a route back to the
+    // Docker host rather than its own loopback.
+    const { password } = await api('/api/recorder/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: `http://host.docker.internal:${port}` }),
+    });
+    frame.src = `http://localhost:6080/vnc.html?autoconnect=true&resize=scale&password=${encodeURIComponent(password)}`;
+    frame.style.display = 'block';
+    startBtn.style.display = 'none';
+    stopBtn.style.display = '';
+    statusEl.textContent = 'Recording — drive the wizard below, then click Stop recording when done (the code comes into the box below on its own).';
+  } catch (e) {
+    statusEl.textContent = 'Failed to start: ' + e.message;
+  } finally {
+    startBtn.disabled = false;
+  }
+};
+
+document.getElementById('record-setup-recorder-stop').onclick = async () => {
+  const statusEl = document.getElementById('record-setup-recorder-status');
+  const startBtn = document.getElementById('record-setup-recorder-start');
+  const stopBtn = document.getElementById('record-setup-recorder-stop');
+  const frame = document.getElementById('record-setup-recorder-frame');
+  stopBtn.disabled = true;
+  // Pulled from the container's own recording file (codegen's own
+  // `--output`, written as the human records — see admin/server.ts's own
+  // comment on RECORDING_OUTPUT_PATH) rather than relying on a manual
+  // copy out of the Inspector's UI first — that copy is gone the instant
+  // Stop kills the browser process underneath it, a real loss caught live
+  // (a human clicked Stop before copying anything, and there was no way
+  // to get the recording back).
+  let recording = null;
+  try {
+    ({ recording } = await api('/api/recorder/stop', { method: 'POST' }));
+  } catch (e) {
+    statusEl.textContent = 'Failed to stop: ' + e.message;
+  } finally {
+    stopBtn.disabled = false;
+  }
+  frame.style.display = 'none';
+  frame.src = '';
+  startBtn.style.display = '';
+  stopBtn.style.display = 'none';
+  if (recording) {
+    document.getElementById('record-setup-input').value = recording;
+    updateGenerateButtonState();
+    statusEl.textContent = 'Recording pulled in below — review it, then click Generate & save draft.';
+  } else {
+    statusEl.textContent = '';
   }
 };
 
 document.getElementById('record-setup-back').onclick = () => {
   showMainView(state.current ? 'editor' : 'empty');
-};
-
-document.getElementById('record-setup-copy-cmd').onclick = () => {
-  navigator.clipboard.writeText(document.getElementById('record-setup-command').textContent);
 };
 
 // Generate & save draft — Tier 1 of "Record setup" (see memory
@@ -1910,7 +2051,7 @@ document.getElementById('record-setup-save-source').onclick = async () => {
   } catch (e) {
     alert('Save failed: ' + e.message);
   } finally {
-    btn.disabled = false;
+    updateSourceButtonsState();
   }
 };
 
@@ -1935,17 +2076,22 @@ function appendRecordSetupLogLine(logEl, message) {
 // helper Run Discovery uses. Deliberately stays ON this view (doesn't
 // switch to #operation-panel the way Deploy/Discovery do) — the whole
 // point of this loop is generate/edit → run → look → edit again without
-// ever navigating away.
-document.getElementById('record-setup-run').onclick = async () => {
-  const btn = document.getElementById('record-setup-run');
+// ever navigating away. Factored out of Run's own onclick so Reset & Run
+// (below) can call the identical run logic after its own reset stream
+// finishes, instead of a second, drifting copy of this same code.
+async function runRecordedSetup() {
   const statusEl = document.getElementById('record-setup-run-status');
   const logEl = document.getElementById('record-setup-log');
   const frameEl = document.getElementById('record-setup-frame');
-  btn.disabled = true;
   statusEl.className = '';
   statusEl.textContent = `Running setup for "${recordSetupTarget}"…`;
   logEl.style.display = 'block';
-  logEl.textContent = '';
+  // Deliberately NOT clearing logEl here — Reset & Run's own onclick
+  // (below) already wrote its own reset progress into this same box
+  // before calling this function, and the whole point is one continuous,
+  // honest account of reset-then-run, not two disconnected logs where the
+  // first half vanishes. Plain Run's own onclick clears it itself first,
+  // since there's no earlier phase to preserve there.
   frameEl.style.display = 'none';
   frameEl.src = '';
   try {
@@ -1979,8 +2125,66 @@ document.getElementById('record-setup-run').onclick = async () => {
   } catch (e) {
     statusEl.className = 'err';
     statusEl.textContent = 'Failed: ' + e.message;
+  }
+}
+
+document.getElementById('record-setup-run').onclick = async () => {
+  const runBtn = document.getElementById('record-setup-run');
+  const resetRunBtn = document.getElementById('record-setup-reset-run');
+  runBtn.disabled = true;
+  resetRunBtn.disabled = true;
+  // No earlier phase to preserve here (contrast Reset & Run below) — a
+  // plain Run starts its own log fresh.
+  document.getElementById('record-setup-log').textContent = '';
+  try {
+    await runRecordedSetup();
   } finally {
-    btn.disabled = false;
+    updateSourceButtonsState();
+  }
+};
+
+// Undeploys, genuinely wipes whatever persists the target's own state,
+// redeploys — THEN runs, via the identical runRecordedSetup() above. A
+// real, destructive action (same confirmModal 'danger' styling Deploy's
+// own pre-deploy warning uses) — this is for proving the setup script's
+// own fresh-install path actually works, not something to click by
+// reflex.
+document.getElementById('record-setup-reset-run').onclick = async () => {
+  const runBtn = document.getElementById('record-setup-run');
+  const resetRunBtn = document.getElementById('record-setup-reset-run');
+  const statusEl = document.getElementById('record-setup-run-status');
+  const logEl = document.getElementById('record-setup-log');
+  if (!(await confirmModal(`Reset "${recordSetupTarget}"? This undeploys it, wipes its data (bind-mounted directories and/or named Docker volumes — whatever it actually uses), and redeploys it fresh before running the setup script.`, 'danger'))) return;
+  runBtn.disabled = true;
+  resetRunBtn.disabled = true;
+  statusEl.className = '';
+  statusEl.textContent = `Resetting "${recordSetupTarget}"…`;
+  logEl.style.display = 'block';
+  logEl.textContent = '';
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson(`/api/descriptors/${encodeURIComponent(recordSetupTarget)}/reset`, { method: 'POST' }, (evt) => {
+      if (evt.type === 'progress') {
+        appendRecordSetupLogLine(logEl, evt.message);
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check server logs.');
+    // Straight into the same run logic Run itself uses — same log box,
+    // reset → run reads as one continuous account, not two disconnected
+    // actions.
+    await runRecordedSetup();
+  } catch (e) {
+    statusEl.className = 'err';
+    statusEl.textContent = 'Reset failed: ' + e.message;
+  } finally {
+    updateSourceButtonsState();
   }
 };
 

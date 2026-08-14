@@ -8,7 +8,8 @@ import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/sch
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames, resolveTargetPaths } from '../bootstrap/deployTarget.ts';
-import type { DeployState } from '../bootstrap/deployTarget.ts';
+import { clearTargetData } from '../bootstrap/clearTargetData.ts';
+import type { DeployState, PortMapping } from '../bootstrap/deployTarget.ts';
 import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { targetsDirFromEnv } from '../bootstrap/targetsDir.ts';
@@ -263,6 +264,100 @@ app.put('/api/descriptors/:name/setup/source', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// "Start/Stop recording" — the codegen-recorder service (docker-compose.yml)
+// is always up (an idle Xvfb+x11vnc+noVNC shell, genuinely cheap — see that
+// service's own comment for why), so these two routes only ever manage the
+// one thing that's actually expensive: the `playwright codegen` process
+// itself, via `docker exec`. No image build, no container start/stop here
+// — that's docker-compose's job, done once at platform boot.
+// ---------------------------------------------------------------------------
+
+const RECORDER_CONTAINER = 'codegen-recorder';
+// Where each recording session's own generated script lands inside the
+// container — `codegen`'s own `--output` flag writes/updates this file as
+// the human records, not just once at the very end. Read back by /stop
+// below, so a human clicking Stop never has to have manually copied
+// anything out of the Inspector's own UI first — losing an unsaved
+// recording that way (the Inspector's own copy is gone the moment its
+// browser process is killed) was a real gap caught live, not a
+// theoretical one.
+const RECORDING_OUTPUT_PATH = '/work/recording.spec.ts';
+
+app.post('/api/recorder/start', async (req, res) => {
+  try {
+    const { url } = req.body as { url?: string };
+    if (!url) {
+      res.status(400).json({ error: '"url" is required' });
+      return;
+    }
+    // Kill any previous recording session first — starting a new one
+    // (a different target, or just retrying) should always reflect this
+    // click, never leave a stale codegen process pointed at the old URL
+    // running alongside it. A SEPARATE `docker exec`, not chained with `;`
+    // into the same `sh -c` script as the launch below — confirmed live
+    // this is not just style: `pkill -f 'playwright codegen'` matches
+    // against every process's own command line, including the very `sh -c
+    // "pkill ...; ... npx playwright codegen ..."` wrapper it's running
+    // inside of (that string is right there in its own argv) — chained,
+    // pkill killed its own enclosing shell before `npx` ever started,
+    // silently, no error surfaced anywhere. pkill's built-in self-exclusion
+    // only protects pkill's own PID, not its parent shell.
+    await runCommand('docker', ['exec', RECORDER_CONTAINER, 'pkill', '-f', 'playwright codegen'], process.cwd(), process.env);
+    // Also clear out any previous recording file — a stale one from an
+    // earlier session (or one abandoned without ever clicking Stop)
+    // shouldn't leak into this new one if this exact run never actually
+    // produces its own (codegen crashes, or the human never lands on a
+    // real page before stopping).
+    await runCommand('docker', ['exec', RECORDER_CONTAINER, 'rm', '-f', RECORDING_OUTPUT_PATH], process.cwd(), process.env);
+    const launch = await runCommand(
+      'docker',
+      ['exec', '-d', RECORDER_CONTAINER, 'sh', '-c', `DISPLAY=:99 npx playwright codegen --output '${RECORDING_OUTPUT_PATH}' '${url}'`],
+      process.cwd(),
+      process.env,
+    );
+    if (launch.code !== 0) {
+      res.status(500).json({ error: `Failed to start recording: ${launch.output}` });
+      return;
+    }
+    // The real password x11vnc is actually enforcing, parsed fresh from the
+    // container's own log every call — never a value invented here. Same
+    // password for as long as the container itself has been up (start.sh
+    // only generates a new one on container start, not per recording).
+    const logs = await runCommand('docker', ['logs', RECORDER_CONTAINER], process.cwd(), process.env);
+    const match = logs.output.match(/VNC password: (\S+)/);
+    if (!match) {
+      res.status(500).json({ error: `codegen-recorder is up but its VNC password wasn't found in its logs — is the service actually running (docker compose up codegen-recorder)?` });
+      return;
+    }
+    res.json({ password: match[1] });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/recorder/stop', async (_req, res) => {
+  try {
+    // Just the Chromium process — the lightweight VNC shell itself keeps
+    // running, ready for the next Start click. Not an error if nothing was
+    // actually recording (pkill's own non-zero "no process matched" exit
+    // is a normal, expected outcome here, not a real failure).
+    await runCommand('docker', ['exec', RECORDER_CONTAINER, 'pkill', '-f', 'playwright codegen'], process.cwd(), process.env);
+    // A brief pause before reading — the file is written eagerly as
+    // codegen records (confirmed live), but SIGTERM landing mid-write to
+    // disk is a real enough race to guard against rather than assume away.
+    await new Promise((r) => setTimeout(r, 300));
+    // Best-effort: the human may have clicked Stop before ever navigating
+    // anywhere real, or the file may already be gone from a /start call
+    // that immediately followed without an intervening recording — `cat`
+    // failing just means no recording to hand back, not a route failure.
+    const read = await runCommand('docker', ['exec', RECORDER_CONTAINER, 'cat', RECORDING_OUTPUT_PATH], process.cwd(), process.env);
+    res.json({ ok: true, recording: read.code === 0 ? read.output : null });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.put('/api/descriptors/:name', async (req, res) => {
   try {
     const path = descriptorPath(req.params.name);
@@ -446,6 +541,66 @@ app.post('/api/descriptors/:name/undeploy', async (req, res) => {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
+
+// Undeploy + genuinely wipe whatever persists the target's own state
+// (bind-mounted directory or named Docker volume — see
+// clearTargetData.ts's own header for why `docker compose down` alone
+// never touches either) + redeploy fresh. Backs "Record setup"'s own
+// "Reset & Run" button — the exact sequence this project's own sessions
+// already did BY HAND, repeatedly, to get a genuinely fresh instance to
+// test a setup script's first-run path against — but deliberately
+// independent of setup/recording entirely, so it's just as reusable for
+// a future generic "Reset" action elsewhere (next to Deploy/Remove).
+app.post('/api/descriptors/:name/reset', async (req, res) => {
+  try {
+    const name = req.params.name;
+    const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
+    const component = findDockerComposeComponent(descriptor);
+
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    try {
+      await undeployTarget(name, (message) => send({ type: 'progress', message }));
+      await clearTargetData(name, (message) => send({ type: 'progress', message }));
+      const result = await deployTarget(component, name, (message) => send({ type: 'progress', message }));
+      // A container reporting "Started"/"Healthy" and the app inside it
+      // actually accepting connections are two different moments for any
+      // target with no healthcheck of its own (confirmed live this exact
+      // gap already, for uptime-kuma.ts's own retry loop) — "Reset & Run"
+      // hits it every time since it immediately runs right after, unlike
+      // an ordinary Deploy where a human's own next click naturally
+      // absorbs the gap.
+      await waitForTargetReady(result.ports, (message) => send({ type: 'progress', message }));
+      send({ type: 'done', projectName: result.projectName, ports: result.ports });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No descriptor named "${req.params.name}"` });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+async function waitForTargetReady(ports: PortMapping[], onProgress?: (message: string) => void): Promise<void> {
+  for (const mapping of ports) {
+    const url = `http://host.docker.internal:${mapping.publishedPort}/`;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      try {
+        await fetch(url, { signal: AbortSignal.timeout(2000) });
+        break;
+      } catch {
+        if (attempt === 1) onProgress?.(`${url} not accepting connections yet — retrying...`);
+        if (attempt === 10) onProgress?.(`${url} still not responding after 10 attempts — continuing anyway.`);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+  }
+}
 
 // One-time "first run" setup for targets whose own admin account/config
 // doesn't survive a fresh docker-compose deploy — see
