@@ -4,6 +4,7 @@ import { hostname } from 'node:os';
 import { connect } from 'node:net';
 import { runCommand } from '../util/runCommand.ts';
 import type { DockerComposeComponent } from '../descriptor/schema.ts';
+import { detectKafkaServices, type ComposeConfig as KafkaResolvedConfig } from './kafkaDetect.ts';
 
 // ---------------------------------------------------------------------------
 // Docker-outside-of-Docker (DooD) path mirroring — the load-bearing
@@ -286,6 +287,30 @@ export async function getTargetContainerNames(name: string): Promise<string[]> {
   return output.split('\n').map((s) => s.trim()).filter(Boolean);
 }
 
+// Same `docker ps --filter label=...` idiom as getTargetContainerNames()
+// just above, but deliberately WITHOUT `-a` — running containers only.
+// Originally lived in admin/server.ts (its own "is OrderFlow's demo bundle
+// currently active" check for /api/demo/status), factored out here once
+// bootstrap/kafkaUiSync.ts needed the identical "is this project actually
+// live right now" question for arbitrary compose projects, not just
+// OrderFlow's own hardcoded one. NOT a drop-in replacement for
+// getTargetContainerNames() above — that one's own callers (pre-deploy
+// "leftover containers" warning, Stop/Remove button state) genuinely need
+// to see a stopped-but-present container too; this one's callers need to
+// know whether something is actually reachable right now. Confirmed live
+// (2026-08-12) that conflating the two is a real bug, not a style
+// preference — see memory's own "stopped-not-removed containers" entry.
+export async function getRunningContainerNames(projectName: string): Promise<string[]> {
+  const { code, output } = await runCommand(
+    'docker',
+    ['ps', '--filter', `label=com.docker.compose.project=${projectName}`, '--format', '{{.Names}}'],
+    process.cwd(),
+    process.env,
+  );
+  if (code !== 0) return [];
+  return output.split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
 /**
  * Best-effort, run before EITHER cleanup path below — descriptor/components
  * /mssql.ts's own network-join mechanism (see that file's header comment)
@@ -418,6 +443,48 @@ async function flattenComposeConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Kafka UI Multi-Cluster, item (в) — a predictable, collision-safe network
+// alias per target, planted here (before `up`) so Docker actually registers
+// it at container-start time; a network alias can't be added after the fact
+// the way a port remap can. bootstrap/kafkaUiSync.ts is the real consumer:
+// once kafka-ui gets network-joined onto this same network, it addresses
+// the broker as `kafka-<name>` regardless of what the target's own compose
+// file happens to call the service internally — this is what stops two
+// different targets that both happen to name their broker service "kafka"
+// (a real possibility once kafka-ui is simultaneously joined to several
+// targets' networks) from colliding. Mutates `config` in place, same style
+// as assignPorts() below. Detection itself (bootstrap/kafkaDetect.ts) is
+// shared with bootstrap/probeTarget.ts's own kafka candidate pass — that
+// one proposes a `host.docker.internal:<port>` connection for the
+// host-network kafka-mcp-server instead, a genuinely different reachability
+// mechanism for a genuinely different consumer (see that file's own
+// comment on this pass).
+// ---------------------------------------------------------------------------
+
+function injectKafkaBrokerAliases(config: KafkaResolvedConfig, name: string): void {
+  const alias = `kafka-${name}`;
+  for (const { serviceName } of detectKafkaServices(config)) {
+    const service = config.services?.[serviceName];
+    if (!service) continue;
+
+    // A service with no explicit `networks:` of its own still implicitly
+    // joins Compose's synthesized "default" network — same fallback
+    // bootstrap/composeNetworks.ts's own resolveComposeServiceNetworks()
+    // already documents and relies on for the read side of this.
+    const networks: Record<string, unknown> = service.networks ?? {};
+    const networkKeys = service.networks ? Object.keys(networks) : ['default'];
+
+    for (const key of networkKeys) {
+      const existing = networks[key] as { aliases?: string[] } | null | undefined;
+      const aliases = existing?.aliases ?? [];
+      if (!aliases.includes(alias)) aliases.push(alias);
+      networks[key] = { ...(existing ?? {}), aliases };
+    }
+    service.networks = networks;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public entry point for this increment — clone + flatten only, stops
 // before `up` (port allocation / actually starting containers / postUpExec
 // is bootstrap/deployTarget.ts's next increment). Mirrors
@@ -457,6 +524,7 @@ export async function flattenTarget(
 
   onProgress?.('Resolving compose configuration');
   const resolved = await flattenComposeConfig(component, paths.repoDir, name, onProgress, signal);
+  injectKafkaBrokerAliases(resolved as KafkaResolvedConfig, name);
 
   await writeFile(paths.resolvedConfigPath, JSON.stringify(resolved, null, 2), 'utf-8');
   onProgress?.(`Resolved config written to ${paths.resolvedConfigPath}`);

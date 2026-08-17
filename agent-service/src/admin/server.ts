@@ -7,11 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
 import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
-import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames, resolveTargetPaths } from '../bootstrap/deployTarget.ts';
+import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames, getRunningContainerNames, resolveTargetPaths } from '../bootstrap/deployTarget.ts';
 import { clearTargetData } from '../bootstrap/clearTargetData.ts';
 import type { DeployState, PortMapping } from '../bootstrap/deployTarget.ts';
 import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts';
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
+import { syncKafkaUi } from '../bootstrap/kafkaUiSync.ts';
 import { targetsDirFromEnv } from '../bootstrap/targetsDir.ts';
 import { convertRecording } from '../bootstrap/convertRecording.ts';
 import { runCommand } from '../util/runCommand.ts';
@@ -474,7 +475,15 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
+      // Kafka UI Multi-Cluster — detach kafka-ui from this target's own
+      // network BEFORE deployTarget()'s own self-healing cleanup (a
+      // redeploy of an already-live kafka-having target) tries to remove
+      // it, avoiding a real "network has active endpoints" failure. Never
+      // throws — see kafkaUiSync.ts's own doc comment.
+      await syncKafkaUi((message) => send({ type: 'progress', message }), { excludeTarget: name });
       const result = await deployTarget(component, name, (message) => send({ type: 'progress', message }));
+      // Picks up the freshly (re)deployed target's own cluster, if any.
+      await syncKafkaUi((message) => send({ type: 'progress', message }));
       send({
         type: 'done',
         projectName: result.projectName,
@@ -527,6 +536,9 @@ app.post('/api/descriptors/:name/undeploy', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
+      // Detach kafka-ui from this target's network first — see the
+      // matching comment on /deploy above.
+      await syncKafkaUi((message) => send({ type: 'progress', message }), { excludeTarget: name });
       await undeployTarget(name, (message) => send({ type: 'progress', message }));
       send({ type: 'done' });
     } catch (err) {
@@ -561,9 +573,14 @@ app.post('/api/descriptors/:name/reset', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
+      // Detach kafka-ui before the undeploy leg — same reasoning as
+      // /deploy and /undeploy above; the post-deploy sync below picks the
+      // target's cluster back up once it's redeployed.
+      await syncKafkaUi((message) => send({ type: 'progress', message }), { excludeTarget: name });
       await undeployTarget(name, (message) => send({ type: 'progress', message }));
       await clearTargetData(name, (message) => send({ type: 'progress', message }));
       const result = await deployTarget(component, name, (message) => send({ type: 'progress', message }));
+      await syncKafkaUi((message) => send({ type: 'progress', message }));
       // A container reporting "Started"/"Healthy" and the app inside it
       // actually accepting connections are two different moments for any
       // target with no healthcheck of its own (confirmed live this exact
@@ -2633,32 +2650,12 @@ async function waitForOrderflowBackendReady(onProgress: (message: string) => voi
   throw new Error(`${url} never became reachable from workbench after 15 attempts (30s) — see waitForOrderflowBackendReady()'s own comment.`);
 }
 
-// Same `docker ps --filter label=com.docker.compose.project=...` idiom as
-// getTargetContainerNames() (deployTarget.ts) — NOT reused directly, for
-// two reasons: (1) that one derives the project name from the
-// non-exported projectNameFor(), which only applies to docker-compose-
-// component descriptors — OrderFlow's demo group is a plain compose file
-// with a hardcoded project name instead; (2) it deliberately passes `-a`
-// (any container, running or not — correct for ITS OWN callers, e.g. a
-// pre-deploy "leftover detected" warning or enabling "Remove" on a
-// stopped-but-present container). Confirmed live (2026-08-12, the user
-// caught this from Docker Desktop) that reusing `-a`-based logic for THIS
-// route's own "is the demo currently active" question is wrong — the hub
-// kept showing "OrderFlow — currently deployed" with the active badge
-// after the user manually stopped (not removed) its containers, because
-// they still existed, just not running. This one deliberately omits `-a`
-// — `docker ps` without it already means running-only, no extra filter
-// needed.
-async function getRunningContainerNames(projectName: string): Promise<string[]> {
-  const { code, output } = await runCommand(
-    'docker',
-    ['ps', '--filter', `label=com.docker.compose.project=${projectName}`, '--format', '{{.Names}}'],
-    APP_ROOT,
-    process.env,
-  );
-  if (code !== 0) return [];
-  return output.split('\n').map((line) => line.trim()).filter(Boolean);
-}
+// getRunningContainerNames() itself now lives in bootstrap/deployTarget.ts
+// (factored out once bootstrap/kafkaUiSync.ts needed the identical
+// "is this compose project actually live right now" check for arbitrary
+// projects, not just OrderFlow's own hardcoded one) — this file just
+// imports it. Its own doc comment there still has the full "why not `-a`"
+// story (a real bug, caught live 2026-08-12).
 
 // hub/index.html's Demo section polls this (on load + periodically) to
 // know whether to show each tile as "Deploy ..." or "... — currently
@@ -2739,11 +2736,20 @@ app.post('/api/demo/switch', async (req, res) => {
     if (target === 'uptime-kuma') {
       send({ type: 'progress', message: 'Tearing down the OrderFlow demo…' });
       await undeployOrderflowDemo((message) => send({ type: 'progress', message }));
+      // No exclude needed — the demo bundle's broker lives on the shared
+      // network, kafka-ui never needs a network join for it, so this just
+      // drops it from the cluster list now that its containers are gone.
+      await syncKafkaUi((message) => send({ type: 'progress', message }));
 
       send({ type: 'progress', message: 'Deploying Uptime Kuma…' });
       const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath('uptime-kuma'), 'utf-8')));
       const component = findDockerComposeComponent(descriptor);
+      // Kuma itself never has a Kafka broker, but every deployTarget() call
+      // site gets the same standard treatment for consistency — see
+      // /api/descriptors/:name/deploy above.
+      await syncKafkaUi((message) => send({ type: 'progress', message }), { excludeTarget: 'uptime-kuma' });
       await deployTarget(component, 'uptime-kuma', (message) => send({ type: 'progress', message }));
+      await syncKafkaUi((message) => send({ type: 'progress', message }));
 
       if (!hasSetup('uptime-kuma')) {
         send({ type: 'progress', message: 'No first-run setup script registered for uptime-kuma — skipping.' });
@@ -2763,6 +2769,7 @@ app.post('/api/demo/switch', async (req, res) => {
       const existingKuma = await getTargetContainerNames('uptime-kuma');
       if (existingKuma.length > 0) {
         send({ type: 'progress', message: 'Tearing down Uptime Kuma…' });
+        await syncKafkaUi((message) => send({ type: 'progress', message }), { excludeTarget: 'uptime-kuma' });
         await undeployTarget('uptime-kuma', (message) => send({ type: 'progress', message }));
       } else {
         send({ type: 'progress', message: 'Uptime Kuma is not currently deployed — nothing to tear down.' });
@@ -2770,6 +2777,7 @@ app.post('/api/demo/switch', async (req, res) => {
 
       send({ type: 'progress', message: 'Deploying OrderFlow…' });
       await deployOrderflowDemo((message) => send({ type: 'progress', message }));
+      await syncKafkaUi((message) => send({ type: 'progress', message }));
       await waitForOrderflowBackendReady((message) => send({ type: 'progress', message }));
     }
 

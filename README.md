@@ -246,13 +246,24 @@ deploy is up, a "Propose components" button
 ([`agent-service/src/bootstrap/probeTarget.ts`](agent-service/src/bootstrap/probeTarget.ts))
 mechanically inspects the running stack — the same flattened compose config and port map the deploy
 already wrote to disk, plus a handful of real HTTP requests — and drops candidate `web-ui`/
-`rest-api`/`sqlite`/`postgres` components straight into the descriptor editor, pre-filled and ready
-to review. No Claude call here either; a database whose port was never published to the host, or an
-engine this app has no component type for yet, is reported honestly as "couldn't auto-detect" rather
-than guessed at. A human still reviews, edits, and saves — same propose-then-confirm shape as every
-other agent output in this app, just entirely mechanical this time. Proven end to end against
-[wger](https://github.com/wger-project/wger) and [Uptime Kuma](https://github.com/louislam/uptime-kuma),
-two real, unrelated open-source apps this project has never seen before.
+`rest-api`/`postgres`/`mysql`/`mongo`/`mssql`/`sqlite`/`kafka` components straight into the descriptor
+editor, pre-filled and ready to review. No Claude call here either; a database (or Kafka broker)
+whose port was never published to the host, or an engine this app has no component type for yet, is
+reported honestly as "couldn't auto-detect" rather than guessed at. A human still reviews, edits, and
+saves — same propose-then-confirm shape as every other agent output in this app, just entirely
+mechanical this time. Proven end to end against [wger](https://github.com/wger-project/wger) and
+[Uptime Kuma](https://github.com/louislam/uptime-kuma), two real, unrelated open-source apps this
+project has never seen before.
+
+**Kafka UI (`:8081`) is multi-cluster and stays in sync automatically.** Any target with a detected
+Kafka broker (by image — the same `probeTarget.ts` pass above) gets a predictable
+`kafka-<targetName>` network alias planted at deploy time
+([`deployTarget.ts`](agent-service/src/bootstrap/deployTarget.ts)'s own `injectKafkaBrokerAliases()`)
+and a live entry in Kafka UI's own cluster list, kept correct on every deploy/undeploy by
+[`kafkaUiSync.ts`](agent-service/src/bootstrap/kafkaUiSync.ts) — no human step needed beyond the
+ordinary Deploy/Undeploy click. Kafka UI itself is a container on the Docker network (not
+host-network like `kafka-mcp-server`), so it reaches each broker via a network join rather than a
+published port — works even for a target that never publishes its broker's port at all.
 
 **Multiple targets can be deployed and stay up at the same time, with zero conflict.** Each deploy
 is its own Compose project (`deployTarget.ts`'s own `projectNameFor()`), so each gets its own Docker
@@ -272,10 +283,9 @@ just works end to end — including CI, with zero pipeline edits. Checklist, in 
 1. **Descriptor + deploy.** Create `agent-service/descriptors/<name>.json` with a `docker-compose`
    component pointing at the target's own deploy-manifest repo (see above), deploy it from the
    Workbench, then use "Propose components" to mechanically draft the rest — currently proposes
-   `web-ui`/`rest-api`/`postgres`/`sqlite` components straight from the running stack. `mysql`/
-   `mongo`/`mssql` (newer engine types, added for Snipe-IT/Wekan/nopCommerce) aren't wired into
-   `probeTarget.ts`'s own detection yet — add those by hand for now (`connectionString`, same shape
-   as `postgres`).
+   `web-ui`/`rest-api`/`postgres`/`mysql`/`mongo`/`mssql`/`sqlite`/`kafka` components straight from
+   the running stack. If the target has its own Kafka broker, Kafka UI (`:8081`) picks it up
+   automatically too, no extra step — see above.
 2. **Portable paths.** Any component field that names a file under this deployment's own mirrored
    `targets/` mount (today, only `sqlite`'s `path`) must use the `${HOST_PROJECT_ROOT}` placeholder
    — e.g. `"${HOST_PROJECT_ROOT}/targets/<name>/repo/data/foo.db"` — not a literal absolute prefix.
@@ -541,7 +551,7 @@ itself mirrors this same **Platform** / **Demo** split, in that order:
 |---|---|---|---|
 | Frontend | `http://localhost:5173` | OrderFlow, the app under test | the demo compose command above, or the hub's own "Deploy OrderFlow" tile |
 | Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | same as Frontend |
-| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) — `kafka` itself lives in the OrderFlow demo group, not the platform | same as Frontend |
+| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) — multi-cluster: shows OrderFlow's own broker plus any other deployed target's, auto-detected and kept in sync on every deploy/undeploy | same as Frontend |
 
 On the hub itself, Frontend/Backend/Kafka UI aren't plain always-there links — they're **sub-cards
 nested inside the "Deploy OrderFlow" tile**, hidden until OrderFlow is confirmed actually deployed

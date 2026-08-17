@@ -126,6 +126,21 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    # Kafka UI Multi-Cluster: a second, additional name on this SAME network
+    # attachment, purely for kafka-ui's own unambiguous addressing —
+    # `kafka` above keeps working exactly as before for every internal use
+    # (app's own KAFKA_BROKERS, this broker's own advertised listeners).
+    # bootstrap/kafkaUiSync.ts references this target by its predictable
+    # `kafka-<targetName>` convention (agent-service/src/bootstrap/
+    # deployTarget.ts's own injectKafkaBrokerAliases() plants the identical
+    # alias for any OTHER target with its own detected broker) — without a
+    # distinct per-target name, two targets that both happen to call their
+    # broker service "kafka" would collide once kafka-ui is simultaneously
+    # joined to both networks.
+    networks:
+      default:
+        aliases:
+          - kafka-orderflow
 
 volumes:
   pgdata:

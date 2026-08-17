@@ -8,14 +8,23 @@ services:
       - ./hub:/usr/share/nginx/hub:ro
       - ./report-nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
-  # Admin UI for the Kafka broker — that broker itself now lives in
-  # docker-compose.demo-orderflow.yml (the bundled OrderFlow demo's own
-  # group, `bdd-target-demo-orderflow`), not here. Reachable by plain
-  # hostname (kafka:9092) only because both projects share the
-  # `agentic-qa-platform-net` network declared below — if the demo group
-  # isn't deployed, this shows disconnected, which is expected, not a bug
-  # (see the hub page's own note next to this card). Not used by the
-  # discovery agent (which talks to Kafka via kafka-mcp-server instead).
+  # Admin UI for every deployed target's own Kafka broker, not just
+  # OrderFlow's — Kafka UI Multi-Cluster. The `environment:` block below is
+  # only the FALLBACK for a fresh clone that has never synced yet (points
+  # at OrderFlow's own broker, `docker-compose.demo-orderflow.yml`, exactly
+  # today's pre-multi-cluster behavior). The real, current cluster list is
+  # kept in sync by agent-service/src/bootstrap/kafkaUiSync.ts, called
+  # automatically on every deploy/undeploy of any docker-compose target
+  # (admin/server.ts): it force-recreates this container with
+  # `-f docker-compose.yml -f targets/.kafka-ui/clusters.override.yml`, one
+  # KAFKA_CLUSTERS_N_* pair per broker actually detected live (by image —
+  # bootstrap/kafkaDetect.ts), and network-joins it onto each target's own
+  # compose network as needed. Each broker is addressed by a predictable
+  # `kafka-<targetName>` alias (planted at deploy time by deployTarget.ts's
+  # own injectKafkaBrokerAliases()) rather than a bare service name, so two
+  # targets that both happen to call their broker "kafka" never collide.
+  # Not used by the discovery agent (which talks to Kafka via
+  # kafka-mcp-server instead).
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports: ["8081:8080"]
@@ -184,6 +193,19 @@ services:
       # passes `--build`, so it doesn't need to read app/'s or frontend's
       # own source content either — just the compose file's own text.
       - ${PWD}/docker-compose.demo-orderflow.yml:${PWD}/docker-compose.demo-orderflow.yml:ro
+      # This file itself — same identical-absolute-path mirroring trick as
+      # the two mounts just above, for the same reason, and (found live
+      # while building Kafka UI Multi-Cluster) an easy one to miss: unlike
+      # docker-compose.demo-orderflow.yml, nothing needed to `docker compose
+      # -f` THIS file from inside the container until
+      # bootstrap/kafkaUiSync.ts's own force-recreate of kafka-ui (`-f
+      # ${PWD}/docker-compose.yml -f .../clusters.override.yml ... up
+      # --force-recreate --no-deps kafka-ui`) — without this mount, that
+      # `docker compose` call (running inside this container, talking to
+      # the host daemon over the socket below) can't find its own `-f`
+      # argument at all ("no such file or directory"), confirmed live.
+      # Read-only, same reasoning as the demo compose file above.
+      - ${PWD}/docker-compose.yml:${PWD}/docker-compose.yml:ro
       # Stage 3 (render) writes .feature/.steps.ts here, and "Run tests"
       # executes the suite from here — without this mount, either action
       # would only touch the container's own ephemeral filesystem, never
