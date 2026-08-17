@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workbench Swagger</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%98%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/vendor/swagger-ui/swagger-ui.css">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eef0f3;
+    --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
+    --accent: #3a63d8; --accent-bg: #e8edfc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --surface: #1b1e27; --surface-2: #232733;
+      --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
+      --accent: #7c9bef; --accent-bg: #232c47;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-nav {
+    display: flex; gap: 0.25rem; padding: 0.6rem 1rem;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .app-nav a {
+    font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
+    color: var(--text-mute); text-decoration: none; border: 1px solid var(--line);
+  }
+  .app-nav a:hover { background: var(--surface-2); color: var(--text); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+  /* Shared verbatim across generate.html/visualize.html/index.html/e2e.html/
+     load.html so the title never visibly shifts left/right or up/down when
+     switching pages — sits outside each page's own (differently laid out)
+     content column. */
+  .page-head { padding: 1.5rem clamp(1rem, 4vw, 3rem) 1.25rem; }
+  .page-head h1 { font-size: 0.95rem; margin: 0; }
+  .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
+
+  /* swagger-ui itself keeps its own standard (light) look, deliberately —
+     see the plan's own "Not in scope" note on why this page doesn't
+     attempt to re-theme swagger-ui's internals for dark mode. A solid
+     light background behind it (rather than this page's own dark --bg
+     showing through any gap) is what makes that read as an intentional
+     choice instead of a mismatched one when the OS is in dark mode. */
+  #swagger-ui-container { background: #fff; }
+</style>
+</head>
+<body>
+<header class="app-nav">
+  <a href="/index.html">Discovery</a>
+  <a href="/visualize.html">Analysis</a>
+  <a href="/generate.html">Test Suite</a>
+  <a href="/e2e.html">E2E</a>
+  <a href="/load.html">Load</a>
+  <a href="/api-docs.html" class="active">Swagger</a>
+</header>
+<div class="page-head">
+  <h1>Workbench Swagger</h1>
+  <div class="subtitle">Every endpoint the Workbench's own backend exposes — the platform's own tools, not a discovered target's API</div>
+</div>
+<div id="swagger-ui-container">
+  <div id="swagger-ui"></div>
+</div>
+<script src="/vendor/swagger-ui/swagger-ui-bundle.js"></script>
+<script src="/vendor/swagger-ui/swagger-ui-standalone-preset.js"></script>
+<script>
+  window.ui = SwaggerUIBundle({
+    url: '/openapi.json',
+    dom_id: '#swagger-ui',
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+    layout: 'StandaloneLayout',
+  });
+</script>
+</body>
+</html>

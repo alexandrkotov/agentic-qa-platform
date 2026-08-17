@@ -1,0 +1,4037 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Workbench Swagger",
+    "version": "1.0.0",
+    "description": "Every HTTP endpoint the Workbench's own backend exposes (`agent-service/src/admin/server.ts`) — the tools this platform runs on. This documents the PLATFORM itself, not any target system under test — for a discovered target's own API, see the Analysis tab's \"API Inventory\" diagram instead. Hand-authored from the real route handlers; `checkOpenApiCoverage.ts` catches drift between this file and the real routes. This is a local, single-user dev tool with no auth of its own — every route here executes for real, exactly as calling it with curl would."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4400",
+      "description": "Workbench (local)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Descriptors"
+    },
+    {
+      "name": "Recorder"
+    },
+    {
+      "name": "Deploy"
+    },
+    {
+      "name": "Probe"
+    },
+    {
+      "name": "Discovery"
+    },
+    {
+      "name": "Workflow (Analysis)"
+    },
+    {
+      "name": "Generate: Reports & Grouping"
+    },
+    {
+      "name": "Generate: Corrections"
+    },
+    {
+      "name": "Generate: UAT"
+    },
+    {
+      "name": "Generate: Env"
+    },
+    {
+      "name": "Generate: Groupings"
+    },
+    {
+      "name": "Generate: Spec"
+    },
+    {
+      "name": "Generate: Render"
+    },
+    {
+      "name": "Generate: Snapshots"
+    },
+    {
+      "name": "Tests"
+    },
+    {
+      "name": "Load"
+    },
+    {
+      "name": "Demo"
+    },
+    {
+      "name": "E2E"
+    }
+  ],
+  "paths": {
+    "/api/descriptors": {
+      "get": {
+        "summary": "List descriptor names",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "Descriptor names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Every System Descriptor currently on disk, by name (filename without .json). Excludes *.corrections.json sidecar files."
+      },
+      "post": {
+        "summary": "Create a new descriptor",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "201": {
+            "description": "The newly created descriptor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemDescriptor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "\"name\" missing or failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A descriptor with this name already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "\"name\" is required; any other System Descriptor fields are accepted too — defaults to an empty components array.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/descriptors/{name}": {
+      "get": {
+        "summary": "Get a descriptor",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The descriptor JSON as saved on disk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemDescriptor"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No descriptor with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Save (overwrite) a descriptor",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved (and zod-validated) descriptor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemDescriptor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed zod validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Full descriptor body, validated against SystemDescriptorSchema before being written.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemDescriptor"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a descriptor",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "No descriptor with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Also deletes its .corrections.json sidecar, if any, best-effort.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/has-setup": {
+      "get": {
+        "summary": "Whether this target has a first-run setup script registered",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hasSetup": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasSetup"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Backs the descriptor list's \"AUTO-SETUP\" badge. Never 404s, even for a stale/mistyped name — this is a plain filesystem check.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/ports": {
+      "get": {
+        "summary": "Currently published ports for a deployed target",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ports": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PortMapping"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ports"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not deployed yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reads the real state.json a deploy already wrote. 400 if never deployed.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/setup/generate-draft": {
+      "post": {
+        "summary": "Convert a Playwright codegen recording into a draft setup script",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "envVars": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Mechanical transform, no Claude call. Writes straight to bootstrap/setup/<name>.ts.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recording": {
+                    "type": "string",
+                    "description": "Raw Playwright codegen .spec.ts text."
+                  }
+                },
+                "required": [
+                  "recording"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/descriptors/{name}/setup/source": {
+      "get": {
+        "summary": "Read the setup script's raw source",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "\"text\" is null if no setup script is registered for this target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Save an edited setup script",
+        "tags": [
+          "Descriptors"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "No schema validation beyond \"is a string\" — this is TypeScript source, not JSON.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recorder/start": {
+      "post": {
+        "summary": "Start a Playwright codegen recording session",
+        "tags": [
+          "Recorder"
+        ],
+        "responses": {
+          "200": {
+            "description": "The real, current x11vnc VNC password, parsed fresh from the container's own logs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "password": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "password"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to launch codegen, or no VNC password found in logs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Kills any previous recording session and clears its output file first, then launches `playwright codegen` inside the always-on codegen-recorder container.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "URL to open codegen against."
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recorder/stop": {
+      "post": {
+        "summary": "Stop the current recording and return the recorded script",
+        "tags": [
+          "Recorder"
+        ],
+        "responses": {
+          "200": {
+            "description": "\"recording\" is null if nothing was actually captured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "recording": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/descriptors/{name}/deploy/status": {
+      "get": {
+        "summary": "Real, currently-running container names for this target",
+        "tags": [
+          "Deploy"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "containerNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "containerNames"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Queried by the target's Docker Compose project label, not by descriptor existence — a target's containers stay queryable even if its descriptor was edited/deleted.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/deploy": {
+      "post": {
+        "summary": "Deploy a target from its docker-compose component",
+        "tags": [
+          "Deploy"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"projectName\":\"...\",\"ports\":[...]}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No descriptor with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Clones the repo named in the descriptor and runs its compose file against the real host Docker daemon. Root-equivalent on the host — see server.ts's own header comment on this route.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/deploy/cancel": {
+      "post": {
+        "summary": "Cancel an in-flight deploy",
+        "tags": [
+          "Deploy"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cancelled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "cancelled"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Fire-and-forget — signals the AbortController for this name, if a deploy is actually in flight. Rollback progress streams through the original /deploy request, not this one.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/undeploy": {
+      "post": {
+        "summary": "Tear down a deployed target",
+        "tags": [
+          "Deploy"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No descriptor with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/reset": {
+      "post": {
+        "summary": "Undeploy, wipe persisted state, and redeploy fresh",
+        "tags": [
+          "Deploy"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"projectName\":\"...\",\"ports\":[...]}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No descriptor with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Backs \"Record setup\"'s \"Reset & Run\" button — genuinely wipes the target's bind-mounted directory or named Docker volume (a plain `docker compose down` never touches either), then redeploys and waits for it to actually accept connections.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/descriptors/{name}/setup": {
+      "post": {
+        "summary": "Run this target's first-run setup script",
+        "tags": [
+          "Deploy"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No setup script registered for this target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "For targets whose own admin account/config doesn't survive a fresh deploy. Mechanical, no LLM call. 400 up front (before any NDJSON headers) if no setup script is registered.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "record": {
+                    "type": "boolean",
+                    "description": "Only the \"Record setup\" UI's Run button sends this — enables screencast/video-recording of the run."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/descriptors/{name}/probe": {
+      "post": {
+        "summary": "Probe a freshly deployed target and propose real components",
+        "tags": [
+          "Probe"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposed components, ready to be added to the descriptor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Probing failed (see bootstrap/probeTarget.ts).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Entirely mechanical (JSON parsing plus real HTTP requests, no Claude call) — resolves in seconds, so a plain JSON response, not NDJSON.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json), e.g. \"orderflow\".",
+            "example": "orderflow"
+          }
+        ]
+      }
+    },
+    "/api/discovery/run": {
+      "post": {
+        "summary": "Run the discovery agent against a descriptor",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"path\":\"<report path>\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing \"descriptor\", or the descriptor only has a docker-compose component (nothing to explore yet).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A real, costed, long-running Claude call (up to 60 tool-use iterations). Component URLs get rewritten to this compose network's own service names first.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "descriptor": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "descriptor"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/for-report": {
+      "get": {
+        "summary": "Latest approved business-workflow model for a report, if any",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "null if none has been approved yet for this report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "rendered": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "report",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Discovery report filename, e.g. \"discovery-2026-08-17T12-00-00-000Z-orderflow.json\"."
+          }
+        ]
+      }
+    },
+    "/api/workflow/render-er": {
+      "post": {
+        "summary": "Render the entity-relationship diagram",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mermaid": {
+                      "type": "string",
+                      "description": "Mermaid diagram source."
+                    }
+                  },
+                  "required": [
+                    "mermaid"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Fully mechanical — no LLM call, no approval needed.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/propose": {
+      "post": {
+        "summary": "Propose a business-workflow model (Claude call)",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposed model, not yet persisted — a human reviews/edits before approving.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Model response failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/approve": {
+      "post": {
+        "summary": "Approve and persist a business-workflow model",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "rendered": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "A proposed workflow model (ProposedWorkflowSchema shape).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/render-architecture": {
+      "post": {
+        "summary": "Render the architecture diagram",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mermaid": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "mermaid"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Fully mechanical — no LLM call.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/render-api-inventory": {
+      "post": {
+        "summary": "Render the API Inventory diagram",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mermaid": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "mermaid"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Documents the DISCOVERED TARGET's own API surface (from its discovery report) — unrelated to this Workbench Swagger catalog, which documents the platform's own tools instead. Fully mechanical, no LLM call.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/ui-flow-for-report": {
+      "get": {
+        "summary": "Latest approved UI-flow model for a report, if any",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "null if none approved yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "rendered": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "report",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Discovery report filename, e.g. \"discovery-2026-08-17T12-00-00-000Z-orderflow.json\"."
+          }
+        ]
+      }
+    },
+    "/api/workflow/propose-ui-flow": {
+      "post": {
+        "summary": "Propose a UI-flow model (Claude call)",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Model response failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/approve-ui-flow": {
+      "post": {
+        "summary": "Approve and persist a UI-flow model",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "rendered": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "A proposed UI-flow model.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/sequence-for-report": {
+      "get": {
+        "summary": "Latest approved sequence-flow model for a report, if any",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "null if none approved yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "rendered": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "report",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Discovery report filename, e.g. \"discovery-2026-08-17T12-00-00-000Z-orderflow.json\"."
+          }
+        ]
+      }
+    },
+    "/api/workflow/propose-sequence": {
+      "post": {
+        "summary": "Propose a sequence-flow model (Claude call)",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Model response failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflow/approve-sequence": {
+      "post": {
+        "summary": "Approve and persist a sequence-flow model",
+        "tags": [
+          "Workflow (Analysis)"
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "rendered": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "A proposed sequence-flow model.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/reports": {
+      "get": {
+        "summary": "List usable discovery reports",
+        "tags": [
+          "Generate: Reports & Grouping"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Only reports that actually parse as a valid discovery report — e.g. a run that hit max iterations without a final answer is silently omitted."
+      }
+    },
+    "/api/generate/grouping-for-report": {
+      "get": {
+        "summary": "Latest approved grouping for a report, if any",
+        "tags": [
+          "Generate: Reports & Grouping"
+        ],
+        "responses": {
+          "200": {
+            "description": "null if none approved yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "report",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Discovery report filename, e.g. \"discovery-2026-08-17T12-00-00-000Z-orderflow.json\"."
+          }
+        ]
+      }
+    },
+    "/api/generate/group": {
+      "post": {
+        "summary": "Propose a scenario grouping (mechanical, no LLM call)",
+        "tags": [
+          "Generate: Reports & Grouping"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Report failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  },
+                  "threshold": {
+                    "type": "number",
+                    "description": "Optional ungrouped-fallback ratio override."
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/group/approve": {
+      "post": {
+        "summary": "Approve and persist a grouping",
+        "tags": [
+          "Generate: Reports & Grouping"
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "A proposed grouping (ProposedGroupingSchema shape).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/corrections/{descriptorName}": {
+      "get": {
+        "summary": "Read a descriptor's saved corrections",
+        "tags": [
+          "Generate: Corrections"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptorName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json).",
+            "example": "orderflow"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Save a descriptor's corrections",
+        "tags": [
+          "Generate: Corrections"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptorName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json).",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "CorrectionsSchema shape.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/uat/{descriptorName}": {
+      "get": {
+        "summary": "Read a descriptor's saved UAT/acceptance-test notes",
+        "tags": [
+          "Generate: UAT"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptorName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json).",
+            "example": "orderflow"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Save a descriptor's UAT notes",
+        "tags": [
+          "Generate: UAT"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptorName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json).",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/uat/extract-file": {
+      "post": {
+        "summary": "Extract text from uploaded UAT documents",
+        "tags": [
+          "Generate: UAT"
+        ],
+        "responses": {
+          "200": {
+            "description": "Combined extracted text, one \"## File: <name>\" section per upload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No files, or one failed to parse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Propose-only — never persists; a human still clicks Save (the PUT route above) to actually keep it. Up to 10 files, 10MB each, PDF/DOCX/XLSX etc.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                },
+                "required": [
+                  "files"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/uat/extract-url": {
+      "post": {
+        "summary": "Extract text from a Google Docs/Sheets URL",
+        "tags": [
+          "Generate: UAT"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Propose-only, same as extract-file.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/env/{descriptorName}": {
+      "get": {
+        "summary": "Read a descriptor's test-run environment overrides",
+        "tags": [
+          "Generate: Env"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Plain dotenv text.",
+        "parameters": [
+          {
+            "name": "descriptorName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json).",
+            "example": "orderflow"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Save a descriptor's test-run environment overrides",
+        "tags": [
+          "Generate: Env"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptorName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor filename (without .json).",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/groupings": {
+      "get": {
+        "summary": "List approved groupings",
+        "tags": [
+          "Generate: Groupings"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional — filter to groupings for this descriptor only."
+          }
+        ]
+      }
+    },
+    "/api/generate/groupings/{name}": {
+      "get": {
+        "summary": "Read a single approved grouping by exact filename",
+        "tags": [
+          "Generate: Groupings"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No grouping with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact \"generate-grouping-approved-*.json\" filename."
+          }
+        ]
+      }
+    },
+    "/api/generate/spec-for-grouping": {
+      "get": {
+        "summary": "Merged view of every approved spec for a grouping",
+        "tags": [
+          "Generate: Groupings"
+        ],
+        "responses": {
+          "200": {
+            "description": "null if none approved yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Comma-joined list of every file that contributed at least one group."
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Newest-per-group-key wins across every approval round for this grouping, not just the single latest file.",
+        "parameters": [
+          {
+            "name": "grouping",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact approved-grouping filename."
+          }
+        ]
+      }
+    },
+    "/api/generate/specs": {
+      "get": {
+        "summary": "Every approved spec for a grouping, newest first",
+        "tags": [
+          "Generate: Groupings"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "approvedAt": {
+                        "type": "string"
+                      },
+                      "groups": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Unlike spec-for-grouping, returns each individual approval round separately (a large grouping is often approved across several rounds).",
+        "parameters": [
+          {
+            "name": "grouping",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact approved-grouping filename."
+          }
+        ]
+      }
+    },
+    "/api/generate/spec": {
+      "post": {
+        "summary": "Generate BDD feature/step specs for a grouping (Claude call)",
+        "tags": [
+          "Generate: Spec"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"generation\":{...},\"failures\":[...]}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "One Claude call per render-group (budget-split from the grouping); real LLM calls, can take minutes for a large grouping.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grouping": {
+                    "type": "string"
+                  },
+                  "descriptor": {
+                    "type": "string",
+                    "description": "Used for corrections/UAT context and usage-log attribution."
+                  },
+                  "maxScenarios": {
+                    "type": "number",
+                    "description": "Optional per-Claude-call scenario budget override."
+                  },
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional — limit generation to these Stage-1 group keys only."
+                  }
+                },
+                "required": [
+                  "grouping"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/spec/approve": {
+      "post": {
+        "summary": "Re-verify and persist a generated spec",
+        "tags": [
+          "Generate: Spec"
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "object",
+                      "properties": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Re-runs step-pattern-collision verification server-side before persisting — a human may have hand-edited feature/step content after generation.",
+        "requestBody": {
+          "required": true,
+          "description": "A proposed generation (ProposedGenerationSchema shape).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/render": {
+      "post": {
+        "summary": "Write an approved spec's feature/step files to tests/",
+        "tags": [
+          "Generate: Render"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "written": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "written"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Spec failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Mechanical, no LLM call. Also records which descriptor the suite now on disk belongs to, in tests/.current-descriptor.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "spec": {
+                    "type": "string",
+                    "description": "Exact \"generate-spec-approved-*.json\" filename."
+                  }
+                },
+                "required": [
+                  "spec"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/specs-for-current-suite": {
+      "get": {
+        "summary": "Approved specs that could have produced the suite currently on disk",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "descriptor": {
+                      "type": "string"
+                    },
+                    "specs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "approvedAt": {
+                            "type": "string"
+                          },
+                          "groups": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Scoped by tests/.current-descriptor, the one honest record of what is really on disk right now."
+      }
+    },
+    "/api/generate/snapshot/preview": {
+      "post": {
+        "summary": "Preview where a snapshot would be saved, without touching disk",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "descriptor": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "spec"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/snapshot": {
+      "post": {
+        "summary": "Save a point-in-time snapshot of the current suite",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Bundles tests/features, tests/steps, the descriptor, corrections, UAT notes, setup script (if any), k6 load script (if any), resolved test-env, and the discovery report/grouping/approved-spec that produced this generation, plus any approved Analysis-tab artifacts, into archive/bdd-test-suite-<descriptor>-<timestamp>/.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "spec": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "description": "Same timestamp already shown by the /preview call above."
+                  }
+                },
+                "required": [
+                  "spec",
+                  "timestamp"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/snapshots": {
+      "get": {
+        "summary": "List all saved snapshots",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "descriptor": {
+                        "type": "string"
+                      },
+                      "timestamp": {
+                        "type": "string"
+                      },
+                      "isLatestForDescriptor": {
+                        "type": "boolean"
+                      },
+                      "isGitTracked": {
+                        "type": "boolean",
+                        "description": "Git-tracked snapshots are the shared demo fixtures CI and the hub depend on — protected from deletion."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/snapshots/{name}/download": {
+      "get": {
+        "summary": "Download a snapshot as a zip",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "Zip file.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No snapshot with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact snapshot directory name, e.g. \"bdd-test-suite-orderflow-2026-08-10T00-34-22-860Z\"."
+          }
+        ]
+      }
+    },
+    "/api/generate/snapshots/{name}/restore": {
+      "post": {
+        "summary": "Restore a snapshot's features & steps only",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"descriptor\":\"...\",\"snapshot\":\"...\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a valid snapshot directory name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact snapshot directory name."
+          }
+        ]
+      }
+    },
+    "/api/generate/snapshots/{name}/restore-full": {
+      "post": {
+        "summary": "Restore a snapshot's full context",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"descriptor\":\"...\",\"snapshot\":\"...\",\"restored\":[...],\"restoredHistory\":[...],\"backupPath\":\"...\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a valid snapshot directory name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Also restores the live descriptor/corrections/UAT (backing up whatever is currently live first, into archive/pre-restore-.../) and additively restores historical discovery-report/grouping/approved-spec/analytics files that are missing locally. Does not restore setup-script.ts (a container filesystem write there can never actually persist — see this route's own extensive comment in server.ts) or test-env.env (a resolved view, not the raw sidecar).",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact snapshot directory name."
+          }
+        ]
+      }
+    },
+    "/api/generate/snapshots/{name}": {
+      "delete": {
+        "summary": "Permanently delete a snapshot",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "403": {
+            "description": "This snapshot is git-tracked — refusing to delete it here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "No trash/undo — a real `rm -rf`. Refuses on git-tracked (shared demo) snapshots.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact snapshot directory name."
+          }
+        ]
+      }
+    },
+    "/api/generate/snapshots/import/preview": {
+      "post": {
+        "summary": "Preview importing a snapshot zip, without touching disk",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "descriptor": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "topLevelNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a valid zip, or no descriptor.json at its root.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Auto-detects the descriptor from the zip's own descriptor.json.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generate/snapshots/import": {
+      "post": {
+        "summary": "Import a snapshot zip",
+        "tags": [
+          "Generate: Snapshots"
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A snapshot with this exact name already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Never overwrites an existing snapshot directory — refuses instead.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "description": "Same timestamp already shown by the /import/preview call above."
+                  }
+                },
+                "required": [
+                  "file",
+                  "timestamp"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tests/run": {
+      "post": {
+        "summary": "Run the BDD suite currently rendered in tests/",
+        "tags": [
+          "Tests"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"testsPassed\":bool,\"testsExitCode\":number,\"reportGenerated\":bool,\"output\":\"...\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "descriptor": {
+                    "type": "string",
+                    "description": "Overlays this descriptor's own test-env overrides; omit for OrderFlow's defaults."
+                  },
+                  "resetDatabase": {
+                    "type": "boolean",
+                    "description": "OrderFlow only — wipes to a clean baseline before this run."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/load/{descriptor}/run": {
+      "post": {
+        "summary": "Run the k6 backend/API load test for a target",
+        "tags": [
+          "Load"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"exitCode\":number,\"passed\":bool}` — a nonzero exit means k6's own thresholds failed, a legitimate load-test outcome, not necessarily an infrastructure error — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No rest-api component, or no approved script yet for this target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "HTTP-only load against the descriptor's own rest-api component, no browser involved — resolves the base URL the same way Discovery does. Needs an already-approved <descriptor>-load.js.",
+        "parameters": [
+          {
+            "name": "descriptor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor name.",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resetDatabase": {
+                    "type": "boolean",
+                    "description": "OrderFlow only."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/load/{descriptor}/generate": {
+      "post": {
+        "summary": "Generate a k6 script from a discovery report (Claude call)",
+        "tags": [
+          "Load"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"scriptContent\":\"<full .js text>\"}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Report failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Propose-only — never written to disk here; PUT .../script (below) is the only path that actually saves.",
+        "parameters": [
+          {
+            "name": "descriptor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor name.",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/load/{descriptor}/script": {
+      "get": {
+        "summary": "Read the currently approved k6 script",
+        "tags": [
+          "Load"
+        ],
+        "responses": {
+          "200": {
+            "description": "\"\" if none has been approved yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "descriptor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor name.",
+            "example": "orderflow"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Validate and save a k6 script",
+        "tags": [
+          "Load"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "k6 rejected this script — error output included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Validated via k6's own `inspect` (dry-run/lint) against a temp file first — a broken script never even briefly becomes the file /run actually executes.",
+        "parameters": [
+          {
+            "name": "descriptor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Descriptor name.",
+            "example": "orderflow"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/status": {
+      "get": {
+        "summary": "Current status of both bundled demo targets",
+        "tags": [
+          "Demo"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderflow": {
+                      "type": "object",
+                      "properties": {
+                        "deployed": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "uptimeKuma": {
+                      "type": "object",
+                      "properties": {
+                        "deployed": {
+                          "type": "boolean"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "currentSuiteDescriptor": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Polled by the hub's Demo section on load and periodically. Also reports whether the suite currently on disk actually matches whichever demo is deployed."
+      }
+    },
+    "/api/demo/switch": {
+      "post": {
+        "summary": "Tear down whichever demo is up and deploy the other, suite included",
+        "tags": [
+          "Demo"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"target\":\"...\",\"testsPassed\":bool,\"testsExitCode\":number,\"reportGenerated\":bool}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Always a full teardown+redeploy of the chosen target too, even if already active. Restores that target's suite from its git-tracked snapshot, then runs it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "orderflow",
+                      "uptime-kuma"
+                    ]
+                  }
+                },
+                "required": [
+                  "target"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/e2e/scenarios": {
+      "get": {
+        "summary": "List discoverable E2E scenarios",
+        "tags": [
+          "E2E"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/e2e/run": {
+      "post": {
+        "summary": "Run one or more E2E scenarios",
+        "tags": [
+          "E2E"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — a sequence of `{\"type\":\"scenario-start\",...}`/`{\"type\":\"scenario-done\",...}` pairs, then `{\"type\":\"done\",\"reports\":[...]}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Suggest mode: runs a real scenario and, on failure, has Claude diagnose it. Each scenario spawns its own bddgen + Playwright + cleanup cycle.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scenarioIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Omit to run every discovered scenario."
+                  },
+                  "descriptor": {
+                    "type": "string",
+                    "description": "For test-env overrides and usage-log attribution; defaults to orderflow."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/e2e/reports": {
+      "get": {
+        "summary": "List E2E report summaries",
+        "tags": [
+          "E2E"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "scenarioId": {
+                        "type": "string"
+                      },
+                      "scenarioTitle": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "run",
+                          "applied"
+                        ]
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "startedAt": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Lightweight summaries only (not full reports, which include a full Claude diagnosis + evidence dump). Covers both plain run reports and applied-fix reports, newest first."
+      }
+    },
+    "/api/e2e/reports/{name}": {
+      "get": {
+        "summary": "Read one full E2E report",
+        "tags": [
+          "E2E"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report with this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact \"e2e-*.json\" filename."
+          }
+        ]
+      }
+    },
+    "/api/e2e/apply/preview": {
+      "post": {
+        "summary": "Preview applying a diagnosed fix, without touching disk",
+        "tags": [
+          "E2E"
+        ],
+        "responses": {
+          "200": {
+            "description": "\"applicable\": false (with \"outcome\"/\"reason\") is a normal result, not an error — e.g. already applied, or no structured fix available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "applicable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "applicable"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/e2e/apply/confirm": {
+      "post": {
+        "summary": "Apply a fix, typecheck, and re-run the scenario",
+        "tags": [
+          "E2E"
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams newline-delimited JSON progress lines while the operation runs: `{\"type\":\"progress\",\"message\":\"...\"}` for each step, then a final line — `{\"type\":\"done\",\"report\":{...}}` — or `{\"type\":\"error\",\"error\":\"...\"}` on failure. swagger-ui's Execute button genuinely calls this route (same-origin) but shows the whole buffered response only once the connection closes, not line-by-line as it streams — a known cosmetic limitation of documenting a live stream in OpenAPI 3.0, which has no native way to describe one.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The report or target changed since the preview, or this fix was already applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Re-validates the preview right before touching disk — never trusts a client-held preview from an earlier call.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "report": {
+                    "type": "string"
+                  },
+                  "descriptor": {
+                    "type": "string",
+                    "description": "For re-verifying against an externally deployed target."
+                  }
+                },
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable error message."
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {}
+            },
+            "description": "Present when the failure was a zod validation error — one entry per field that failed, in zod's own issue shape."
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "PostgresComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "postgres"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "connectionString": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "connectionString"
+        ]
+      },
+      "RestApiComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "rest-api"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "swaggerUrl": {
+            "type": "string",
+            "description": "OpenAPI/Swagger spec URL. Optional when knownEndpoints is used instead (no real spec exists for this API)."
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "Base URL for real verification calls; defaults to swaggerUrl's own origin when swaggerUrl is set."
+          },
+          "knownEndpoints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "path"
+              ]
+            },
+            "description": "Hand-verified endpoint list, for a real API with no discoverable OpenAPI/Swagger spec. Exactly one of swaggerUrl/knownEndpoints should be set."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "KafkaComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "kafka"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "brokers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At least one broker address."
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "sasl": {
+            "type": "object",
+            "properties": {
+              "mechanism": {
+                "type": "string",
+                "enum": [
+                  "PLAIN",
+                  "SCRAM-SHA-256",
+                  "SCRAM-SHA-512"
+                ]
+              },
+              "username": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string"
+              }
+            }
+          },
+          "tls": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "insecureSkipVerify": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "required": [
+          "type",
+          "brokers"
+        ]
+      },
+      "KafkaConsumerComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "kafka-consumer"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "brokers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "topic": {
+            "type": "string"
+          },
+          "sampleSize": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "brokers",
+          "topic"
+        ]
+      },
+      "WebUiComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "web-ui"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Routes to visit during exploration, e.g. ['/', '/customers']."
+          }
+        },
+        "required": [
+          "type",
+          "baseUrl",
+          "routes"
+        ]
+      },
+      "DockerComposeComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "docker-compose"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "repoUrl": {
+            "type": "string",
+            "description": "http(s) clone URL for the repo containing the target's own compose file."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Branch/tag/commit to pin the clone to; omitted means the default branch."
+          },
+          "composeFile": {
+            "type": "string",
+            "description": "Path to the compose file within the clone, relative to the repo root. Defaults to \"docker-compose.yml\" if omitted."
+          },
+          "postUpExec": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "service": {
+                  "type": "string"
+                },
+                "command": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "service",
+                "command"
+              ]
+            },
+            "description": "Commands run once via 'docker compose exec' after 'up' succeeds, before the target is considered ready."
+          }
+        },
+        "required": [
+          "type",
+          "repoUrl"
+        ]
+      },
+      "SqliteComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "sqlite"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path (or \"${HOST_PROJECT_ROOT}/...\"-prefixed) to the .db file as seen from inside the workbench container."
+          }
+        },
+        "required": [
+          "type",
+          "path"
+        ]
+      },
+      "MysqlComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "mysql"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "connectionString": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "connectionString"
+        ]
+      },
+      "MongoComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "mongo"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "connectionString": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "connectionString"
+        ]
+      },
+      "MssqlComponent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "mssql"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Only required when a descriptor has more than one component of this type."
+          },
+          "connectionString": {
+            "type": "string",
+            "description": "Unlike every other DB component, the host here is the target's own docker-compose SERVICE name (not host.docker.internal) and the port is that service's real internal port — see descriptor/schema.ts for the full reasoning (a Docker Desktop/WSL2 hairpin-NAT limitation specific to this engine)."
+          }
+        },
+        "required": [
+          "type",
+          "connectionString"
+        ]
+      },
+      "SystemComponent": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PostgresComponent"
+          },
+          {
+            "$ref": "#/components/schemas/RestApiComponent"
+          },
+          {
+            "$ref": "#/components/schemas/KafkaComponent"
+          },
+          {
+            "$ref": "#/components/schemas/KafkaConsumerComponent"
+          },
+          {
+            "$ref": "#/components/schemas/WebUiComponent"
+          },
+          {
+            "$ref": "#/components/schemas/DockerComposeComponent"
+          },
+          {
+            "$ref": "#/components/schemas/SqliteComponent"
+          },
+          {
+            "$ref": "#/components/schemas/MysqlComponent"
+          },
+          {
+            "$ref": "#/components/schemas/MongoComponent"
+          },
+          {
+            "$ref": "#/components/schemas/MssqlComponent"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "postgres": "#/components/schemas/PostgresComponent",
+            "rest-api": "#/components/schemas/RestApiComponent",
+            "kafka": "#/components/schemas/KafkaComponent",
+            "kafka-consumer": "#/components/schemas/KafkaConsumerComponent",
+            "web-ui": "#/components/schemas/WebUiComponent",
+            "docker-compose": "#/components/schemas/DockerComposeComponent",
+            "sqlite": "#/components/schemas/SqliteComponent",
+            "mysql": "#/components/schemas/MysqlComponent",
+            "mongo": "#/components/schemas/MongoComponent",
+            "mssql": "#/components/schemas/MssqlComponent"
+          }
+        }
+      },
+      "SystemDescriptor": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SystemComponent"
+            },
+            "description": "At least one component. See descriptor/schema.ts for the full per-type field reference."
+          },
+          "extraInstructions": {
+            "type": "string",
+            "description": "Free text spliced verbatim into the discovery system prompt, for business rules that don't generalize across target systems."
+          },
+          "cleanupSql": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Raw SQL statements run in order, via a direct Postgres connection, after discovery finishes — never exposed to the LLM."
+          }
+        },
+        "required": [
+          "components"
+        ]
+      },
+      "PortMapping": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "containerPort": {
+            "type": "number"
+          },
+          "publishedPort": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

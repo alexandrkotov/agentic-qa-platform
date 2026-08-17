@@ -14,6 +14,7 @@
     "e2e:openai": "tsx src/index.ts e2e --provider openai",
     "apply-fix": "tsx src/index.ts apply-fix",
     "workbench": "tsx src/admin/server.ts",
+    "check:openapi": "tsx src/admin/checkOpenApiCoverage.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
