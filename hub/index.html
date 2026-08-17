@@ -424,14 +424,15 @@
         </div>
         <span class="card-url">:8081</span>
       </a>
-    </div>
 
-    <div class="section-heading">Workbench Swagger</div>
-    <p class="section-note">Live OpenAPI/Swagger reference for the Workbench's own backend — the tools
-      this platform runs on, not a discovered target's API (see the Analysis tab's own "API Inventory"
-      diagram for that instead).</p>
-
-    <div class="grid">
+      <!-- Workbench Swagger — real OpenAPI/Swagger reference for the
+           Workbench's own backend (agent-service/src/admin/server.ts),
+           not any discovered target's API (see the Analysis tab's own
+           "API Inventory" diagram for that instead — same disambiguation
+           this card-desc carries, no separate section-note needed for a
+           single tile). Folded into Platform rather than given its own
+           section: same promotion Kafka UI got above, genuinely
+           always-on platform infrastructure, not demo-specific. -->
       <a class="card" href="http://localhost:4400/api-docs.html" target="_blank" rel="noopener">
         <div class="card-main">
           <span class="card-icon">
@@ -442,10 +443,10 @@
           </span>
           <div>
             <div class="card-name">Workbench Swagger</div>
-            <div class="card-desc">Every endpoint the Workbench's own backend exposes — descriptors, discovery, generate, tests, load, demo, e2e.</div>
+            <div class="card-desc">Every endpoint the Workbench's own backend exposes — descriptors, discovery, generate, tests, load, demo, e2e. Not a discovered target's own API — see the Analysis tab's API Inventory diagram for that.</div>
           </div>
         </div>
-        <span class="card-url">:4400</span>
+        <span class="card-url">:4400/api-docs.html</span>
       </a>
     </div>
 
