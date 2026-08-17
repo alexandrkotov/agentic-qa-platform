@@ -232,6 +232,11 @@ script, see "Adding a new target" below. Point
 discovery at any of them with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag
 defaults to `orderflow.json`, so `pnpm discovery` behaves exactly as before.
 
+None of these nine are git-tracked directly (see "The test suite" below) — only `orderflow.json`
+and `uptime-kuma.json` are restorable on a fresh clone, from their own `archive/` snapshot. The
+other seven are local dev/test fixtures with no restore path at all; nothing depends on them being
+present, so they're simply gone on a fresh clone by design.
+
 `orderflow.json` also carries an optional `cleanupSql: string[]` — raw SQL run afterward through a
 direct, write-capable Postgres connection the LLM never sees, since the agent's own `postgres`
 tool is deliberately read-only and can't remove the test fixtures its write-scenario creates.
@@ -423,7 +428,11 @@ source content in its own right). `tests/.current-descriptor` names which one, a
   hub's "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons, manual local setup (Quick Start
   above), and the Snapshots tab's own Restore button (below) all share. Takes an optional
   descriptor name (defaults to reading `tests/.current-descriptor`) and an optional exact snapshot
-  name (defaults to that descriptor's latest).
+  name (defaults to that descriptor's latest). Also fills in `agent-service/descriptors/<name>.json`/
+  `.corrections.json`/`.uat.md`/`.env` from the same snapshot — restore-if-missing only, so it
+  never overwrites a descriptor that's already on disk (e.g. one a human is actively editing); on a
+  fresh checkout, where none of these are git-tracked either (see below), this is what actually puts
+  them there at all.
 
 Every past suite still has its own permanent, timestamped copy under [`archive/`](archive/) — the
 Test Suite tab's snapshot action bundles the `.feature`/`.steps.ts` files alongside the
@@ -437,25 +446,33 @@ the browser UI for all of this:
 - **Export / Import** — download any snapshot as a `.zip`, or import one exported elsewhere (e.g.
   from a different machine) as a new `archive/` entry.
 - **Restore** — either just the suite files (`tests/features`/`tests/steps`, the same thing
-  `restore-suite.mjs` above does), or "Full context," which also restores the descriptor/
-  corrections/UAT (auto-backing up the current copies first) and adds back the discovery report/
-  grouping/spec/analytics under `agent-service/reports/` if they're not already there — the case
-  that actually matters for a snapshot imported from a different machine. The one thing "Full
+  `restore-suite.mjs` above does — which will also fill in a *missing* descriptor sidecar, but
+  never overwrite one already on disk), or "Full context," which unconditionally restores the
+  descriptor/corrections/UAT (auto-backing up the current copies first) and adds back the discovery
+  report/grouping/spec/analytics under `agent-service/reports/` if they're not already there — the
+  case that actually matters for a snapshot imported from a different machine. The one thing "Full
   context" can't restore is the setup script itself: `agent-service/src/` is baked into the
   `workbench` image at build time, not bind-mounted, so a write to it from inside the running
   container never reaches the host — it's backed up for reference and flagged if it differs, not
   silently "restored" as if the write actually worked.
 - **Delete** — removes a snapshot that's no longer needed. Only **two** of those snapshots are
   themselves git-tracked (OrderFlow's and Uptime Kuma's — the two the restore script and CI
-  actually rely on existing on a fresh checkout); the Snapshots tab won't delete either of them,
-  even on request, and confirms the same server-side. Every other snapshot in `archive/` stays
-  disk-only, gitignored, a point-in-time convenience rather than permanent history.
+  actually rely on existing on a fresh checkout, now for their descriptor/corrections/UAT/env
+  sidecars too, not just the suite files); the Snapshots tab won't delete either of them, even on
+  request, and confirms the same server-side. Every other snapshot in `archive/` stays disk-only,
+  gitignored, a point-in-time convenience rather than permanent history.
+
+None of the descriptors under `agent-service/descriptors/` are git-tracked directly any more either
+(same reasoning as `tests/features`/`tests/steps` above) — only OrderFlow's and Uptime Kuma's are
+restorable at all, from their own `archive/` snapshot; the other seven have no snapshot and no
+restore path, so they simply don't exist on a fresh clone.
 
 ### CI
 
 A GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)),
 descriptor-agnostic: it reads `tests/.current-descriptor`, restores that descriptor's own archived
-suite (`tests/support/restore-suite.mjs` — `tests/features`/`tests/steps` aren't git-tracked
+suite (`tests/support/restore-suite.mjs` — right after checkout, before anything else reads a
+descriptor file; `tests/features`/`tests/steps` and the descriptor itself aren't git-tracked
 themselves, only `tests/.current-descriptor` and the two `archive/bdd-test-suite-*` snapshots are),
 then drives the real `workbench` container over its own HTTP API — `/deploy` → `/setup` →
 `/tests/run` → `/undeploy`, the same routes a human already uses from the browser — rather than
@@ -504,22 +521,27 @@ Deliberately out of scope, not missing pieces:
 
 The minimum to get a real target deployed and its test suite green — no AI calls needed, since the
 discovery report and generated suite are already committed as an archived snapshot. `tests/features`/
-`tests/steps` themselves start out empty (gitignored — they're a *restored working copy*, not source
-content in their own right; see "The test suite" below) — the first real step for either target is
-restoring one of the two git-tracked `archive/bdd-test-suite-*` snapshots into them. Assumes WSL2 +
-Docker Desktop (see [Prerequisites](#prerequisites) below); every command runs from the repo root
-unless noted.
+`tests/steps`, and the descriptor itself (`agent-service/descriptors/uptime-kuma.json`/`.env`/etc.),
+all start out empty/absent (gitignored — restored working copies, not source content in their own
+right; see "The test suite" below) — the first real step for either target is restoring one of the
+two git-tracked `archive/bdd-test-suite-*` snapshots, which is why `restore-suite.mjs` below has to
+run *before* `/deploy` (that route reads the descriptor straight off disk). Assumes WSL2 + Docker
+Desktop (see [Prerequisites](#prerequisites) below); every command runs from the repo root unless
+noted.
 
 ```bash
 docker compose up -d --build                                                                     # platform
 docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build   # demo: OrderFlow
 
-# give the workbench container a few seconds to finish starting, then deploy
-# and set up Uptime Kuma — the same two API calls CI itself makes:
+# give the workbench container a few seconds to finish starting, then restore
+# Uptime Kuma's descriptor from its archived snapshot before deploying —
+# same order CI and the hub's own demo-switch route use:
+node tests/support/restore-suite.mjs uptime-kuma
+
+# deploy and set up Uptime Kuma — the same two API calls CI itself makes:
 curl -X POST http://localhost:4400/api/descriptors/uptime-kuma/deploy
 curl -X POST http://localhost:4400/api/descriptors/uptime-kuma/setup
 
-node tests/support/restore-suite.mjs uptime-kuma
 cp agent-service/descriptors/uptime-kuma.env tests/.env
 cd tests
 pnpm install

@@ -1,8 +1,11 @@
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Restores tests/features + tests/steps from an archived snapshot
+// Restores tests/features + tests/steps, and the descriptor itself
+// (descriptors/<name>.json/.corrections.json/.uat.md/.env, restore-if-missing
+// only — see below), from an archived snapshot
 // (archive/bdd-test-suite-<descriptor>-<timestamp>/) and updates
 // tests/.current-descriptor to match. Usage:
 //   node restore-suite.mjs [descriptor] [snapshotName]
@@ -36,7 +39,29 @@ const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const TESTS_DIR = join(REPO_ROOT, 'tests');
 const ARCHIVE_DIR = join(REPO_ROOT, 'archive');
 const LOADTESTS_DIR = join(REPO_ROOT, 'loadtests');
+// descriptors/ is the ONE mount that doesn't sit at the same
+// REPO_ROOT-relative path on both sides — docker-compose.yml mounts
+// ./agent-service/descriptors straight onto /usr/src/app/descriptors (no
+// agent-service/ prefix inside the container, matching how server.ts's own
+// DESCRIPTORS_DIR = resolve(__dirname, '../../descriptors') sees it), while
+// on the host/CI side it's the real agent-service/descriptors. Hit live: a
+// hardcoded join(REPO_ROOT, 'agent-service', 'descriptors') EACCES'd inside
+// the container trying to mkdir a nonexistent /usr/src/app/agent-service.
+// REPO_ROOT/agent-service existing at all is what actually differs between
+// the two cases, so that's the real, live-verified signal to branch on.
+const DESCRIPTORS_DIR = existsSync(join(REPO_ROOT, 'agent-service'))
+  ? join(REPO_ROOT, 'agent-service', 'descriptors')
+  : join(REPO_ROOT, 'descriptors');
 const CURRENT_DESCRIPTOR_FILE = join(TESTS_DIR, '.current-descriptor');
+
+async function exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function resolveDescriptor(argDescriptor) {
   if (argDescriptor) return argDescriptor;
@@ -133,6 +158,36 @@ async function main() {
     console.log(`  loadtests/${descriptor}-load.js <- ${loadScriptSrc}`);
   } catch {
     // No k6 script in this snapshot — nothing to restore, not an error.
+  }
+
+  // The descriptor itself — descriptor.json/corrections.json/uat.md/
+  // env-overrides.env in the snapshot -> descriptors/<name>.json/
+  // .corrections.json/.uat.md/.env. Restore-if-missing ONLY, deliberately
+  // never overwrites a file that's already on disk: on a fresh checkout
+  // (these files aren't git-tracked, see the root .gitignore's own
+  // comment) there's nothing to restore FROM, so this fills them in; on an
+  // already-running instance the descriptor is normally already there
+  // (it's what a human may be actively editing via the Workbench), so this
+  // is a silent no-op. Same reasoning as loadtests/ above for why a
+  // missing file in the snapshot (e.g. no .env sidecar for this
+  // descriptor) is skipped, not an error.
+  await mkdir(DESCRIPTORS_DIR, { recursive: true });
+  const descriptorFiles = [
+    ['descriptor.json', `${descriptor}.json`],
+    ['corrections.json', `${descriptor}.corrections.json`],
+    ['uat.md', `${descriptor}.uat.md`],
+    ['env-overrides.env', `${descriptor}.env`],
+  ];
+  for (const [snapshotName, destName] of descriptorFiles) {
+    const src = join(snapshotDir, snapshotName);
+    const dest = join(DESCRIPTORS_DIR, destName);
+    if (await exists(dest)) continue;
+    try {
+      await cp(src, dest);
+      console.log(`  agent-service/descriptors/${destName} <- ${src}`);
+    } catch {
+      // Not in this snapshot — nothing to restore, not an error.
+    }
   }
 
   await writeFile(CURRENT_DESCRIPTOR_FILE, `${descriptor}\n`, 'utf8');

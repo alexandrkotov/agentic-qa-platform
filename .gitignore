@@ -18,21 +18,20 @@ agent-service/.playwright-mcp/
 # wildcard on its contents. See git-scm.com/docs/gitignore's own note on
 # this exact limitation.
 /archive/*
-!/archive/bdd-test-suite-orderflow-2026-08-10T00-34-22-860Z/
-!/archive/bdd-test-suite-orderflow-2026-08-10T00-34-22-860Z/**
-!/archive/bdd-test-suite-uptime-kuma-2026-08-11T06-22-17-222Z/
-!/archive/bdd-test-suite-uptime-kuma-2026-08-11T06-22-17-222Z/**
+!/archive/bdd-test-suite-orderflow-2026-08-17T22-03-25-058Z/
+!/archive/bdd-test-suite-orderflow-2026-08-17T22-03-25-058Z/**
+!/archive/bdd-test-suite-uptime-kuma-2026-08-17T21-56-31-507Z/
+!/archive/bdd-test-suite-uptime-kuma-2026-08-17T21-56-31-507Z/**
 # Same reasoning as tests/features/tests/steps above, same mechanism —
 # loadtests/<descriptor>-load.js (hand-written or AI-generated+approved,
 # see agent-service/src/admin/static/load.html) is regenerable/mutable
 # content, not something to track directly; a snapshot's own copy (created
 # by POST /api/generate/snapshot, restored by tests/support/restore-
 # suite.mjs) is the real, git-tracked source of truth instead. The two
-# archive/ snapshots allowlisted above already got OrderFlow's own script
-# added directly (2026-08-18) rather than via a fresh snapshot round —
-# retroactively correct for these two specifically, since they already
-# function as "the persisted current state" (restore-suite.mjs's own
-# target), not a literal point-in-time historical record.
+# archive/ snapshots allowlisted above function as "the persisted current
+# state" (restore-suite.mjs's own restore target), not a literal
+# point-in-time historical record — replaced with a fresh round whenever
+# the two demo descriptors' own content is untracked/rebased on 2026-08-19.
 /loadtests/*.js
 # Clones of external target repos (docker-compose component type) — repo
 # root, mounted at an identical absolute path on both host and container
@@ -51,8 +50,16 @@ agent-service/.playwright-mcp/
 /agent-service/src/bootstrap/setup/*
 !/agent-service/src/bootstrap/setup/uptime-kuma.ts
 !/agent-service/src/bootstrap/setup/nocodb.ts
-# Same reasoning, same date — Trilium's own descriptor/env, not gitignored
-# by the general rules above (`.env` only matches a file literally named
-# `.env`, and there's no existing per-target rule for descriptors/*.json).
-/agent-service/descriptors/trilium.json
-/agent-service/descriptors/trilium.env
+# Descriptors themselves (descriptors/<name>.json/.corrections.json/.uat.md/
+# .env) — unlike the two exceptions above, NO per-file allowlist here: every
+# descriptor is gitignored, including orderflow/uptime-kuma. Their own
+# archive/ snapshot (allowlisted above) is now the real source of truth for
+# them too — tests/support/restore-suite.mjs restores descriptor.json/
+# corrections.json/uat.md/env-overrides.env from it (restore-if-missing,
+# never overwrites a live edit), the same script that already restores
+# tests/features/tests/steps. The other descriptors here (wger/snipe-it/
+# wekan/nopcommerce/kafka-demo/kafka-consumer-demo/nocodb/trilium) have no
+# snapshot and no restore path at all — simply gone on a fresh clone, by
+# design, same basis Trilium's own files were untracked on 2026-08-14:
+# local dev/test fixtures, nothing depends on them being present.
+/agent-service/descriptors/*

@@ -2066,6 +2066,15 @@ app.post('/api/generate/snapshot', async (req, res) => {
     // kafka-demo) still gets a real, honest file here — the shared base
     // defaults it actually ran against — rather than nothing at all.
     await writeFile(join(snapshotDir, 'test-env.env'), await resolveTestEnvForSnapshot(descriptor), 'utf-8').catch(() => {});
+    // The RAW override sidecar itself (descriptors/<name>.env), separate
+    // from test-env.env above — that one is a flattened/resolved view
+    // deliberately unsuitable to restore as the sidecar file itself (see
+    // resolveTestEnvForSnapshot's own comment: writing it back would bake
+    // container defaults in as if they were real per-descriptor overrides).
+    // This copy is what tests/support/restore-suite.mjs actually restores
+    // descriptors/<name>.env from. Most descriptors have no sidecar at all
+    // (same soft-fail as corrections.json/uat.md above).
+    await cp(descriptorPath(descriptor).replace(/\.json$/, '.env'), join(snapshotDir, 'env-overrides.env')).catch(() => {});
 
     // The exact recipe that produced THIS generation — not every
     // historical discovery report/grouping ever run for this descriptor;
@@ -3102,6 +3111,28 @@ app.post('/api/demo/switch', async (req, res) => {
   const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
   try {
+    // Runs FIRST, before anything below reads a descriptor file — descriptors
+    // aren't git-tracked themselves (see the root .gitignore's own comment),
+    // so on a fresh checkout this is what actually puts descriptors/<target>.json/
+    // .env on disk at all. Restore-if-missing (restore-suite.mjs's own logic),
+    // so this is a no-op on an already-running instance, same script CI and
+    // the Workbench's own Restore button use. Used to run right before the
+    // BDD test run near the end of this route instead — moved here after a
+    // real ordering bug: the uptime-kuma branch below reads
+    // descriptorPath('uptime-kuma') directly a few lines in, which would 500
+    // on ENOENT on a fresh checkout if this still ran after it.
+    send({ type: 'progress', message: `Restoring ${target}'s suite from its archived snapshot…` });
+    const restoreResult = await runCommand(
+      'node',
+      ['tests/support/restore-suite.mjs', target],
+      APP_ROOT,
+      process.env,
+      (message) => send({ type: 'progress', message }),
+    );
+    if (restoreResult.code !== 0) {
+      throw new Error(`restore-suite.mjs failed (exit ${restoreResult.code}): ${restoreResult.output.slice(-800)}`);
+    }
+
     if (target === 'uptime-kuma') {
       send({ type: 'progress', message: 'Tearing down the OrderFlow demo…' });
       await undeployOrderflowDemo((message) => send({ type: 'progress', message }));
@@ -3148,18 +3179,6 @@ app.post('/api/demo/switch', async (req, res) => {
       await deployOrderflowDemo((message) => send({ type: 'progress', message }));
       await syncKafkaUi((message) => send({ type: 'progress', message }));
       await waitForOrderflowBackendReady((message) => send({ type: 'progress', message }));
-    }
-
-    send({ type: 'progress', message: `Restoring ${target}'s suite from its archived snapshot…` });
-    const restoreResult = await runCommand(
-      'node',
-      ['tests/support/restore-suite.mjs', target],
-      APP_ROOT,
-      process.env,
-      (message) => send({ type: 'progress', message }),
-    );
-    if (restoreResult.code !== 0) {
-      throw new Error(`restore-suite.mjs failed (exit ${restoreResult.code}): ${restoreResult.output.slice(-800)}`);
     }
 
     // Same two commands /api/tests/run runs above — descriptor passed only
