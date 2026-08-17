@@ -44,6 +44,18 @@ const RestApiComponentSchema = z.object({
     )
     .min(1)
     .optional(),
+  /**
+   * Optional headers attached to every request this component makes, in both
+   * swaggerUrl and knownEndpoints mode — for a real API that requires
+   * authentication (a static bearer token, an API key header, NocoDB-style
+   * xc-token, etc.). Value is a literal in descriptor.json, same convention
+   * as Postgres's connectionString and Kuma's login password in
+   * extraInstructions — descriptors/ is gitignored, so indirection through a
+   * .env sidecar would buy no real secrecy. Not rendered by the admin UI's
+   * field editor (same as knownEndpoints — see admin/static/index.html's own
+   * FIELD_DEFS comment); edit the descriptor JSON directly.
+   */
+  headers: z.record(z.string(), z.string()).optional(),
 });
 
 const KafkaComponentSchema = z.object({

@@ -203,7 +203,7 @@ validated with zod) describing a target system as a list of typed components:
 | `mongo` | `connectionString` | Schema + sample docs, via the official `mongodb-mcp-server` |
 | `mssql` | `connectionString` | Read-only `SELECT` queries, via a hand-written tool (same reasoning as `mysql`) |
 | `sqlite` | `path` (a `.db` file, `${HOST_PROJECT_ROOT}`-relative — see below) | Read-only queries against a docker-compose-deployed target's own bind-mounted `.db` file, via the real `sqlite3` CLI |
-| `rest-api` | `swaggerUrl` (or `knownEndpoints` when no spec exists), optional `baseUrl` | The full OpenAPI spec, or a hand-verified endpoint list |
+| `rest-api` | `swaggerUrl` (or `knownEndpoints` when no spec exists), optional `baseUrl`, optional `headers` (static auth headers, e.g. an API token) | The full OpenAPI spec, or a hand-verified endpoint list |
 | `web-ui` | `baseUrl`, `routes` | Live browser navigation, via Playwright MCP |
 | `kafka` | `brokers`, optional `sasl`/`tls` | Whole-broker exploration — topics, configs, sample messages, consumer groups, via [`tuannvm/kafka-mcp-server`](https://github.com/tuannvm/kafka-mcp-server) |
 | `kafka-consumer` | `brokers`, `topic`, optional `sampleSize` | One named topic only — message count, inferred payload shape, anomalies (same MCP server, narrower prompt) |

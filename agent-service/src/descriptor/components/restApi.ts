@@ -26,7 +26,7 @@ export const restApiBuilder: ComponentBuilder<RestApiComponent> = {
           parameters: {},
           required: [],
           execute: async () => {
-            const res = await fetch(swaggerUrl);
+            const res = await fetch(swaggerUrl, { headers: component.headers });
             if (!res.ok) {
               throw new Error(`GET ${swaggerUrl} → ${res.status} ${res.statusText}`);
             }
@@ -73,7 +73,7 @@ export const restApiBuilder: ComponentBuilder<RestApiComponent> = {
               `"${method} ${path}" is not one of this component's known endpoints — use one of the exact method+path pairs listed in your instructions.`,
             );
           }
-          const res = await fetch(new URL(path, baseUrl).toString(), { method });
+          const res = await fetch(new URL(path, baseUrl).toString(), { method, headers: component.headers });
           const contentType = res.headers.get('content-type') ?? '';
           const bodyText = await res.text();
           return JSON.stringify({
