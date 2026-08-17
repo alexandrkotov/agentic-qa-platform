@@ -248,12 +248,35 @@
         </div>
         <span class="card-url">:8080/usage</span>
       </a>
+
+      <!-- Kafka UI Multi-Cluster: moved up here from its old spot as an
+           OrderFlow-only demo subcard — it's genuinely platform
+           infrastructure now, not demo-specific. It starts with
+           `docker compose up` like every other card in this section, and
+           agent-service/src/bootstrap/kafkaUiSync.ts keeps its cluster list
+           in sync with whatever's actually deployed (OrderFlow's own
+           broker, plus any other target's, detected by image) — so it
+           needs to be reachable regardless of which demo (if any) is
+           currently up, not nested inside one specific tile. -->
+      <a class="card" href="http://localhost:8081" target="_blank" rel="noopener">
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12h4l2-7 4 14 2-7h6"></path>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Kafka UI</div>
+            <div class="card-desc">Cluster admin — topics, messages, consumer groups. Multi-cluster: shows every deployed target's own broker automatically, not just OrderFlow's.</div>
+          </div>
+        </div>
+        <span class="card-url">:8081</span>
+      </a>
     </div>
 
     <div class="section-heading">Demo</div>
     <p class="section-note">Bundled example, proving the pipeline end to end — the platform itself
-      works with any target system, see the Workbench's Discovery tab. Kafka is part of this demo,
-      not the platform — Kafka UI lives below, inside whichever demo is currently deployed.</p>
+      works with any target system, see the Workbench's Discovery tab.</p>
 
     <div class="grid">
       <div class="card demo-tile" id="tile-orderflow">
@@ -310,20 +333,6 @@
               </div>
             </div>
             <span class="card-url">:3000/docs</span>
-          </a>
-          <a class="subcard" href="http://localhost:8081" target="_blank" rel="noopener">
-            <div class="subcard-main">
-              <span class="subcard-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M3 12h4l2-7 4 14 2-7h6"></path>
-                </svg>
-              </span>
-              <div>
-                <div class="subcard-name">Kafka UI</div>
-                <div class="subcard-desc">Cluster admin — topics, messages, consumer groups</div>
-              </div>
-            </div>
-            <span class="card-url">:8081</span>
           </a>
         </div>
       </div>
