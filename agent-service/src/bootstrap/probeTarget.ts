@@ -5,6 +5,7 @@ import type { SystemComponent } from '../descriptor/schema.ts';
 import { resolveTargetPaths, type DeployState, type PortMapping } from './deployTarget.ts';
 import { targetsDirFromEnv } from './targetsDir.ts';
 import { hasSetup } from './setupTarget.ts';
+import { detectKafkaServices } from './kafkaDetect.ts';
 
 // ---------------------------------------------------------------------------
 // Step (4) of the "External Target Onboarding" initiative — after a real
@@ -320,6 +321,54 @@ function detectDbCandidates(
 }
 
 // ---------------------------------------------------------------------------
+// Pass 1b — Kafka brokers, by image (bootstrap/kafkaDetect.ts's own
+// KAFKA_IMAGE_PATTERNS, shared with deployTarget.ts's alias injection and
+// kafkaUiSync.ts). This candidate feeds a completely different consumer
+// than kafkaUiSync.ts's own multi-cluster kafka-ui config: a `kafka`
+// component here is for kafka-mcp-server (Discovery), which runs
+// `--network=host` (descriptor/components/kafka.ts) — so it needs a
+// published port and `host.docker.internal`, the exact same constraint
+// pass 1 above already has for postgres/mysql/mongo, not the network-join
+// + alias mechanism kafka-ui itself uses. This is best-effort, same honesty
+// standard as the rest of this file: a third-party Kafka compose file can
+// set `advertised.listeners` to point back at an internal-only address
+// even when a port IS published, in which case a real client connecting
+// via the published port still fails once it follows the broker's own
+// metadata — this proposal can't detect that in advance, so the evidence
+// string says so rather than implying a guarantee.
+// ---------------------------------------------------------------------------
+
+function detectKafkaCandidates(
+  config: ComposeConfig,
+  ports: PortMapping[],
+  claimedPorts: Set<number>,
+): { candidates: ProbeCandidate[]; unclassified: ProbeUnclassified[] } {
+  const candidates: ProbeCandidate[] = [];
+  const unclassified: ProbeUnclassified[] = [];
+
+  for (const { serviceName, image } of detectKafkaServices(config)) {
+    const label = `${serviceName} (image ${image})`;
+    const published = ports.find((p) => p.service === serviceName)?.publishedPort;
+
+    if (!published) {
+      unclassified.push({
+        label,
+        reason: 'looks like a Kafka broker, but this service has no port published to the host — nothing for a host-network MCP client to reach. Publish the port in the target\'s own compose file if this needs testing, or add a component by hand.',
+      });
+      continue;
+    }
+
+    claimedPorts.add(published);
+    candidates.push({
+      component: { type: 'kafka', name: serviceName, brokers: [`host.docker.internal:${published}`] },
+      evidence: `image ${image} on published port ${published} — best-effort: if this broker's own advertised.listeners points at an internal-only address, this connection string may still fail once a client follows the broker's own metadata; verify connectivity before relying on it.`,
+    });
+  }
+
+  return { candidates, unclassified };
+}
+
+// ---------------------------------------------------------------------------
 // Pass 2 — sqlite files. Filesystem-based, not network-based, so it isn't
 // subject to pass 1's published-port limitation — genuinely the most
 // reliable signal this whole feature has. Bounded depth/file count, same
@@ -565,12 +614,13 @@ export async function probeTarget(name: string): Promise<ProbeResult> {
 
   const claimedPorts = new Set<number>();
   const db = detectDbCandidates(config, state.ports, claimedPorts);
+  const kafka = detectKafkaCandidates(config, state.ports, claimedPorts);
   const sqliteCandidates = await detectSqliteCandidates(config);
   const http = await detectHttpCandidates(state.ports, claimedPorts, hasSetup(name));
 
   return {
-    candidates: [...db.candidates, ...sqliteCandidates, ...http.candidates],
-    unclassified: [...db.unclassified, ...http.unclassified],
+    candidates: [...db.candidates, ...kafka.candidates, ...sqliteCandidates, ...http.candidates],
+    unclassified: [...db.unclassified, ...kafka.unclassified, ...http.unclassified],
     setupHints: http.setupHints,
   };
 }

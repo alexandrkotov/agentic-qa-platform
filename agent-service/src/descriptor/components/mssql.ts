@@ -1,11 +1,9 @@
-import { readFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import sql from 'mssql';
 import type { CustomTool } from '../../providers/AgentProvider.ts';
 import type { BuilderContext, ComponentBuilder } from '../registry.ts';
 import type { MssqlComponent } from '../schema.ts';
-import { resolveTargetPaths } from '../../bootstrap/deployTarget.ts';
-import { targetsDirFromEnv } from '../../bootstrap/targetsDir.ts';
+import { resolveComposeServiceNetworks } from '../../bootstrap/composeNetworks.ts';
 import { runCommand } from '../../util/runCommand.ts';
 
 /**
@@ -94,71 +92,11 @@ function parseConnectionString(raw: string): ParsedConnection {
 }
 
 // ---------------------------------------------------------------------------
-// Network-join — see this file's own header comment for the why. Reads the
-// same resolved.json shape bootstrap/probeTarget.ts's own ComposeConfig
-// reads, but only the two fields needed here (a service's own `networks`
-// map and each network's resolved real `name`) — not worth importing
-// probeTarget.ts's own (differently-scoped) interfaces for this.
+// Network-join — see this file's own header comment for the why.
+// resolveComposeServiceNetworks() itself now lives in
+// bootstrap/composeNetworks.ts (factored out once bootstrap/kafkaUiSync.ts
+// needed the identical resolved.json lookup) — this file just calls it.
 // ---------------------------------------------------------------------------
-
-interface ResolvedNetwork {
-  name?: string;
-  [key: string]: unknown;
-}
-interface ResolvedService {
-  networks?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-interface ResolvedConfig {
-  services?: Record<string, ResolvedService>;
-  networks?: Record<string, ResolvedNetwork>;
-  [key: string]: unknown;
-}
-
-async function resolveComposeServiceNetworks(descriptorName: string, composeService: string): Promise<string[]> {
-  const targetsDir = targetsDirFromEnv();
-  const { resolvedConfigPath } = resolveTargetPaths(targetsDir, descriptorName);
-
-  let resolved: ResolvedConfig;
-  try {
-    resolved = JSON.parse(await readFile(resolvedConfigPath, 'utf-8'));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(
-        `No deployed configuration found for target "${descriptorName}" — deploy it first (${resolvedConfigPath} is missing).`,
-      );
-    }
-    throw err;
-  }
-
-  const service = resolved.services?.[composeService];
-  if (!service) {
-    throw new Error(
-      `Compose service "${composeService}" (from this component's connectionString host) was not found in ` +
-        `target "${descriptorName}"'s resolved compose config — the connectionString's host must match the ` +
-        `service name in the target's own docker-compose file.`,
-    );
-  }
-
-  // A service with no explicit `networks:` of its own still implicitly
-  // joins Compose's synthesized "default" network — confirmed live against
-  // nopCommerce's real resolved.json (no `networks:` in its source compose
-  // file, but `services.nopcommerce_database.networks` still resolves to
-  // `{ "default": null }`), so this fallback should rarely if ever actually
-  // fire, but is the honest reading of Compose's own documented behavior.
-  const networkKeys = service.networks ? Object.keys(service.networks) : ['default'];
-
-  return networkKeys.map((key) => {
-    const name = resolved.networks?.[key]?.name;
-    if (!name) {
-      throw new Error(
-        `Network "${key}" (used by compose service "${composeService}") has no resolved name in target ` +
-          `"${descriptorName}"'s resolved compose config.`,
-      );
-    }
-    return name;
-  });
-}
 
 // Docker sets a container's hostname to its own short ID by default
 // (docker-compose.yml doesn't override `hostname:` for workbench) — this
