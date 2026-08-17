@@ -9,6 +9,19 @@ set -e
 
 export DISPLAY=:99
 
+# A plain `docker restart` (unlike --force-recreate) keeps this container's
+# writable layer intact, /tmp included — so a lock file Xvfb left behind
+# from its own previous run survives into this one. Xvfb treats that as
+# "display :99 already in use" and refuses to start, which cascades into
+# x11vnc dying (it can never attach to a display that was never opened) and
+# the whole service going silently unusable until something notices and
+# force-recreates the container. Confirmed live: this isn't a one-off,
+# it reproduces on every plain restart. Since this script only ever runs
+# at container start — nothing else could legitimately still be holding
+# this lock — clearing it first is always safe, never just papering over a
+# real conflict.
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+
 Xvfb :99 -screen 0 1280x800x24 &
 sleep 1
 

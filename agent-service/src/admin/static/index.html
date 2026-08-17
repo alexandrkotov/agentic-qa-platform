@@ -1780,24 +1780,36 @@ document.getElementById('probe-btn').onclick = async () => {
 // right-hand view is showing, so reading it live (not just once) is safe.
 let recordSetupTarget = null;
 
-// Save/Run (as-is)/Reset deployment & Run all need actual source to act
-// on — an empty bootstrap/setup/<name>.ts (no script registered yet, or
-// deleted by hand) means there's nothing to save or run, same reasoning
-// as updateGenerateButtonState() below for the recording box. Called from
+// Run (as-is)/Reset deployment & Run need actual source to act on — an
+// empty bootstrap/setup/<name>.ts (no script registered yet, or deleted by
+// hand) means there's nothing to run, same reasoning as
+// updateGenerateButtonState() below for the recording box. Save is gated
+// separately (see recordSetupSourceBaseline below) — it's about whether
+// there's anything new to WRITE, not whether the file is currently
+// runnable, and those aren't the same question: Run/Reset & Run both
+// execute whatever's already on disk (the server route takes no source
+// text at all), so leaving Save enabled just because the textarea is
+// non-empty — even right after a successful save, or right after loading
+// an already-saved script unchanged — invited the user to click it for no
+// reason and wonder whether it did anything. Called from
 // refreshRecordSetupSource() itself (every real place the textarea's
 // value changes already routes through there) plus the textarea's own
 // 'input' listener for manual edits.
+let recordSetupSourceBaseline = '';
 function updateSourceButtonsState() {
-  const disabled = !document.getElementById('record-setup-source').value.trim();
-  document.getElementById('record-setup-save-source').disabled = disabled;
-  document.getElementById('record-setup-run').disabled = disabled;
-  document.getElementById('record-setup-reset-run').disabled = disabled;
+  const value = document.getElementById('record-setup-source').value;
+  const empty = !value.trim();
+  const dirty = value !== recordSetupSourceBaseline;
+  document.getElementById('record-setup-save-source').disabled = empty || !dirty;
+  document.getElementById('record-setup-run').disabled = empty;
+  document.getElementById('record-setup-reset-run').disabled = empty;
 }
 document.getElementById('record-setup-source').addEventListener('input', updateSourceButtonsState);
 
 async function refreshRecordSetupSource() {
   const { text } = await api('/api/descriptors/' + encodeURIComponent(recordSetupTarget) + '/setup/source');
-  document.getElementById('record-setup-source').value = text ?? '';
+  recordSetupSourceBaseline = text ?? '';
+  document.getElementById('record-setup-source').value = recordSetupSourceBaseline;
   updateSourceButtonsState();
 }
 
@@ -1854,6 +1866,7 @@ async function openRecordSetupView(name) {
   try {
     await refreshRecordSetupSource();
   } catch (e) {
+    recordSetupSourceBaseline = '';
     document.getElementById('record-setup-source').value = '';
     updateSourceButtonsState();
   }
@@ -2041,11 +2054,16 @@ document.getElementById('record-setup-save-source').onclick = async () => {
   const btn = document.getElementById('record-setup-save-source');
   btn.disabled = true;
   try {
+    const text = document.getElementById('record-setup-source').value;
     await api(`/api/descriptors/${encodeURIComponent(recordSetupTarget)}/setup/source`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: document.getElementById('record-setup-source').value }),
+      body: JSON.stringify({ text }),
     });
+    // What's now on disk matches this exact text — the only thing that
+    // makes Save meaningful again is a further edit away from it, same
+    // dirty-check refreshRecordSetupSource() itself uses.
+    recordSetupSourceBaseline = text;
     btn.textContent = 'Saved';
     setTimeout(() => { btn.textContent = 'Save'; }, 1500);
   } catch (e) {

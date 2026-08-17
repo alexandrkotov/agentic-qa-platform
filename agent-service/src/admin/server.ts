@@ -325,13 +325,25 @@ app.post('/api/recorder/start', async (req, res) => {
     // container's own log every call — never a value invented here. Same
     // password for as long as the container itself has been up (start.sh
     // only generates a new one on container start, not per recording).
+    //
+    // Last match, not first: `docker logs` (no --since) returns the WHOLE
+    // log history since the container was created, not just since its most
+    // recent start — if x11vnc has ever been restarted in place (it isn't
+    // supervised, so a crash — confirmed live: a stale /tmp/.X99-lock after
+    // an unclean shutdown left it a zombie unable to reattach to Xvfb —
+    // just leaves it dead until something notices) the log accumulates one
+    // "VNC password:" line per attempt. The first one is whatever password
+    // was live when the container originally started, not the one x11vnc
+    // is actually enforcing right now — taking it silently handed back a
+    // stale password and made every real recording attempt fail with
+    // "password check failed" until the container was force-recreated.
     const logs = await runCommand('docker', ['logs', RECORDER_CONTAINER], process.cwd(), process.env);
-    const match = logs.output.match(/VNC password: (\S+)/);
-    if (!match) {
+    const matches = [...logs.output.matchAll(/VNC password: (\S+)/g)];
+    if (matches.length === 0) {
       res.status(500).json({ error: `codegen-recorder is up but its VNC password wasn't found in its logs — is the service actually running (docker compose up codegen-recorder)?` });
       return;
     }
-    res.json({ password: match[1] });
+    res.json({ password: matches[matches.length - 1][1] });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
