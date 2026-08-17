@@ -97,7 +97,7 @@
   /* Confirm modal — copied verbatim from e2e.html (no shared JS/CSS module
      between static pages in this project). Only the two kinds this page
      actually needs: 'money' (Generate script — a real Claude call) and
-     'time' (Run load test — mutates real data, isn't free of consequence
+     'time' (Run API load test — mutates real data, isn't free of consequence
      even though it costs no money directly). */
   .confirm-modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
@@ -164,7 +164,7 @@
   <section id="run-section">
     <h2>Run</h2>
     <div class="row">
-      <button class="primary" id="run-btn" disabled>Run load test</button>
+      <button class="primary" id="run-btn" disabled>Run API load test</button>
       <a class="grafana-link" id="grafana-link" href="#" target="_blank" rel="noopener">Open in Grafana →</a>
       <span id="run-status" class="status-text"></span>
     </div>
@@ -188,7 +188,7 @@
 
 <script>
 // Copied verbatim from e2e.html — money (Generate script, a real Claude
-// call) and time (Run load test, mutates real data) are the only two of
+// call) and time (Run API load test, mutates real data) are the only two of
 // its four kinds this page needs.
 const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
   <line x1="9.5" y1="2" x2="9.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>

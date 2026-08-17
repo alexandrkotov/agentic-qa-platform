@@ -204,7 +204,7 @@
   .demo-switch-panel.open { display: block; }
 
   /* Re-run actions, two per demo tile — "BDD tests" (secondary/outlined)
-     and "backend load test" — same filled-accent treatment for both, one
+     and "API load test" — same filled-accent treatment for both, one
      consistent primary-action style across the whole page (matches
      .confirm-modal-actions button above). Real actions, not subcard
      links. Always visible (not hidden the way the subcards area is),
@@ -235,7 +235,7 @@
   .keep-data-label input { margin: 0; cursor: pointer; }
   /* Uptime Kuma's own checkbox is permanently disabled (no cleanup script
      exists for its data model, same capability-based reasoning as its
-     "Re-Run backend load test" button) — same disabled+title idiom as
+     "Re-Run API load test" button) — same disabled+title idiom as
      every other unavailable action in this file
      (feedback_disabled_button_tooltip_convention): stays visible, not
      hidden, cursor communicates it's unavailable, title explains why. */
@@ -518,7 +518,7 @@
           </label>
           <div class="tile-action-buttons">
             <button class="tile-load-btn" id="trigger-bdd-orderflow" onclick="runBddTests('orderflow', this)" disabled title="Deploy OrderFlow first.">Re-Run BDD tests</button>
-            <button class="tile-load-btn" id="trigger-load-orderflow" onclick="runLoadTest('orderflow', this)" disabled title="Deploy OrderFlow first.">Re-Run backend load test</button>
+            <button class="tile-load-btn" id="trigger-load-orderflow" onclick="runLoadTest('orderflow', this)" disabled title="Deploy OrderFlow first.">Re-Run API load test</button>
           </div>
         </div>
         <div class="demo-switch-panel" id="demo-switch-panel-orderflow">
@@ -581,7 +581,7 @@
           </label>
           <div class="tile-action-buttons">
             <button class="tile-load-btn" id="trigger-bdd-uptime-kuma" onclick="runBddTests('uptime-kuma', this)" disabled title="Deploy Uptime Kuma first.">Re-Run BDD tests</button>
-            <button class="tile-load-btn" id="trigger-load-uptime-kuma" onclick="runLoadTest('uptime-kuma', this)" disabled title="Deploy Uptime Kuma first.">Re-Run backend load test</button>
+            <button class="tile-load-btn" id="trigger-load-uptime-kuma" onclick="runLoadTest('uptime-kuma', this)" disabled title="Deploy Uptime Kuma first.">Re-Run API load test</button>
           </div>
         </div>
         <div class="demo-switch-panel" id="demo-switch-panel-uptime-kuma">
@@ -880,7 +880,7 @@ async function switchDemo(target, triggerBtn) {
     // script) would simply skip this block, not error. Progress and
     // result show in THAT target's own load-run panel (via runLoadTest,
     // reused as-is, not duplicated) — same place a manual click on
-    // "Re-Run backend load test" would show them, so "where do I look for
+    // "Re-Run API load test" would show them, so "where do I look for
     // load-test results" never depends on how the run started.
     // skipReset: true — the redeploy above already guarantees a clean DB
     // (`down -v`), and the BDD run just above this may have legitimately
