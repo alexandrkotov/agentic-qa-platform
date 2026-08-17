@@ -35,6 +35,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url)); // .../tests/support
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const TESTS_DIR = join(REPO_ROOT, 'tests');
 const ARCHIVE_DIR = join(REPO_ROOT, 'archive');
+const LOADTESTS_DIR = join(REPO_ROOT, 'loadtests');
 const CURRENT_DESCRIPTOR_FILE = join(TESTS_DIR, '.current-descriptor');
 
 async function resolveDescriptor(argDescriptor) {
@@ -115,6 +116,23 @@ async function main() {
     await mkdir(dest, { recursive: true });
     await cp(src, dest, { recursive: true });
     console.log(`  tests/${sub} <- ${src}`);
+  }
+
+  // loadtests/<descriptor>-load.js — same "not git-tracked itself, this
+  // snapshot is the real source of truth" treatment as tests/features/
+  // tests/steps above (see the root .gitignore's own comment and
+  // POST /api/generate/snapshot in server.ts, which is what puts it into
+  // a snapshot in the first place). Most snapshots won't have one (no
+  // rest-api component, or nobody's generated/approved a script for that
+  // descriptor yet) — skip silently, same as tests/ would if it were ever
+  // legitimately empty, rather than failing the whole restore over it.
+  const loadScriptSrc = join(snapshotDir, `${descriptor}-load.js`);
+  try {
+    await mkdir(LOADTESTS_DIR, { recursive: true });
+    await cp(loadScriptSrc, join(LOADTESTS_DIR, `${descriptor}-load.js`));
+    console.log(`  loadtests/${descriptor}-load.js <- ${loadScriptSrc}`);
+  } catch {
+    // No k6 script in this snapshot — nothing to restore, not an error.
   }
 
   await writeFile(CURRENT_DESCRIPTOR_FILE, `${descriptor}\n`, 'utf8');

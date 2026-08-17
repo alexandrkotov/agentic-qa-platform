@@ -21,6 +21,7 @@ import { parseDiscoveryReport } from '../agents/generate/reportSchema.ts';
 import { proposeGrouping } from '../agents/generate/group.ts';
 import { splitByBudget } from '../agents/generate/budget.ts';
 import { generateGeneration } from '../agents/generate/spec.ts';
+import { generateLoadTestScript } from '../agents/loadtest/spec.ts';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { renderGeneration, writeRenderedFiles } from '../agents/generate/render.ts';
 import { compileAndVerify, collectExistingStepPatterns } from '../agents/generate/verify.ts';
@@ -784,6 +785,71 @@ function restApiOrigin(descriptor: SystemDescriptor): string | null {
 }
 
 /**
+ * A docker-compose-deployed generic target's own `host.docker.internal:<port>`
+ * baseUrl/swaggerUrl (probeTarget.ts's own proposal convention) is a snapshot
+ * of whatever port Docker happened to publish it on AT PROPOSE TIME — it goes
+ * silently stale the moment that port is reused by something else on a later
+ * (re)deploy, since `assignPorts()` in deployTarget.ts re-picks host ports
+ * fresh every deploy. Confirmed live 2026-08-18: Uptime Kuma's own cached
+ * baseUrl pointed at :3001, which this project's own Grafana service (added
+ * in this same Load-stage work) now permanently occupies — a load test
+ * against "uptime-kuma" silently hammered Grafana's web server instead and
+ * 100% 404'd, no error, just a wrong answer. Re-resolves every host.docker.
+ * internal-hosted rest-api/web-ui baseUrl to the CURRENTLY live published
+ * port by reading the target's own state.json (deployTarget.ts's own
+ * DeployState — the same live source hub/index.html's own /api/demo/status
+ * already reads for Uptime Kuma's dashboard link) — but only when there's
+ * exactly one published port to disambiguate to; a multi-port target can't
+ * be safely guessed at here without more bookkeeping than a descriptor
+ * component currently records (which service/container-port a given baseUrl
+ * actually corresponds to), so it's left as the descriptor's own cached
+ * value unchanged for that case — a known, narrower limitation, not silently
+ * wrong the way the single-port case was.
+ */
+async function refreshDockerComposeBaseUrls(descriptor: SystemDescriptor, name: string): Promise<SystemDescriptor> {
+  if (!descriptor.components.some((c) => c.type === 'docker-compose')) return descriptor;
+  const hostRoot = process.env.HOST_PROJECT_ROOT;
+  if (!hostRoot) return descriptor;
+
+  let state: DeployState;
+  try {
+    const { statePath } = resolveTargetPaths(join(hostRoot, 'targets'), name);
+    state = JSON.parse(await readFile(statePath, 'utf-8')) as DeployState;
+  } catch {
+    return descriptor; // not deployed / no state file yet — best-effort, same as /api/demo/status's own kumaUrl handling
+  }
+  if (state.ports.length !== 1) return descriptor;
+  const livePort = state.ports[0].publishedPort;
+
+  function refreshUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname !== 'host.docker.internal') return url; // only this project's own docker-compose-component convention needs refreshing
+      parsed.port = String(livePort);
+      return parsed.toString();
+    } catch {
+      return url;
+    }
+  }
+
+  const components = descriptor.components.map((component) => {
+    switch (component.type) {
+      case 'rest-api':
+        return {
+          ...component,
+          swaggerUrl: component.swaggerUrl ? refreshUrl(component.swaggerUrl) : component.swaggerUrl,
+          baseUrl: component.baseUrl ? refreshUrl(component.baseUrl) : component.baseUrl,
+        };
+      case 'web-ui':
+        return { ...component, baseUrl: refreshUrl(component.baseUrl) };
+      default:
+        return component;
+    }
+  });
+  return { ...descriptor, components };
+}
+
+/**
  * Chromium's *browser-context* networking (an in-page fetch/XHR — not
  * Node's own fetch, and not Playwright's out-of-page page.request client,
  * neither of which are affected) silently upgrades cross-origin sub-resource
@@ -868,7 +934,10 @@ app.post('/api/discovery/run', async (req, res) => {
       return;
     }
 
-    const rewritten = rewriteForContainerNetwork(descriptor);
+    // Order doesn't matter between these two — rewriteForContainerNetwork
+    // only ever touches loopback (localhost) hostnames, this only ever
+    // touches host.docker.internal ones, never the same URL.
+    const rewritten = rewriteForContainerNetwork(await refreshDockerComposeBaseUrls(descriptor, name));
 
     const hasWebUi = descriptor.components.some((c) => c.type === 'web-ui');
     const fromOrigin = restApiOrigin(descriptor);
@@ -1981,6 +2050,14 @@ app.post('/api/generate/snapshot', async (req, res) => {
     if (hasSetup(descriptor)) {
       await cp(setupScriptPath(descriptor), join(snapshotDir, 'setup-script.ts')).catch(() => {});
     }
+    // loadtests/<descriptor>-load.js — not git-tracked itself (see the root
+    // .gitignore's own comment, same "snapshot is the real source of truth"
+    // treatment as tests/features/tests/steps above), so this is the one
+    // place a k6 script this descriptor actually has ever gets persisted.
+    // Most descriptors don't have one yet (no rest-api component, or
+    // nobody's generated/approved a script for it) — same graceful skip as
+    // setup-script.ts above.
+    await cp(loadTestScriptPath(descriptor), join(snapshotDir, `${descriptor}-load.js`)).catch(() => {});
     await cp(descriptorPath(descriptor).replace(/\.json$/, '.uat.md'), join(snapshotDir, 'uat.md')).catch(() => {});
     // The env that was ACTUALLY in effect for this descriptor's test runs —
     // resolved (base container defaults + this descriptor's own overrides,
@@ -2521,7 +2598,12 @@ app.post('/api/tests/run', async (req, res) => {
     // FRONTEND_URL/credentials (descriptors/<name>.env) overlay the
     // orderflow-network defaults instead of silently falling back to them.
     // Omit it and behavior is unchanged from before this field existed.
-    const { descriptor, resetDatabase } = req.body as { descriptor?: string; resetDatabase?: boolean };
+    // req.body is undefined (not {}) for a POST with no body at all — a
+    // real, legitimate way to call this route (confirmed live: load.html's
+    // own "Run load test" button did exactly that before this guard),
+    // express.json() only ever populates it when a JSON body was actually
+    // sent.
+    const { descriptor, resetDatabase } = (req.body ?? {}) as { descriptor?: string; resetDatabase?: boolean };
     const testEnv = await buildTestRunEnv(descriptor);
     // bddgen + the real Playwright/Cucumber suite can run for minutes with
     // nothing but a static "running…" status otherwise — stream NDJSON
@@ -2620,7 +2702,7 @@ app.post('/api/load/:descriptor/run', async (req, res) => {
   try {
     const name = req.params.descriptor;
     const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
-    const baseUrl = restApiOrigin(rewriteForContainerNetwork(descriptor));
+    const baseUrl = restApiOrigin(rewriteForContainerNetwork(await refreshDockerComposeBaseUrls(descriptor, name)));
     if (!baseUrl) {
       res.status(400).json({ error: 'This descriptor has no rest-api component — nothing to load-test.' });
       return;
@@ -2631,7 +2713,8 @@ app.post('/api/load/:descriptor/run', async (req, res) => {
       return;
     }
 
-    const { resetDatabase } = req.body as { resetDatabase?: boolean };
+    // Same req.body-can-be-undefined guard as /api/tests/run above.
+    const { resetDatabase } = (req.body ?? {}) as { resetDatabase?: boolean };
 
     // The real run can take ~2 minutes (the demo VU ramp/hold/ramp-down) —
     // stream NDJSON progress the same way /api/tests/run above does. Any
@@ -2706,6 +2789,118 @@ app.post('/api/load/:descriptor/run', async (req, res) => {
     res.end();
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Load — AI generation. Reuses Generate Stage 2's exact architecture (one
+// LLM call, propose-then-human-approves), scaled down to one script instead
+// of a grouping/budget/merge pipeline — see agents/loadtest/spec.ts's own
+// header comment. Descriptor-agnostic: any target with a discovery report
+// and a rest-api component can go through this, not just OrderFlow.
+// ---------------------------------------------------------------------------
+
+app.post('/api/load/:descriptor/generate', async (req, res) => {
+  try {
+    const name = req.params.descriptor;
+    const { report } = req.body as { report?: string };
+    if (!report) {
+      res.status(400).json({ error: '"report" is required' });
+      return;
+    }
+    const reportRaw = JSON.parse(await readFile(reportFilePath(report), 'utf-8'));
+    parseDiscoveryReport(reportRaw); // validate shape before spending money on a Claude call
+    const reportJson = JSON.stringify(reportRaw, null, 2);
+
+    // Real Claude call, can take tens of seconds with nothing but a static
+    // "generating…" status otherwise — stream NDJSON progress the same way
+    // /api/generate/spec does, wrapping the provider so every provider.run()
+    // call (just the one, here) emits its own start/end progress line.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+
+    const rawProvider = new ClaudeProvider();
+    const provider: AgentProvider = {
+      run: async (opts) => {
+        opts = { ...opts, descriptor: opts.descriptor ?? name };
+        const t0 = Date.now();
+        send({ type: 'progress', message: `Calling Claude for "${opts.operation}"…` });
+        try {
+          const result = await rawProvider.run(opts);
+          send({ type: 'progress', message: `"${opts.operation}" responded (${((Date.now() - t0) / 1000).toFixed(1)}s)` });
+          return result;
+        } catch (err) {
+          send({ type: 'progress', message: `"${opts.operation}" errored after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${(err as Error).message}` });
+          throw err;
+        }
+      },
+    };
+
+    try {
+      const { scriptContent } = await generateLoadTestScript(provider, reportJson, name);
+      // Propose only — never written to disk here. The human reviews/edits
+      // in load.html and PUT /api/load/:descriptor/script (below) is the
+      // only path that actually saves, gated by its own k6-inspect check.
+      send({ type: 'done', scriptContent });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.status(404).json({ error: `No report named "${(req.body as { report?: string }).report}"` });
+      return;
+    }
+    if (err && typeof err === 'object' && 'issues' in err) {
+      res.status(400).json({ error: 'Report failed validation', issues: (err as { issues: unknown }).issues });
+      return;
+    }
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/load/:descriptor/script', async (req, res) => {
+  try {
+    const text = await readFile(loadTestScriptPath(req.params.descriptor), 'utf-8').catch((err) => {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw err;
+    });
+    res.json({ text });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/load/:descriptor/script', async (req, res) => {
+  const name = req.params.descriptor;
+  let tempPath: string | null = null;
+  try {
+    const { text } = req.body as { text?: string };
+    if (typeof text !== 'string') {
+      res.status(400).json({ error: '"text" is required' });
+      return;
+    }
+
+    // k6's own dry-run/lint — parses the script and reports its `options`
+    // without running a single VU iteration. Written to a TEMP file first,
+    // never the real <descriptor>-load.js — a broken paste must never even
+    // briefly become the file /api/load/:descriptor/run actually executes.
+    tempPath = join(LOADTESTS_DIR, `.tmp-${name}-${Date.now()}.js`);
+    await writeFile(tempPath, text, 'utf-8');
+    const composeFile = rootComposeFile();
+    const inspectArgs = ['compose', '-p', 'agentic-qa-platform', '-f', composeFile, '--profile', 'tools', 'run', '--rm', 'k6', 'inspect', `/scripts/${basename(tempPath)}`];
+    const inspectResult = await runCommand('docker', inspectArgs, APP_ROOT, process.env);
+    if (inspectResult.code !== 0) {
+      res.status(400).json({ error: `k6 rejected this script:\n${inspectResult.output.slice(-2000)}` });
+      return;
+    }
+
+    await writeFile(loadTestScriptPath(name), text, 'utf-8');
+    res.json({ text });
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  } finally {
+    if (tempPath) await unlink(tempPath).catch(() => {});
   }
 });
 

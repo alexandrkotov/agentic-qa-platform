@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Load</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
+<style>
+  /* :root/.app-nav/.page-head/main/section/.primary/.ghost/.status-text/.gen-log
+     copied verbatim from e2e.html — no shared layout/CSS module exists
+     between the static pages in this project, every page duplicates its
+     own <style> block by convention. */
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eef0f3;
+    --text: #1a1d23; --text-mute: #667; --line: #dde1e6;
+    --accent: #3a63d8; --accent-bg: #e8edfc;
+    --danger: #b3261e; --danger-bg: #fbe9e7;
+    --warn: #9a6700; --warn-bg: #fff3d6;
+    --ok: #2f8f5b; --ok-bg: #e5f5ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --surface: #1b1e27; --surface-2: #232733;
+      --text: #e4e6eb; --text-mute: #9aa0ac; --line: #2a2e3a;
+      --accent: #7c9bef; --accent-bg: #232c47;
+      --danger: #f0847c; --danger-bg: #3a1f1e;
+      --warn: #e0b04d; --warn-bg: #332a10;
+      --ok: #6fce9a; --ok-bg: #163526;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-nav {
+    display: flex; gap: 0.25rem; padding: 0.6rem 1rem;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .app-nav a {
+    font-size: 0.85rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 6px;
+    color: var(--text-mute); text-decoration: none; border: 1px solid var(--line);
+  }
+  .app-nav a:hover { background: var(--surface-2); color: var(--text); }
+  .app-nav a.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+  .page-head { padding: 1.5rem clamp(1rem, 4vw, 3rem) 1.25rem; }
+  .page-head h1 { font-size: 0.95rem; margin: 0; }
+  .page-head .subtitle { font-size: 0.75rem; color: var(--text-mute); margin-top: 0.2rem; }
+
+  main { max-width: 900px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 3rem) 4rem; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem 1.4rem; margin-bottom: 1.5rem; }
+  section h2 { font-size: 0.95rem; margin: 0 0 1rem; }
+  .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .empty-note { color: var(--text-mute); font-size: 0.83rem; }
+
+  .primary {
+    display: inline-block; text-decoration: none;
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 0.95rem; font-size: 0.83rem; font-weight: 600; cursor: pointer;
+  }
+  .primary:hover:not(:disabled) { filter: brightness(1.08); color: #fff; }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: none; border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+  }
+  button.ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost:hover:not(:disabled) { background: var(--surface-2); }
+
+  .status-text { font-size: 0.83rem; }
+  .status-text.ok { color: var(--ok); }
+  .status-text.err { color: var(--danger); }
+
+  .gen-log {
+    width: 100%; margin: 0; padding: 0.6rem 0.8rem; max-height: 11rem; overflow-y: auto;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.74rem;
+    color: var(--text-mute); white-space: pre-wrap; line-height: 1.5;
+  }
+
+  select {
+    background: var(--surface); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.83rem; font-family: inherit;
+  }
+
+  #script-text {
+    width: 100%; min-height: 22rem; box-sizing: border-box;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 0.7rem 0.9rem;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.8rem; line-height: 1.5;
+  }
+  #script-text:disabled { opacity: 0.6; }
+
+  .grafana-link { font-size: 0.83rem; }
+
+  /* Confirm modal — copied verbatim from e2e.html (no shared JS/CSS module
+     between static pages in this project). Only the two kinds this page
+     actually needs: 'money' (Generate script — a real Claude call) and
+     'time' (Run load test — mutates real data, isn't free of consequence
+     even though it costs no money directly). */
+  .confirm-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+    z-index: 1000; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+  .confirm-modal-overlay.open { display: flex; }
+  .confirm-modal {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1.25rem 1.4rem; max-width: 26rem;
+    display: flex; gap: 1rem; align-items: flex-start;
+  }
+  .confirm-modal-icon { font-size: 2.1rem; line-height: 1; flex-shrink: 0; }
+  .confirm-modal-icon svg { display: block; }
+  .confirm-modal-icon.money { color: #2f8f5b; }
+  .confirm-modal-icon.time { color: var(--accent); }
+  .confirm-modal-body { min-width: 0; }
+  .confirm-modal p { margin: 0 0 1rem; font-size: 0.88rem; line-height: 1.5; }
+  .confirm-modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+</style>
+</head>
+<body>
+<header class="app-nav">
+  <a href="/index.html">Discovery</a>
+  <a href="/visualize.html">Analysis</a>
+  <a href="/generate.html">Test Suite</a>
+  <a href="/e2e.html">E2E</a>
+  <a href="/load.html" class="active">Load</a>
+</header>
+<div class="page-head">
+  <h1>Load — Backend / API Testing</h1>
+  <div class="subtitle">HTTP-only load testing against a target's REST API. Not a browser test — no frontend rendering or UI performance is measured here; see the E2E tab for real-browser functional testing.</div>
+</div>
+<main>
+
+  <section id="target-section">
+    <h2>Target</h2>
+    <div class="row">
+      <select id="target-select"></select>
+    </div>
+    <div class="empty-note" id="target-capability-note" style="display:none"></div>
+  </section>
+
+  <section id="generate-section">
+    <h2>Generate</h2>
+    <div class="row">
+      <select id="report-select"></select>
+      <button class="primary" id="generate-btn" disabled>Generate script</button>
+      <span id="generate-status" class="status-text"></span>
+    </div>
+    <div class="empty-note" id="report-empty" style="display:none">No discovery reports for this target yet — run Discovery first.</div>
+    <pre class="gen-log" id="generate-log" style="display:none"></pre>
+  </section>
+
+  <section id="script-section">
+    <h2>Review &amp; Approve</h2>
+    <textarea id="script-text" spellcheck="false" placeholder="No k6 script yet for this target — generate one above, or paste/write one by hand."></textarea>
+    <div class="row" style="margin-top:1rem">
+      <button class="primary" id="save-script-btn" disabled>Save</button>
+      <button class="ghost" id="undo-script-btn" disabled>Undo</button>
+      <span id="script-status" class="status-text"></span>
+    </div>
+  </section>
+
+  <section id="run-section">
+    <h2>Run</h2>
+    <div class="row">
+      <button class="primary" id="run-btn" disabled>Run load test</button>
+      <a class="grafana-link" id="grafana-link" href="#" target="_blank" rel="noopener">Open in Grafana →</a>
+      <span id="run-status" class="status-text"></span>
+    </div>
+    <pre class="gen-log" id="run-log" style="display:none"></pre>
+  </section>
+
+</main>
+
+<div class="confirm-modal-overlay" id="confirm-modal-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-modal-icon" id="confirm-modal-icon"></div>
+    <div class="confirm-modal-body">
+    <p id="confirm-modal-message"></p>
+    <div class="confirm-modal-actions">
+      <button class="primary" id="confirm-modal-cancel">Cancel</button>
+      <button class="ghost" id="confirm-modal-ok">Yes, proceed</button>
+    </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Copied verbatim from e2e.html — money (Generate script, a real Claude
+// call) and time (Run load test, mutates real data) are the only two of
+// its four kinds this page needs.
+const MONEY_ICON_SVG = `<svg viewBox="0 0 24 24" width="1.7rem" height="1.7rem" aria-hidden="true">
+  <line x1="9.5" y1="2" x2="9.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="14.5" y1="2" x2="14.5" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+const CONFIRM_MODAL_ICONS = { money: MONEY_ICON_SVG, time: '⏳' };
+
+function confirmModal(message, kind = 'money') {
+  return new Promise((resolve) => {
+    document.getElementById('confirm-modal-message').textContent = message;
+    const icon = document.getElementById('confirm-modal-icon');
+    icon.innerHTML = CONFIRM_MODAL_ICONS[kind];
+    icon.className = 'confirm-modal-icon ' + kind;
+    const overlay = document.getElementById('confirm-modal-overlay');
+    overlay.classList.add('open');
+    document.getElementById('confirm-modal-cancel').focus();
+    const cleanup = (result) => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+    document.getElementById('confirm-modal-ok').onclick = () => cleanup(true);
+    document.getElementById('confirm-modal-cancel').onclick = () => cleanup(false);
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
+}
+
+</script>
+
+<script>
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const e = new Error(body?.error || res.statusText);
+    e.issues = body?.issues;
+    throw e;
+  }
+  return body;
+}
+
+/** Same NDJSON-stream idiom as e2e.html/generate.html/index.html's own copy. */
+async function streamNdjson(path, opts, onEvent) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex;
+    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line.trim()) onEvent(JSON.parse(line));
+    }
+  }
+}
+
+function setStatus(el, text, kind) {
+  el.textContent = text;
+  el.className = 'status-text' + (kind ? ' ' + kind : '');
+}
+
+// discovery.ts names every report "discovery-<isoTimestamp>-<descriptorLabel>.json"
+// — same regex as generate.html's own descriptorFromReportName, duplicated
+// rather than shared (two separate JS worlds, no shared module between
+// static pages in this project).
+const REPORT_DESCRIPTOR_PATTERN = /^discovery-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(.+)\.json$/;
+function descriptorFromReportName(reportName) {
+  const m = reportName && reportName.match(REPORT_DESCRIPTOR_PATTERN);
+  return m ? m[1] : null;
+}
+
+// Same URL as the hub's own Grafana tile/result-link — kept as its own
+// constant here too rather than shared, same "small duplicated constant"
+// style already used across every static page in this project.
+const GRAFANA_DASHBOARD_URL = 'http://localhost:9091/d/k6-results/k6-e28094-backend-api-load-test-results';
+
+const state = {
+  target: null,
+  restApiCapable: false,
+  scriptBaseline: '',
+};
+
+// --- Target picker ----------------------------------------------------------
+// Lists EVERY descriptor, not filtered/hidden by capability — a target
+// simply not being shown at all would be more confusing than showing it
+// with its actions disabled and an explanation (capability guard below),
+// same feedback_disabled_button_tooltip_convention already applied
+// everywhere else in this project.
+
+async function loadTargetList() {
+  const names = await api('/api/descriptors');
+  const select = document.getElementById('target-select');
+  select.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join('');
+  if (names.length > 0) {
+    select.value = names[0];
+    await onTargetChanged();
+  }
+}
+
+document.getElementById('target-select').onchange = onTargetChanged;
+
+async function onTargetChanged() {
+  const target = document.getElementById('target-select').value;
+  state.target = target;
+
+  const descriptor = await api('/api/descriptors/' + encodeURIComponent(target));
+  state.restApiCapable = (descriptor.components || []).some((c) => c.type === 'rest-api');
+
+  const note = document.getElementById('target-capability-note');
+  if (!state.restApiCapable) {
+    note.style.display = '';
+    note.textContent = `"${target}"'s System Descriptor has no rest-api component — nothing for k6 to load-test yet, regardless of what endpoints the real app might actually expose. Generate/Run stay disabled below.`;
+  } else {
+    note.style.display = 'none';
+  }
+
+  const generateBtn = document.getElementById('generate-btn');
+  const runBtn = document.getElementById('run-btn');
+  const capabilityTitle = state.restApiCapable ? '' : 'Backend/API load testing needs this target’s descriptor to have a rest-api component — none found.';
+  generateBtn.title = capabilityTitle;
+  runBtn.title = capabilityTitle;
+
+  await Promise.all([loadReportListFor(target), loadScriptFor(target)]);
+  updateGenerateButtonState();
+  updateRunButtonState();
+
+  document.getElementById('grafana-link').href = `${GRAFANA_DASHBOARD_URL}?var-descriptor=${encodeURIComponent(target)}`;
+  setStatus(document.getElementById('generate-status'), '', '');
+  setStatus(document.getElementById('script-status'), '', '');
+  setStatus(document.getElementById('run-status'), '', '');
+}
+
+// --- Generate -----------------------------------------------------------
+
+async function loadReportListFor(target) {
+  const names = await api('/api/generate/reports');
+  const own = names.filter((n) => descriptorFromReportName(n) === target);
+  const select = document.getElementById('report-select');
+  select.innerHTML = own.map((n) => `<option value="${n}">${n}</option>`).join('');
+  const empty = document.getElementById('report-empty');
+  empty.style.display = own.length === 0 ? '' : 'none';
+  if (own.length > 0) select.value = own[own.length - 1];
+}
+
+function updateGenerateButtonState() {
+  const hasReports = document.getElementById('report-select').options.length > 0;
+  document.getElementById('generate-btn').disabled = !state.restApiCapable || !hasReports;
+}
+
+document.getElementById('generate-btn').onclick = async () => {
+  const report = document.getElementById('report-select').value;
+  if (!report) return;
+  if (!(await confirmModal(`Generate a k6 backend/API load-test script for "${state.target}" from "${report}"? This calls Claude and costs real money.`))) return;
+
+  const btn = document.getElementById('generate-btn');
+  const statusEl = document.getElementById('generate-status');
+  const logEl = document.getElementById('generate-log');
+  btn.disabled = true;
+  setStatus(statusEl, 'Generating…');
+  logEl.textContent = '';
+  logEl.style.display = '';
+
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson(`/api/load/${encodeURIComponent(state.target)}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check workbench logs.');
+    // Fills the textarea but does NOT save — the human still has to review
+    // and click Save below (updateScriptButtonsState via the input event
+    // this triggers), same propose-then-approve shape as Corrections/UAT.
+    const textarea = document.getElementById('script-text');
+    textarea.value = doneEvent.scriptContent;
+    textarea.dispatchEvent(new Event('input'));
+    setStatus(statusEl, 'Generated — review below and click Save to approve.', 'ok');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    updateGenerateButtonState();
+  }
+};
+
+document.getElementById('report-select').addEventListener('change', updateGenerateButtonState);
+
+// --- Review & Approve ---------------------------------------------------
+// Exact baseline-comparison idiom already hardened in commit 2feb120
+// ("gate Record setup's Save button on real dirty state") and reused for
+// generate.html's own test-env card: Save/Undo disabled until the live
+// textarea value differs from the last loaded/saved baseline.
+
+async function loadScriptFor(target) {
+  const { text } = await api('/api/load/' + encodeURIComponent(target) + '/script');
+  state.scriptBaseline = text;
+  document.getElementById('script-text').value = text;
+  updateScriptButtonsState();
+}
+
+function updateScriptButtonsState() {
+  const dirty = document.getElementById('script-text').value !== state.scriptBaseline;
+  const saveBtn = document.getElementById('save-script-btn');
+  const undoBtn = document.getElementById('undo-script-btn');
+  saveBtn.disabled = !dirty;
+  saveBtn.title = dirty ? '' : 'No changes to save yet.';
+  undoBtn.disabled = !dirty;
+}
+
+document.getElementById('script-text').addEventListener('input', updateScriptButtonsState);
+
+document.getElementById('save-script-btn').onclick = async () => {
+  const btn = document.getElementById('save-script-btn');
+  const statusEl = document.getElementById('script-status');
+  const text = document.getElementById('script-text').value;
+  btn.disabled = true;
+  setStatus(statusEl, 'Validating with k6 inspect…');
+  try {
+    await api('/api/load/' + encodeURIComponent(state.target) + '/script', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    state.scriptBaseline = text;
+    setStatus(statusEl, 'Saved.', 'ok');
+    updateRunButtonState();
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    // Not a blind re-enable — a failed save (e.g. k6 rejected the script)
+    // leaves real unsaved changes sitting in the textarea either way.
+    updateScriptButtonsState();
+  }
+};
+
+document.getElementById('undo-script-btn').onclick = () => {
+  document.getElementById('script-text').value = state.scriptBaseline;
+  updateScriptButtonsState();
+  setStatus(document.getElementById('script-status'), '', '');
+};
+
+// --- Run ------------------------------------------------------------------
+
+function updateRunButtonState() {
+  const hasScript = state.scriptBaseline.trim().length > 0;
+  document.getElementById('run-btn').disabled = !state.restApiCapable || !hasScript;
+  document.getElementById('run-btn').title = !state.restApiCapable
+    ? 'Backend/API load testing needs this target’s descriptor to have a rest-api component — none found.'
+    : !hasScript
+      ? 'No approved k6 script yet for this target — generate and Save one above first.'
+      : '';
+}
+
+document.getElementById('run-btn').onclick = async () => {
+  if (!(await confirmModal(`Run a backend/API load test against ${state.target}? This mutates real data (creates real rows via k6) and takes about 2 minutes.`, 'time'))) return;
+
+  const btn = document.getElementById('run-btn');
+  const statusEl = document.getElementById('run-status');
+  const logEl = document.getElementById('run-log');
+  btn.disabled = true;
+  setStatus(statusEl, `Running backend/API load test against ${state.target}…`);
+  logEl.textContent = '';
+  logEl.style.display = '';
+
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson(`/api/load/${encodeURIComponent(state.target)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check workbench logs.');
+    setStatus(statusEl, doneEvent.passed
+      ? 'Passed its thresholds — see the Grafana link above for the full results.'
+      : `Finished but missed a threshold (exit code ${doneEvent.exitCode}) — see the Grafana link above for details.`, doneEvent.passed ? 'ok' : 'err');
+  } catch (e) {
+    setStatus(statusEl, 'Failed: ' + e.message, 'err');
+  } finally {
+    updateRunButtonState();
+  }
+};
+
+loadTargetList().catch((e) => setStatus(document.getElementById('generate-status'), 'Failed to load targets: ' + e.message, 'err'));
+</script>
+</body>
+</html>

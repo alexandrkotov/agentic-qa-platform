@@ -22,6 +22,18 @@ agent-service/.playwright-mcp/
 !/archive/bdd-test-suite-orderflow-2026-08-10T00-34-22-860Z/**
 !/archive/bdd-test-suite-uptime-kuma-2026-08-11T06-22-17-222Z/
 !/archive/bdd-test-suite-uptime-kuma-2026-08-11T06-22-17-222Z/**
+# Same reasoning as tests/features/tests/steps above, same mechanism —
+# loadtests/<descriptor>-load.js (hand-written or AI-generated+approved,
+# see agent-service/src/admin/static/load.html) is regenerable/mutable
+# content, not something to track directly; a snapshot's own copy (created
+# by POST /api/generate/snapshot, restored by tests/support/restore-
+# suite.mjs) is the real, git-tracked source of truth instead. The two
+# archive/ snapshots allowlisted above already got OrderFlow's own script
+# added directly (2026-08-18) rather than via a fresh snapshot round —
+# retroactively correct for these two specifically, since they already
+# function as "the persisted current state" (restore-suite.mjs's own
+# target), not a literal point-in-time historical record.
+/loadtests/*.js
 # Clones of external target repos (docker-compose component type) — repo
 # root, mounted at an identical absolute path on both host and container
 # sides; see docker-compose.yml's own comment on this mount for why.

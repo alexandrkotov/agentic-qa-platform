@@ -4,9 +4,9 @@
   "tags": ["k6", "load-testing"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
-  "time": { "from": "now-15m", "to": "now" },
+  "time": { "from": "now-24h", "to": "now" },
   "templating": {
     "list": [
       {

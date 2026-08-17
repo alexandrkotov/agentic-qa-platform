@@ -108,6 +108,7 @@ side channel (a Kafka outage never blocks the request), not demo data seeded by 
 | **System Discovery Agent** | Explores a *live* target system — described declaratively by a **System Descriptor** (JSON, see below), not hardcoded — using a real agentic tool-use loop, including a real write scenario to observe actual behavior. Produces a structured discovery report (schema/endpoints/UI pages/topics, business rules, candidate test scenarios). | [`agent-service/src/bootstrap/discovery.ts`](agent-service/src/bootstrap/discovery.ts) |
 | **Generate** | Turns that discovery report into a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) through a three-stage, human-approved pipeline: deterministic grouping, one Claude call per group that writes the real Gherkin/step text directly (checked deterministically before review, not just trusted), then a plain write-to-disk stage. No stage runs on top of the previous one's output until a human approves it. | [`agent-service/src/agents/generate/`](agent-service/src/agents/generate/) |
 | **E2E Agent** | Runs a real Playwright scenario, diagnoses only actual failures (via Claude, once), and applies an exact guarded patch only after explicit human approval. Two separate stages — details below. | [`agent-service/src/agents/e2e/`](agent-service/src/agents/e2e/) |
+| **Load** | Runs a k6 script against a target's REST API — backend/HTTP load only, no browser rendering — producing request-rate/latency/error-rate metrics in a shared Grafana dashboard. Can optionally have Claude write the script from a discovery report, human-approved (and k6-validated) before it's ever saved or run. Descriptor-agnostic — any target with a `rest-api` component works, not just OrderFlow. | [`agent-service/src/agents/loadtest/`](agent-service/src/agents/loadtest/), [`loadtests/`](loadtests/) |
 
 **Generate Agent, in detail** — three stages, matching three CLI commands; the first two each need
 human approval (workbench UI at `:4400`, or the CLI + hand-edited JSON) before the next one runs:
@@ -336,7 +337,7 @@ self-contained enough to actually reproduce the target's tested state, not just 
 ### The Workbench
 
 What started as a plain descriptor-JSON editor is now a full browser control panel for everything
-above — [`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400`. Four tabs,
+above — [`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400`. Five tabs,
 deliberately plain static HTML pages (not a React/Vite app — none of this is big enough to justify
 that tooling), deliberately not part of `app`/`frontend` (the system *under test* has no business
 managing the QA framework's own configuration):
@@ -380,6 +381,11 @@ managing the QA framework's own configuration):
   evidence, plus an "Apply fix" button when a patch was proposed — shows the exact before/after,
   applies only after an explicit confirm, then type-checks and re-runs the scenario live. Every
   run and applied-fix report stays browsable afterward under History.
+- **Load** (`/load.html`) — generate, review/approve, and run a k6 backend/API load test for any
+  target with a REST API component, same propose-then-approve pattern as Generate's spec stage
+  (Claude writes the script from a discovery report; a "Save" is only accepted once k6 itself
+  validates the script via `k6 inspect`). Results are visualized in a shared Grafana dashboard, not
+  on this page itself — a link to it is one click away once a run finishes.
 
 Runs as the `workbench` service in `docker-compose.yml` — starts with everything else, no separate
 step. Built from a dedicated [`agent-service/Dockerfile.workbench`](agent-service/Dockerfile.workbench)
@@ -545,7 +551,7 @@ itself mirrors this same **Platform** / **Demo** split, in that order:
 |---|---|---|---|
 | Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
-| Grafana — backend/API load test results | `http://localhost:3001` | Request rate, p95/p99 latency, error rate for k6's HTTP-only load tests (OrderFlow's REST API, no browser involved) — one dashboard shared across every target, filterable by its own `descriptor` tag | `docker compose up` |
+| Grafana — backend/API load test results | `http://localhost:9091` | Request rate, p95/p99 latency, error rate for k6's HTTP-only load tests (OrderFlow's REST API, no browser involved) — one dashboard shared across every target, filterable by its own `descriptor` tag | `docker compose up` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
 
 | Demo | URL | What it is | Started by |

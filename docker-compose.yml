@@ -49,9 +49,19 @@ services:
   # Anonymous Viewer access so the hub's plain `target="_blank"` tile lands
   # straight on the dashboard, same as the Kafka UI tile above — no login
   # flow to wire up, no iframe anywhere in this codebase.
+  #
+  # Host port 9091, not the more obvious 3001 — that collided for real
+  # (confirmed live 2026-08-18) with Uptime Kuma's own compose.yaml, which
+  # publishes its app on host port 3001 too (an external, real-world repo,
+  # not something to edit around this). 9091 sits well outside the 3000s/
+  # 8000s cluster every demo target so far happens to default to, on
+  # purpose — see agent-service/src/admin/server.ts's own
+  # refreshDockerComposeBaseUrls() for the broader fix (any future
+  # collision, with any target, still resolves correctly at runtime; this
+  # port choice just avoids the one collision known to recur every time).
   grafana:
     image: grafana/grafana:11.1.0
-    ports: ["3001:3000"]
+    ports: ["9091:3000"]
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
