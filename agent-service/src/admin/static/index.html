@@ -562,7 +562,6 @@
       <div class="checkbox-row"><input type="checkbox" id="wizard-type-api"><label for="wizard-type-api">API (REST/CRUD)</label></div>
       <div class="checkbox-row"><input type="checkbox" id="wizard-type-ui"><label for="wizard-type-ui">UI</label></div>
       <div class="checkbox-row"><input type="checkbox" id="wizard-type-e2e"><label for="wizard-type-e2e">E2E workflows</label></div>
-      <div class="checkbox-row"><input type="checkbox" id="wizard-type-load"><label for="wizard-type-load">Load / Stress</label></div>
       <div class="hint">Pick at least one — tells the Discovery Agent what it's exploring for.</div>
     </div>
     <div class="wizard-modal-actions">
@@ -1129,7 +1128,7 @@ document.getElementById('add-component').onclick = () => {
 // finishes below, never a guessed value the wizard can't actually know.
 
 const WIZARD_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/; // mirrors server.ts's own NAME_PATTERN — same duplication-across-two-JS-worlds convention as descriptorFromReportName elsewhere in this project
-const WIZARD_TYPE_IDS = ['wizard-type-api', 'wizard-type-ui', 'wizard-type-e2e', 'wizard-type-load'];
+const WIZARD_TYPE_IDS = ['wizard-type-api', 'wizard-type-ui', 'wizard-type-e2e'];
 
 // Lives in a modal, not permanently on the page — the sidebar tile's own
 // comment explains why. Fields are left as-is on a plain close (nothing
@@ -1265,12 +1264,11 @@ function wizardJoinAnd(items) {
 // even though the human explicitly typed it in as this target's own
 // location.
 function wizardExtraInstructions(checked, address) {
-  const testType = { 'wizard-type-api': 'API (REST/CRUD)', 'wizard-type-ui': 'UI', 'wizard-type-e2e': 'E2E', 'wizard-type-load': 'load/stress' };
+  const testType = { 'wizard-type-api': 'API (REST/CRUD)', 'wizard-type-ui': 'UI', 'wizard-type-e2e': 'E2E' };
   const focus = {
     'wizard-type-api': 'API request/response behavior',
     'wizard-type-ui': 'UI workflows',
     'wizard-type-e2e': 'cross-component processes',
-    'wizard-type-load': 'performance-sensitive endpoints or workflows (rate limits, concurrency behavior, capacity constraints)',
   };
   const testTypes = wizardJoinAnd(checked.map((id) => testType[id]));
   const focusAreas = wizardJoinAnd(checked.map((id) => focus[id]));

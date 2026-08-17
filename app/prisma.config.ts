@@ -12,3 +12,8 @@ export default defineConfig({
     url: process.env["DATABASE_URL"],
   },
 });
+// Deliberately no `migrations.seed` here — docker-compose.demo-orderflow.yml
+// runs prisma/seed.mjs directly (`node prisma/seed.mjs`), not via
+// `prisma db seed`, after a real ts-node/generated-Prisma-client
+// incompatibility hit going that route (see seed.mjs's own header
+// comment).

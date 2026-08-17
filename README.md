@@ -545,6 +545,7 @@ itself mirrors this same **Platform** / **Demo** split, in that order:
 |---|---|---|---|
 | Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
+| Grafana — backend/API load test results | `http://localhost:3001` | Request rate, p95/p99 latency, error rate for k6's HTTP-only load tests (OrderFlow's REST API, no browser involved) — one dashboard shared across every target, filterable by its own `descriptor` tag | `docker compose up` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
 
 | Demo | URL | What it is | Started by |

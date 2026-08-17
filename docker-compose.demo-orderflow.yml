@@ -34,10 +34,15 @@ services:
     # lives in its own compose project: a fresh `pgdata` volume (e.g. after
     # the hub's "Deploy OrderFlow" button does a clean `down -v` + `up`) has
     # no schema at all otherwise, and the whole point of that button is
-    # repeated, unattended fresh starts. No seed data exists (no `seed*`
-    # file anywhere under app/) — the schema alone is enough, test data
-    # comes from the BDD scenarios themselves.
-    command: sh -c "npx prisma generate && npx prisma migrate deploy && pnpm run start:dev"
+    # repeated, unattended fresh starts. `node prisma/seed.mjs` (plain pg,
+    # not the generated Prisma client — see that file's own header comment
+    # for why) creates 1 real, idempotent customer + 3 products — added
+    # specifically so a fresh deploy's Frontend shows something before any
+    # BDD/load-test data exists, and so tests/support/cleanup.mjs's own
+    # date-cutoff mode has a stable non-test anchor to leave alone.
+    # `migrate deploy` doesn't seed on its own — has to be its own explicit
+    # step, after the schema exists and before the app starts listening.
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && node prisma/seed.mjs && pnpm run start:dev"
     # Needed for `docker compose up --wait` (used by the hub's own
     # /api/demo/switch route, server.ts) to actually gate on this service
     # being ready, not just "container started" — confirmed live

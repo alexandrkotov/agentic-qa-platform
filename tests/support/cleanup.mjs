@@ -22,9 +22,29 @@ import { Client } from 'pg';
 // Verified against the real DB (2026-07-30): the last genuine seed row is
 // Product "Mouse Pad", createdAt 2026-07-22T17:39:03Z; the next row of any
 // kind is 2026-07-27. DEFAULT_SINCE sits in that gap.
+//
+// That calibration assumes a long-lived dev DB where "genuine seed data"
+// predates DEFAULT_SINCE by construction — true for the shared dev
+// database this was originally built against (.github/workflows/tests.yml's
+// own comment), but NOT true for the hub's own docker-compose-deployed
+// OrderFlow bundle: docker-compose.demo-orderflow.yml is explicit that "No
+// seed data exists ... test data comes from the BDD scenarios themselves,"
+// so on a freshly deployed instance EVERY row is "recent" by definition —
+// the date cutoff can't distinguish a scenario's own throwaway edge-case
+// fixture from whatever baseline rows the suite is expected to leave
+// behind. Confirmed live (2026-08-17): auto-invoking this with the date
+// cutoff right after a fresh deploy's BDD run wiped the DB down to 0
+// customers/0 products, not the small non-throwaway baseline expected to
+// survive. `--patterns-only` (used by server.ts's own automatic
+// post-BDD/post-load-test cleanup calls) skips the cutoff entirely, so
+// only rows matching a known throwaway naming scheme below are ever
+// touched — safe on a database where "old vs. new" carries no signal.
+// The plain `pnpm run cleanup` CLI entry point (long-lived shared DB) is
+// unaffected — its own default behavior still applies both mechanisms.
 const DEFAULT_SINCE = '2026-07-23T00:00:00Z';
 
 function parseSinceArg() {
+  if (process.argv.includes('--patterns-only')) return null;
   const idx = process.argv.indexOf('--since');
   return idx !== -1 && process.argv[idx + 1] ? process.argv[idx + 1] : DEFAULT_SINCE;
 }
@@ -36,6 +56,10 @@ const CUSTOMER_EMAIL_PATTERNS = [
   'xss_%', // security.steps.ts
   'sqltest%', // security.steps.ts SQL injection payload
   'debug-%', // ad-hoc debug scripts during development
+  'k6-%', // loadtests/orderflow-load.js — one row per VU/iteration, thousands
+          // per run; the whole reason /api/load/:descriptor/run in
+          // server.ts runs this script right after every k6 run, not just
+          // leaving it for a manual `pnpm run cleanup`.
 ];
 
 const PRODUCT_NAME_PATTERNS = [
@@ -46,9 +70,20 @@ const PRODUCT_NAME_PATTERNS = [
   'Debug Product%', // ad-hoc debug scripts during development
   'Injected%', // security.steps.ts SQL injection payload
   '<script>%', // security.steps.ts XSS payload
+  'K6 Load Product%', // loadtests/orderflow-load.js
 ];
 
 const PRODUCT_NAME_EXACT = ['Zero Price Item', 'Negative Price Item'];
+
+// app/prisma/seed.mjs's own fixed baseline data — excluded from every
+// query below UNCONDITIONALLY, in every mode (default date-cutoff,
+// --patterns-only, or a deliberately-epoch --since like the hub's own
+// "reset database before re-run" checkbox uses to sweep literally
+// everything else). A hardcoded name/email exclusion, not a timing trick
+// — safe regardless of how close together seeding and a cleanup call
+// happen to run, unlike relying on createdAt ordering alone.
+const SEED_CUSTOMER_EMAILS = ['jane@example.com'];
+const SEED_PRODUCT_NAMES = ['Wireless Mouse', 'Mouse Pad', 'USB-C Hub'];
 
 // Re-syncs each table's identity/serial sequence to MAX(id) after cleanup
 // deletes rows, so repeated test runs don't leave the sequence drifting
@@ -83,19 +118,26 @@ END $$;
 
 async function main() {
   const since = parseSinceArg();
-  console.log(`Cutoff: rows created at or after ${since} are swept up regardless of naming (plus the fixed patterns below).`);
+  // `since === null` (--patterns-only) makes every "createdAt >= $N" clause
+  // below evaluate to SQL NULL/false, the same as omitting the clause
+  // entirely — no query changes needed, just this one log line to say so.
+  console.log(
+    since === null
+      ? 'Patterns-only: only rows matching a known throwaway naming scheme below are touched, no date cutoff.'
+      : `Cutoff: rows created at or after ${since} are swept up regardless of naming (plus the fixed patterns below).`,
+  );
 
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
 
   try {
     const custRes = await client.query(
-      'SELECT id FROM "Customer" WHERE email LIKE ANY($1::text[]) OR "createdAt" >= $2',
-      [CUSTOMER_EMAIL_PATTERNS, since]
+      'SELECT id FROM "Customer" WHERE (email LIKE ANY($1::text[]) OR "createdAt" >= $2) AND email != ALL($3::text[])',
+      [CUSTOMER_EMAIL_PATTERNS, since, SEED_CUSTOMER_EMAILS]
     );
     const prodRes = await client.query(
-      'SELECT id FROM "Product" WHERE name LIKE ANY($1::text[]) OR name = ANY($2::text[]) OR "createdAt" >= $3',
-      [PRODUCT_NAME_PATTERNS, PRODUCT_NAME_EXACT, since]
+      'SELECT id FROM "Product" WHERE (name LIKE ANY($1::text[]) OR name = ANY($2::text[]) OR "createdAt" >= $3) AND name != ALL($4::text[])',
+      [PRODUCT_NAME_PATTERNS, PRODUCT_NAME_EXACT, since, SEED_PRODUCT_NAMES]
     );
 
     const customerIds = custRes.rows.map((r) => r.id);

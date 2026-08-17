@@ -2505,6 +2505,15 @@ app.post('/api/generate/snapshots/import', snapshotUpload.single('file'), async 
   }
 });
 
+// Used by the hub's own "Keep test data" checkbox (hub/index.html) —
+// unchecked (the default) means "reset before this re-run", implemented
+// as cleanup.mjs's own --since mechanism with a cutoff old enough that
+// literally every non-seed row matches, seed itself protected by
+// cleanup.mjs's own hardcoded SEED_CUSTOMER_EMAILS/SEED_PRODUCT_NAMES
+// exclusion (a name/email check, not date-based, so it holds regardless
+// of how this constant compares to any real row's own createdAt).
+const RESET_ALL_SINCE = '1970-01-01T00:00:00Z';
+
 app.post('/api/tests/run', async (req, res) => {
   try {
     // Optional — whatever's currently rendered into tests/ is what actually
@@ -2512,7 +2521,7 @@ app.post('/api/tests/run', async (req, res) => {
     // FRONTEND_URL/credentials (descriptors/<name>.env) overlay the
     // orderflow-network defaults instead of silently falling back to them.
     // Omit it and behavior is unchanged from before this field existed.
-    const { descriptor } = req.body as { descriptor?: string };
+    const { descriptor, resetDatabase } = req.body as { descriptor?: string; resetDatabase?: boolean };
     const testEnv = await buildTestRunEnv(descriptor);
     // bddgen + the real Playwright/Cucumber suite can run for minutes with
     // nothing but a static "running…" status otherwise — stream NDJSON
@@ -2525,6 +2534,20 @@ app.post('/api/tests/run', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
+      // Reset to baseline BEFORE this run, not after — so the state a
+      // human inspects right after a "Re-Run BDD tests" click reflects
+      // exactly what THIS run created, not last time's leftovers layered
+      // on top. resetDatabase is only ever true from the hub's OrderFlow
+      // tile (its checkbox is the one UI surface that sets it); harmless
+      // no-op for any other caller (generate.html's own "Run tests"
+      // button never sends it) since the field is simply absent there.
+      if (resetDatabase && descriptor === 'orderflow') {
+        send({ type: 'progress', message: `$ node support/cleanup.mjs --since ${RESET_ALL_SINCE}` });
+        const resetResult = await runCommand('node', ['support/cleanup.mjs', '--since', RESET_ALL_SINCE], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+        if (resetResult.code !== 0) {
+          send({ type: 'progress', message: `Warning: cleanup.mjs exited ${resetResult.code} — proceeding anyway.` });
+        }
+      }
       send({ type: 'progress', message: '$ npx bddgen && npx playwright test' });
       const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
       // Always regenerate the HTML report afterward, whether or not the run
@@ -2544,6 +2567,145 @@ app.post('/api/tests/run', async (req, res) => {
     res.end();
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Load — backend/API load testing (k6 -> InfluxDB -> Grafana). HTTP-only
+// load against a descriptor's own rest-api component, no browser involved
+// (see loadtests/*.js's own header comment, load.html's own copy, and the
+// Grafana dashboard's own description panel for the same framing repeated
+// everywhere this stage is visible). Descriptor-agnostic by construction:
+// reuses rewriteForContainerNetwork()/restApiOrigin() (defined above, next
+// to /api/discovery/run) to resolve any target's REST API base origin the
+// exact same way Discovery already does — no separate networking logic for
+// this stage. The one gating rule is capability-based, not a stored flag:
+// a descriptor with no rest-api component has nothing to load-test.
+// ---------------------------------------------------------------------------
+
+// Same two-levels-up pattern as DESCRIPTORS_DIR above (server.ts lives at
+// src/admin/server.ts, so '../..' lands at this package's own root,
+// /usr/src/app inside the container) — matches the workbench service's
+// own `./loadtests:/usr/src/app/loadtests` mount in docker-compose.yml.
+const LOADTESTS_DIR = resolve(__dirname, '../../loadtests');
+
+function loadTestScriptPath(name: string): string {
+  return join(LOADTESTS_DIR, `${name}-load.js`);
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Same HOST_PROJECT_ROOT-resolved-path pattern orderflowDemoComposeFile()
+// below and kafkaUiSync.ts's own repoComposeFile() already use — this one
+// points at docker-compose.yml itself (where the k6/influxdb/grafana
+// services live), not a separate compose file, so `docker compose run k6`
+// below attaches to the same network `up` already created for
+// influxdb/grafana and (for OrderFlow) `app`.
+function rootComposeFile(): string {
+  const hostRoot = process.env.HOST_PROJECT_ROOT;
+  if (!hostRoot) {
+    throw new Error('HOST_PROJECT_ROOT is not set — docker-compose.yml should pass it into the workbench service');
+  }
+  return join(hostRoot, 'docker-compose.yml');
+}
+
+app.post('/api/load/:descriptor/run', async (req, res) => {
+  try {
+    const name = req.params.descriptor;
+    const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
+    const baseUrl = restApiOrigin(rewriteForContainerNetwork(descriptor));
+    if (!baseUrl) {
+      res.status(400).json({ error: 'This descriptor has no rest-api component — nothing to load-test.' });
+      return;
+    }
+    const scriptFile = loadTestScriptPath(name);
+    if (!(await fileExists(scriptFile))) {
+      res.status(400).json({ error: `No k6 script yet for "${name}" — generate and approve one on the Load tab first.` });
+      return;
+    }
+
+    const { resetDatabase } = req.body as { resetDatabase?: boolean };
+
+    // The real run can take ~2 minutes (the demo VU ramp/hold/ramp-down) —
+    // stream NDJSON progress the same way /api/tests/run above does. Any
+    // failure past this point has to be a `{"type":"error"}` line, never a
+    // status code.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
+    try {
+      // Same hub "Keep test data" checkbox /api/tests/run's own resetDatabase
+      // handles above — reset to baseline BEFORE this run, not after, so a
+      // standalone "Re-Run backend load test" click (no preceding BDD
+      // re-run) still starts from a clean Customer/Product table rather
+      // than whatever an earlier "keep data" run left behind.
+      if (resetDatabase && name === 'orderflow') {
+        const testEnv = await buildTestRunEnv(name);
+        send({ type: 'progress', message: `$ node support/cleanup.mjs --since ${RESET_ALL_SINCE}` });
+        const resetResult = await runCommand('node', ['support/cleanup.mjs', '--since', RESET_ALL_SINCE], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+        if (resetResult.code !== 0) {
+          send({ type: 'progress', message: `Warning: cleanup.mjs exited ${resetResult.code} — proceeding anyway.` });
+        }
+      }
+
+      const composeFile = rootComposeFile();
+      const args = [
+        'compose', '-p', 'agentic-qa-platform', '-f', composeFile, '--profile', 'tools', 'run', '--rm',
+        '-e', `K6_BASE_URL=${baseUrl}`, 'k6', 'run', `/scripts/${name}-load.js`,
+        '--out', 'influxdb=http://influxdb:8086/k6', '--tag', `descriptor=${name}`,
+      ];
+      // Captured before the run starts, not after — used as cleanup.mjs's
+      // own --since below, so only rows THIS run creates get deleted,
+      // never anything older (the seed customer/product from
+      // app/prisma/seed.ts, or whatever a prior BDD run's own cleanup
+      // already left in place).
+      const runStartedAt = new Date().toISOString();
+      send({ type: 'progress', message: `$ docker ${args.join(' ')}` });
+      const result = await runCommand('docker', args, APP_ROOT, process.env, (line) => send({ type: 'progress', message: line }));
+
+      // OrderFlow's own script creates a real customer/product/order per
+      // VU/iteration — thousands of rows per run, all matched by
+      // tests/support/cleanup.mjs's own 'k6-%'/'K6 Load Product%' patterns
+      // AND (for anything that somehow didn't) the --since cutoff above.
+      // Confirmed live: without this, the leftover rows survive past this
+      // run (only a full redeploy's `down -v` would otherwise clear them)
+      // and silently break BDD edge-case scenarios that assume a clean
+      // Customer/Product table on a later "Re-Run BDD tests" click. Always
+      // runs, pass or fail — a failed load test still creates real rows.
+      // OrderFlow-specific (cleanup.mjs's own schema is OrderFlow's Prisma
+      // schema, same as the hand-written script it's cleaning up after) —
+      // not run for any other descriptor. A plain cleanup.mjs's own
+      // hardcoded DEFAULT_SINCE would have been wrong here — it assumes a
+      // long-lived dev DB where "old" means "genuine seed data", not a
+      // freshly deployed instance where the real seed rows are just as
+      // "recent" as this run's own throwaway ones; runStartedAt is the
+      // one cutoff that's actually correct for THIS run specifically.
+      if (name === 'orderflow') {
+        const testEnv = await buildTestRunEnv(name);
+        send({ type: 'progress', message: `$ node support/cleanup.mjs --since ${runStartedAt}` });
+        const cleanupResult = await runCommand('node', ['support/cleanup.mjs', '--since', runStartedAt], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+        if (cleanupResult.code !== 0) {
+          send({ type: 'progress', message: `Warning: cleanup.mjs exited ${cleanupResult.code} — load-test rows may still be in the database.` });
+        }
+      }
+
+      // Nonzero exit here means k6's own thresholds failed (a legitimate
+      // load-test outcome, e.g. p95 latency crept over budget under load) —
+      // not necessarily an infrastructure error, so this is reported, not
+      // thrown, same as /api/tests/run's own testsPassed handling above.
+      send({ type: 'done', exitCode: result.code, passed: result.code === 0 });
+    } catch (err) {
+      send({ type: 'error', error: (err as Error).message });
+    }
+    res.end();
+  } catch (err) {
+    res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
   }
 });
 
@@ -2811,10 +2973,42 @@ app.post('/api/demo/switch', async (req, res) => {
     // rate-limit flakiness); orderflow has no sidecar env of its own, same
     // as every other caller of buildTestRunEnv().
     const testEnv = await buildTestRunEnv(target === 'uptime-kuma' ? 'uptime-kuma' : undefined);
+    // Captured before bddgen/playwright starts, not after — used as
+    // cleanup.mjs's own --since below, so only rows the suite itself
+    // creates during THIS run get deleted, never the seed customer/product
+    // from app/prisma/seed.ts (created earlier, at container startup).
+    const bddStartedAt = new Date().toISOString();
     send({ type: 'progress', message: '$ npx bddgen && npx playwright test' });
     const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv, (message) => send({ type: 'progress', message }));
     send({ type: 'progress', message: '$ node support/generate-html-report.mjs' });
     const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv, (message) => send({ type: 'progress', message }));
+
+    // BDD's own steps create real customer/product/order rows against
+    // OrderFlow's DB (order-test-%/cust_%/etc., plus a lot of Generate-
+    // Agent-authored fixtures with dynamic timestamp-suffixed names that
+    // cleanup.mjs's own fixed pattern list was never going to catch,
+    // confirmed live — --since bddStartedAt covers all of it regardless
+    // of naming) — clean those up before hub/index.html's own
+    // switchDemo() goes on to trigger a fresh backend/API load test right
+    // after this route responds (see /api/load/:descriptor/run, which
+    // cleans up its OWN rows the same way once IT finishes): the load
+    // test's script counts on a clean-of-throwaway-data Customer/Product
+    // table too, and a leftover pile from BDD is just as capable of
+    // skewing it as the load test's own leftovers are capable of breaking
+    // a later BDD re-run. bddStartedAt (not cleanup.mjs's own hardcoded
+    // DEFAULT_SINCE) is what correctly spares the seed rows here — a
+    // freshly deployed instance's seed data is just as "recent" as
+    // anything BDD itself creates, so only a per-run cutoff captured at
+    // the right moment (not a fixed calendar date) can tell them apart.
+    // OrderFlow-specific — cleanup.mjs's schema is OrderFlow's own Prisma
+    // schema; Uptime Kuma has nothing analogous.
+    if (target === 'orderflow') {
+      send({ type: 'progress', message: `$ node support/cleanup.mjs --since ${bddStartedAt}` });
+      const cleanupResult = await runCommand('node', ['support/cleanup.mjs', '--since', bddStartedAt], TESTS_ROOT, testEnv, (message) => send({ type: 'progress', message }));
+      if (cleanupResult.code !== 0) {
+        send({ type: 'progress', message: `Warning: cleanup.mjs exited ${cleanupResult.code} — BDD test rows may still be in the database.` });
+      }
+    }
 
     send({
       type: 'done',

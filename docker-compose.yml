@@ -32,6 +32,55 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
+  # Backend/API load testing (k6 -> InfluxDB -> Grafana) — HTTP-only load
+  # against a target's REST API, no browser involved (see loadtests/*.js's
+  # own header comment and the Load tab for the same framing). InfluxDB and
+  # Grafana are always-on sidecar infra, same as `report`/`kafka-ui` above;
+  # k6 itself is invoked on demand (`profiles: ["tools"]` below) by
+  # admin/server.ts's `/api/load/:descriptor/run` route, never left running.
+  influxdb:
+    image: influxdb:1.8
+    environment:
+      INFLUXDB_DB: k6
+    ports: ["8086:8086"]
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+
+  # Anonymous Viewer access so the hub's plain `target="_blank"` tile lands
+  # straight on the dashboard, same as the Kafka UI tile above — no login
+  # flow to wire up, no iframe anywhere in this codebase.
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports: ["3001:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./loadtests/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./loadtests/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - influxdb
+
+  # `profiles: ["tools"]` — never starts on a plain `docker compose up`,
+  # only via `--profile tools ... run --rm k6 ...` (admin/server.ts). The
+  # `extra_hosts` entry below mirrors `workbench`'s own one: OrderFlow is
+  # reachable directly at `app:3000` (same network), but any other
+  # docker-compose-deployed target is only reachable at
+  # `host.docker.internal:<publishedPort>` — the same two cases
+  # admin/server.ts's rewriteForContainerNetwork()/restApiOrigin() already
+  # resolve for Discovery, reused as-is for the Load stage's own base-URL
+  # resolution (no new networking logic).
+  k6:
+    image: grafana/k6:0.54.0
+    profiles: ["tools"]
+    volumes:
+      - ./loadtests:/scripts:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - influxdb
+
   # Workbench: the System Descriptor editor (agent-service/descriptors/*.json),
   # Discovery (runs the same agent `pnpm discovery` does), Analysis, and the
   # Generate pipeline's review pages (grouping/spec approval, per-descriptor
@@ -211,6 +260,13 @@ services:
       # would only touch the container's own ephemeral filesystem, never
       # the real tests/ directory this project's suite actually lives in.
       - ./tests:/usr/src/app/tests
+      # /api/load/:descriptor/run and /api/load/:descriptor/script (Load
+      # stage) need to read/write loadtests/<name>-load.js directly —
+      # without this mount, both routes would only ever see the
+      # container's own empty ephemeral filesystem at this path, never the
+      # real loadtests/ directory the k6 service (below) mounts read-only
+      # at /scripts for the actual run.
+      - ./loadtests:/usr/src/app/loadtests
       # Matches PLAYWRIGHT_BROWSERS_PATH (Dockerfile.workbench) — NOT
       # /home/node/.cache/ms-playwright (Playwright's own un-overridden
       # default, keyed to whichever user's $HOME is active), which is
@@ -272,6 +328,8 @@ services:
 
 volumes:
   playwright-browsers:
+  influxdb-data:
+  grafana-data:
 
 # Named (not the fragile directory-basename default Compose would otherwise
 # derive) so docker-compose.demo-orderflow.yml — a separate compose project,

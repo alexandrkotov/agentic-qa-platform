@@ -1,0 +1,105 @@
+{
+  "uid": "k6-results",
+  "title": "k6 — Backend / API Load Test Results",
+  "tags": ["k6", "load-testing"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "descriptor",
+        "type": "query",
+        "label": "Target",
+        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+        "query": "SHOW TAG VALUES FROM http_req_duration WITH KEY = descriptor",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Backend / API load test only.** HTTP-only load against a target's REST API (k6's `http` module). No browser rendering, no frontend performance measurement — see the E2E tab for real-browser functional testing. Select a target with the **Target** variable above."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Request rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 3 },
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "targets": [
+        {
+          "query": "SELECT count(\"value\") FROM \"http_reqs\" WHERE (\"descriptor\" =~ /^$descriptor$/) AND $timeFilter GROUP BY time($__interval) fill(0)",
+          "rawQuery": true,
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Virtual users",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 3 },
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "targets": [
+        {
+          "query": "SELECT mean(\"value\") FROM \"vus\" WHERE (\"descriptor\" =~ /^$descriptor$/) AND $timeFilter GROUP BY time($__interval)",
+          "rawQuery": true,
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Request duration — p95 / p99",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "targets": [
+        {
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE (\"descriptor\" =~ /^$descriptor$/) AND $timeFilter GROUP BY time($__interval)",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "p95"
+        },
+        {
+          "query": "SELECT percentile(\"value\", 99) FROM \"http_req_duration\" WHERE (\"descriptor\" =~ /^$descriptor$/) AND $timeFilter GROUP BY time($__interval)",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Error rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "targets": [
+        {
+          "query": "SELECT mean(\"value\") * 100 FROM \"http_req_failed\" WHERE (\"descriptor\" =~ /^$descriptor$/) AND $timeFilter GROUP BY time($__interval)",
+          "rawQuery": true,
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0 }, "overrides": [] }
+    }
+  ]
+}

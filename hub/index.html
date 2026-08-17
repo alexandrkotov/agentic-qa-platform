@@ -11,6 +11,12 @@
     --warn-fg: #8a5a1f; --warn-bg: rgba(201, 138, 63, 0.16);
     --danger: #b3261e; --danger-bg: #fbe9e7;
     --ok: #2f8f5b; --ok-bg: rgba(47, 143, 91, 0.14);
+    /* A stronger border than plain --line, used only on the demo tiles —
+       those grow taller once a load-test log opens, and --line's own
+       subtle contrast (tuned for a single-line static card) wasn't enough
+       to keep a tall, expanded tile visually separate from whatever
+       follows it. */
+    --tile-line: #c7ccd4;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -18,6 +24,7 @@
       --warn-fg: #e0ac6c; --warn-bg: rgba(201, 138, 63, 0.18);
       --danger: #f0847c; --danger-bg: #3a1f1e;
       --ok: #5fc98b; --ok-bg: rgba(95, 201, 139, 0.16);
+      --tile-line: #454c5c;
     }
   }
   * { box-sizing: border-box; }
@@ -108,7 +115,18 @@
     font-size: 0.78rem; color: var(--accent); background: var(--accent-bg);
     padding: 0.3rem 0.6rem; border-radius: 6px; white-space: nowrap;
   }
-  footer { margin-top: 2.5rem; font-size: 0.8rem; color: var(--mute); }
+  /* Nested inside #load-run-panel (the tile of whichever descriptor
+     actually has a load test to run — OrderFlow, today) as its own
+     closing footer, right after the k6 log — not a page-wide floating
+     footer below the whole grid, which read as detached from any actual
+     box. #load-run-panel already carries the left/right padding, so this
+     only adds the top divider + vertical spacing, no horizontal padding
+     of its own. */
+  .tile-footnote {
+    border-top: 1px solid var(--tile-line);
+    padding: 0.7rem 0 0; margin: 0;
+    font-size: 0.78rem; line-height: 1.5; color: var(--mute);
+  }
   footer a { color: inherit; }
 
   /* Composite Demo tiles — a clickable "Deploy ..." trigger row (a real
@@ -116,7 +134,14 @@
      it — nesting interactive elements inside a <button> is invalid HTML
      and behaves unpredictably), plus a sub-cards area that's hidden until
      the target is confirmed live (GET /api/demo/status). */
-  .demo-tile { padding: 0; overflow: hidden; }
+  .demo-tile {
+    padding: 0; overflow: hidden;
+    border-color: var(--tile-line);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+  @media (prefers-color-scheme: dark) {
+    .demo-tile { box-shadow: 0 2px 14px rgba(0,0,0,0.4); }
+  }
   .demo-tile-trigger {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     width: 100%; background: none; border: none; padding: 1.1rem 1.3rem;
@@ -142,14 +167,76 @@
   .subcard-name { font-weight: 600; font-size: 0.87rem; }
   .subcard-desc { color: var(--mute); font-size: 0.78rem; }
 
-  /* Deploy progress, shown only once a Demo trigger has been clicked. */
-  #demo-switch-panel { display: none; margin-top: 0.9rem; }
-  #demo-switch-panel.open { display: block; }
-  #demo-switch-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; }
-  #demo-switch-status.ok { color: var(--ok); }
-  #demo-switch-status.err { color: var(--danger); }
-  #demo-switch-log {
-    margin: 0.5rem 0 0; padding: 0.8rem 1rem; background: var(--surface);
+  /* Deploy status now lives INSIDE its own tile (one instance per target,
+     unique IDs — demo-switch-panel-<target> etc.), right under the
+     trigger button — not a single panel shared by both tiles below the
+     whole grid, which read as detached from whichever tile actually
+     triggered it. Has its own border-top since the trigger button above
+     it has none. */
+  .demo-switch-panel { display: none; border-top: 1px solid var(--tile-line); padding: 0.7rem 0.9rem 0.9rem; }
+  .demo-switch-panel.open { display: block; }
+
+  /* Re-run actions, two per demo tile — "BDD tests" (secondary/outlined)
+     and "backend load test" — same filled-accent treatment for both, one
+     consistent primary-action style across the whole page (matches
+     .confirm-modal-actions button above). Real actions, not subcard
+     links. Always visible (not hidden the way the subcards area is),
+     disabled with an explanatory title when unavailable — see
+     feedback_disabled_button_tooltip_convention: an unavailable action
+     stays visible-but-disabled with a tooltip, never hidden outright.
+     Border-top of its own (subcards above it can be hidden, so this row
+     can't rely on subcards' own border to separate it from the trigger
+     button/deploy panel). */
+  .tile-action-row { border-top: 1px solid var(--tile-line); padding: 0.6rem 0.9rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  /* margin-left: auto, not the row's own justify-content: space-between —
+     Uptime Kuma's row has no "Keep test data" checkbox sibling (no
+     cleanup infra for it), so with only one child, space-between pushed
+     its two bare buttons apart from EACH OTHER instead of grouping them
+     on the right. Confirmed live. This way the buttons always end up
+     flush right, with or without a checkbox present before them. */
+  .tile-action-buttons { display: flex; gap: 0.6rem; margin-left: auto; }
+  /* OrderFlow-only (the only tile with real cleanup infra behind it) —
+     unchecked (default) means "reset the database before this re-run",
+     see RESET_ALL_SINCE in server.ts. */
+  .keep-data-label {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.78rem; color: var(--mute); cursor: pointer; user-select: none;
+  }
+  .keep-data-label input { margin: 0; cursor: pointer; }
+  /* Uptime Kuma's own checkbox is permanently disabled (no cleanup script
+     exists for its data model, same capability-based reasoning as its
+     "Re-Run backend load test" button) — same disabled+title idiom as
+     every other unavailable action in this file
+     (feedback_disabled_button_tooltip_convention): stays visible, not
+     hidden, cursor communicates it's unavailable, title explains why. */
+  .keep-data-label:has(input:disabled) { cursor: not-allowed; opacity: 0.5; }
+  .keep-data-label input:disabled { cursor: not-allowed; }
+  .tile-load-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 1rem; font: inherit; font-size: 0.83rem; font-weight: 600;
+    cursor: pointer; transition: filter 0.15s ease;
+  }
+  .tile-load-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .tile-load-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+
+  /* BDD-rerun / load-test progress — each its OWN panel (bdd-run-panel-*,
+     load-run-panel-*), deliberately separate from each other AND from
+     .demo-switch-panel above: deploy/redeploy, re-running BDD, and
+     re-running the load test are three independent actions, and sharing
+     one panel meant any of them could silently wipe out another's still-
+     relevant result. No border-top of its own — .tile-action-row right
+     above already draws the one divider separating "actions" from
+     "results"; a second line here would just double up right around the
+     buttons, same issue already hit once and fixed for the load panel. */
+  .tile-run-panel { display: none; padding: 0 0.9rem 0.9rem; }
+  .tile-run-panel.open { display: block; }
+  .tile-run-status { font-size: 0.85rem; line-height: 1.4; word-break: break-word; }
+  .tile-run-status.pending { color: var(--warn-fg); }
+  .tile-run-status.ok { color: var(--ok); }
+  .tile-run-status.err { color: var(--danger); }
+  .tile-run-status a { color: inherit; font-weight: 700; }
+  .tile-run-log {
+    margin: 0.5rem 0 0; padding: 0.8rem 1rem; background: var(--bg);
     border: 1px solid var(--line); border-radius: 10px;
     font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.78rem;
     white-space: pre-wrap; word-break: break-word; max-height: 16rem; overflow-y: auto;
@@ -230,6 +317,30 @@
           </div>
         </div>
         <span class="card-url">:8080</span>
+      </a>
+
+      <!-- Backend/API load-test results (k6 -> InfluxDB -> Grafana).
+           Grouped right after the Cucumber report tile — the two are both
+           "test results" tiles (functional vs. load), not operational
+           tools like AI usage/Kafka UI below. Same "starts with docker
+           compose up, platform infra not demo-specific" reasoning as the
+           Kafka UI tile — no login flow, no iframe. -->
+      <a class="card" href="http://localhost:3001/d/k6-results/k6-e28094-backend-api-load-test-results" target="_blank" rel="noopener">
+        <div class="card-main">
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 3v18h18"></path>
+              <rect x="7" y="12" width="3" height="6"></rect>
+              <rect x="12.5" y="8" width="3" height="10"></rect>
+              <rect x="18" y="5" width="3" height="13"></rect>
+            </svg>
+          </span>
+          <div>
+            <div class="card-name">Grafana — backend API load test results</div>
+            <div class="card-desc">Request rate, p95/p99 latency, error rate for k6's HTTP-only load tests — no frontend/browser metrics. Shared across targets, filterable by target.</div>
+          </div>
+        </div>
+        <span class="card-url">:3001</span>
       </a>
 
       <a class="card" href="http://localhost:8080/usage/" target="_blank" rel="noopener">
@@ -335,6 +446,29 @@
             <span class="card-url">:3000/docs</span>
           </a>
         </div>
+        <div class="demo-switch-panel" id="demo-switch-panel-orderflow">
+          <div class="tile-run-status" id="demo-switch-status-orderflow"></div>
+          <pre class="tile-run-log" id="demo-switch-log-orderflow"></pre>
+        </div>
+        <div class="tile-action-row">
+          <label class="keep-data-label" title="Skip resetting the database before a re-run — leaves whatever the last run created in place, so you can inspect it (e.g. in the Frontend). Unchecked (default): every re-run below starts from a clean Customer/Product table first.">
+            <input type="checkbox" id="keep-test-data-orderflow">
+            Keep test data
+          </label>
+          <div class="tile-action-buttons">
+            <button class="tile-load-btn" id="trigger-bdd-orderflow" onclick="runBddTests('orderflow', this)" disabled title="Deploy OrderFlow first.">Re-Run BDD tests</button>
+            <button class="tile-load-btn" id="trigger-load-orderflow" onclick="runLoadTest('orderflow', this)" disabled title="Deploy OrderFlow first.">Re-Run backend load test</button>
+          </div>
+        </div>
+        <div class="tile-run-panel" id="bdd-run-panel-orderflow">
+          <div class="tile-run-status" id="bdd-run-status-orderflow"></div>
+          <pre class="tile-run-log" id="bdd-run-log-orderflow"></pre>
+        </div>
+        <div class="tile-run-panel" id="load-run-panel-orderflow">
+          <div class="tile-run-status" id="load-run-status-orderflow"></div>
+          <pre class="tile-run-log" id="load-run-log-orderflow"></pre>
+          <footer class="tile-footnote">Served by the same <code>report</code> nginx container as the test report above — see <code>README.md</code> for what each service actually needs to be running.</footer>
+        </div>
       </div>
 
       <div class="card demo-tile" id="tile-uptime-kuma">
@@ -375,15 +509,30 @@
             <span class="card-url" id="tile-uptime-kuma-port"></span>
           </a>
         </div>
+        <div class="demo-switch-panel" id="demo-switch-panel-uptime-kuma">
+          <div class="tile-run-status" id="demo-switch-status-uptime-kuma"></div>
+          <pre class="tile-run-log" id="demo-switch-log-uptime-kuma"></pre>
+        </div>
+        <div class="tile-action-row">
+          <label class="keep-data-label" title="No cleanup script exists for Uptime Kuma's own data model (unlike OrderFlow's tests/support/cleanup.mjs) — nothing for this checkbox to control yet.">
+            <input type="checkbox" id="keep-test-data-uptime-kuma" disabled>
+            Keep test data
+          </label>
+          <div class="tile-action-buttons">
+            <button class="tile-load-btn" id="trigger-bdd-uptime-kuma" onclick="runBddTests('uptime-kuma', this)" disabled title="Deploy Uptime Kuma first.">Re-Run BDD tests</button>
+            <!-- Permanently disabled — capability-based, not deploy-state-based: Uptime Kuma's
+                 descriptor has no rest-api component, so there's nothing for k6 to load-test.
+                 applyDemoStatus()/updateTileButtons() deliberately never touches this one,
+                 see LOAD_TEST_CAPABLE. -->
+            <button class="tile-load-btn" id="trigger-load-uptime-kuma" disabled title="Uptime Kuma's System Descriptor has no rest-api component — nothing for k6 to load-test yet, regardless of what endpoints the real app might actually expose.">Re-Run backend load test</button>
+          </div>
+        </div>
+        <div class="tile-run-panel" id="bdd-run-panel-uptime-kuma">
+          <div class="tile-run-status" id="bdd-run-status-uptime-kuma"></div>
+          <pre class="tile-run-log" id="bdd-run-log-uptime-kuma"></pre>
+        </div>
       </div>
     </div>
-
-    <div id="demo-switch-panel">
-      <div id="demo-switch-status"></div>
-      <pre id="demo-switch-log"></pre>
-    </div>
-
-    <footer>Served by the same <code>report</code> nginx container as the test report above — see <code>README.md</code> for what each service actually needs to be running.</footer>
   </main>
 
   <div class="confirm-modal-overlay" id="confirm-modal-overlay">
@@ -463,10 +612,77 @@ const DEMO_DEPLOY_DESC = {
 };
 const DEMO_ACTIVE_DESC = 'Click to tear down and redeploy fresh (suite included).';
 
+// Whether a target has an actual k6 script to run — a capability fact
+// (does the descriptor have a rest-api component / does
+// loadtests/<target>-load.js exist), not deploy state. Uptime Kuma's own
+// "Re-Run backend load test" button stays permanently disabled regardless
+// of deploy state; updateTileButtons()/switchDemo() below both consult
+// this instead of ever touching that button.
+const LOAD_TEST_CAPABLE = { orderflow: true, 'uptime-kuma': false };
+
 // Tracked so switchDemo()'s own confirm-dialog wording can say "redeploy
 // OrderFlow" vs "remove Uptime Kuma and deploy OrderFlow" accurately,
 // rather than always using the generic cross-target phrasing.
 let currentActiveDemo = null;
+
+// Button ids currently mid-run (runBddTests/runLoadTest/switchDemo below).
+// refreshDemoStatus() polls every 20s — a run can easily take longer than
+// that (BDD suites, the ~2min k6 script), and applyDemoStatus()/
+// updateTileButtons() below would otherwise blindly re-enable a button
+// based on deploy state alone, with no idea an action is still in flight
+// for it. Confirmed live: without this, "Re-Run BDD tests" visibly turned
+// clickable again mid-run, well before its own real completion. Every
+// button id here must be added on start and removed in a `finally`, never
+// left stale.
+const busyTriggerIds = new Set();
+
+// One tile's two re-run buttons, driven by deploy state — same
+// disabled+title idiom as everywhere else in this file
+// (feedback_disabled_button_tooltip_convention) — but skipped entirely
+// for a button that's currently busy (see busyTriggerIds above), so a
+// poll tick during a long-running action can't undo that action's own
+// disabled state. Load's button is only touched for a LOAD_TEST_CAPABLE
+// target; Uptime Kuma's stays exactly as authored in the HTML
+// (permanently disabled, capability-based).
+function updateTileButtons(target, deployed) {
+  const label = DEMO_LABELS[target];
+  const bddId = `trigger-bdd-${target}`;
+  if (!busyTriggerIds.has(bddId)) {
+    const bddBtn = document.getElementById(bddId);
+    bddBtn.disabled = !deployed;
+    bddBtn.title = deployed ? 'Re-run the currently restored BDD suite against the live target.' : `Deploy ${label} first.`;
+  }
+
+  if (LOAD_TEST_CAPABLE[target]) {
+    const loadId = `trigger-load-${target}`;
+    if (!busyTriggerIds.has(loadId)) {
+      const loadBtn = document.getElementById(loadId);
+      loadBtn.disabled = !deployed;
+      loadBtn.title = deployed
+        ? `Backend/API load test — runs loadtests/${target}-load.js against the live ${label} REST API.`
+        : `Deploy ${label} first.`;
+    }
+  }
+}
+
+const ACTION_BUTTON_IDS = [
+  'trigger-orderflow', 'trigger-uptime-kuma',
+  'trigger-bdd-orderflow', 'trigger-bdd-uptime-kuma',
+  'trigger-load-orderflow',
+];
+
+// Disabled (and marked busy, see busyTriggerIds above) while ANY action
+// (deploy, BDD re-run, load re-run) is in flight for EITHER target —
+// deploying tears down/rebuilds whichever target ends up live, and
+// re-running BDD/k6 against a target that might be mid-teardown doesn't
+// make sense either. Uptime Kuma's load button is deliberately never
+// touched here — permanently disabled, independent of any of this.
+function setAllActionButtonsDisabled(disabled) {
+  for (const id of ACTION_BUTTON_IDS) {
+    if (disabled) busyTriggerIds.add(id); else busyTriggerIds.delete(id);
+    document.getElementById(id).disabled = disabled;
+  }
+}
 
 // Applies one GET /api/demo/status response to both tiles — called on
 // load, on a ~20s poll (state can change outside this page, e.g. someone
@@ -480,6 +696,7 @@ function applyDemoStatus(status) {
     ? DEMO_ACTIVE_DESC : DEMO_DEPLOY_DESC.orderflow;
   document.getElementById('tile-orderflow-badge').hidden = !ofDeployed;
   document.getElementById('tile-orderflow-subcards').hidden = !ofDeployed;
+  updateTileButtons('orderflow', ofDeployed);
 
   const kumaDeployed = !!status.uptimeKuma?.deployed;
   document.getElementById('tile-uptime-kuma-name').textContent = kumaDeployed
@@ -487,6 +704,7 @@ function applyDemoStatus(status) {
   document.getElementById('tile-uptime-kuma-desc').textContent = kumaDeployed
     ? DEMO_ACTIVE_DESC : DEMO_DEPLOY_DESC['uptime-kuma'];
   document.getElementById('tile-uptime-kuma-badge').hidden = !kumaDeployed;
+  updateTileButtons('uptime-kuma', kumaDeployed);
   // Kuma's own published port is dynamically allocated (unlike OrderFlow's
   // fixed :5173/:3000/:8081) — no link to show until the server actually
   // reports one, even if the container itself is already up (e.g. mid-way
@@ -546,16 +764,13 @@ async function switchDemo(target, triggerBtn) {
   const ok = await confirmModal(message);
   if (!ok) return;
 
-  const orderflowBtn = document.getElementById('trigger-orderflow');
-  const kumaBtn = document.getElementById('trigger-uptime-kuma');
-  orderflowBtn.disabled = true;
-  kumaBtn.disabled = true;
+  setAllActionButtonsDisabled(true);
 
-  const panel = document.getElementById('demo-switch-panel');
-  const statusEl = document.getElementById('demo-switch-status');
-  const logEl = document.getElementById('demo-switch-log');
+  const panel = document.getElementById(`demo-switch-panel-${target}`);
+  const statusEl = document.getElementById(`demo-switch-status-${target}`);
+  const logEl = document.getElementById(`demo-switch-log-${target}`);
   panel.classList.add('open');
-  statusEl.className = '';
+  statusEl.className = 'tile-run-status pending';
   statusEl.textContent = `Deploying ${label} and its BDD suite…`;
   logEl.textContent = '';
 
@@ -578,15 +793,170 @@ async function switchDemo(target, triggerBtn) {
     });
     if (errorMessage) throw new Error(errorMessage);
     if (!doneEvent) throw new Error('Server closed the connection without a result — check workbench logs.');
-    statusEl.className = 'ok';
+    statusEl.className = 'tile-run-status ok';
     const passed = doneEvent.testsPassed ? 'all scenarios passed' : `exit code ${doneEvent.testsExitCode}, see the Cucumber report`;
     statusEl.textContent = `${label} deployed, suite restored and run (${passed}).`;
+
+    // Every deploy/redeploy also gets a fresh backend/API load-test run —
+    // same "one click, everything fresh" philosophy this route already
+    // applies to the BDD suite. Silently skipped (not an error) for a
+    // target with no load-test script, e.g. Uptime Kuma today. Progress
+    // and result show in THAT target's own load-run panel (via
+    // runLoadTest, reused as-is, not duplicated) — same place a manual
+    // click on "Re-Run backend load test" would show them, so "where do I
+    // look for load-test results" never depends on how the run started.
+    // skipReset: true — the redeploy above already guarantees a clean DB
+    // (`down -v`), and the BDD run just above this may have legitimately
+    // created its own fixtures a checkbox-driven reset would wrongly wipe
+    // right back out.
+    if (LOAD_TEST_CAPABLE[target]) {
+      await runLoadTest(target, document.getElementById(`trigger-load-${target}`), { skipReset: true });
+    }
   } catch (e) {
-    statusEl.className = 'err';
+    statusEl.className = 'tile-run-status err';
     statusEl.textContent = 'Failed: ' + e.message;
   } finally {
-    orderflowBtn.disabled = false;
-    kumaBtn.disabled = false;
+    setAllActionButtonsDisabled(false);
+    refreshDemoStatus();
+  }
+}
+
+// Same URL as the Platform section's own Grafana tile href above — kept
+// as its own constant (not derived from the tile's DOM) since the two are
+// independent, same "small duplicated constant" style already used
+// elsewhere in this file (e.g. DEMO_LABELS/DEMO_DEPLOY_NAME). The tile
+// itself deliberately has no ?var-descriptor= (it's not tied to any one
+// run, "All" is the right default there) — but a link shown right after
+// a specific run should jump straight to that run's own data, not "All".
+const GRAFANA_DASHBOARD_URL = 'http://localhost:3001/d/k6-results/k6-e28094-backend-api-load-test-results';
+function grafanaDashboardUrlFor(target) {
+  return `${GRAFANA_DASHBOARD_URL}?var-descriptor=${encodeURIComponent(target)}`;
+}
+
+// Backend/API load test (k6 -> InfluxDB -> Grafana) — HTTP-only against
+// the target's REST API, no browser involved. Not destructive (unlike
+// switchDemo() above, no confirm dialog needed — same "just run it, no
+// confirm" precedent as generate.html's own "Run tests" button), so this
+// posts straight to /api/load/<target>/run. Called both directly (button
+// click) and from switchDemo() (auto-run on deploy) — its own per-target
+// panel, deliberately separate from demo-switch-panel-* and
+// bdd-run-panel-*, so none of the three can silently wipe out another's
+// still-relevant result.
+// Reads the OrderFlow tile's "Keep test data" checkbox (only that tile
+// has one — no cleanup infra exists for any other target yet, see
+// cleanup.mjs's own OrderFlow-specific Prisma schema). Unchecked
+// (default, and the only state possible for a target with no checkbox at
+// all) means "reset the database before this re-run" — server.ts's own
+// RESET_ALL_SINCE handles the actual reset.
+function shouldResetDatabase(target) {
+  const checkbox = document.getElementById(`keep-test-data-${target}`);
+  return !!checkbox && !checkbox.checked;
+}
+
+// skipReset: true ONLY from switchDemo()'s own auto-run right after a
+// fresh deploy's BDD suite — that redeploy already guarantees a clean DB
+// via `down -v`, and BDD's own run just moments ago may have legitimately
+// created fixtures (e.g. an edge-case scenario's own customer) that a
+// checkbox-driven reset-before-run would wrongly wipe right back out
+// before the ink is even dry. A manual button click always consults the
+// checkbox normally (skipReset left false/omitted).
+async function runLoadTest(target, triggerBtn, { skipReset } = {}) {
+  busyTriggerIds.add(triggerBtn.id);
+  triggerBtn.disabled = true;
+
+  const panel = document.getElementById(`load-run-panel-${target}`);
+  const statusEl = document.getElementById(`load-run-status-${target}`);
+  const logEl = document.getElementById(`load-run-log-${target}`);
+  panel.classList.add('open');
+  statusEl.className = 'tile-run-status pending';
+  statusEl.textContent = `Running backend/API load test against ${DEMO_LABELS[target]}…`;
+  logEl.textContent = '';
+
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson(`/api/load/${target}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resetDatabase: !skipReset && shouldResetDatabase(target) }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check workbench logs.');
+    statusEl.className = doneEvent.passed ? 'tile-run-status ok' : 'tile-run-status err';
+    // innerHTML, not textContent, so "the Grafana dashboard" below is a
+    // real link straight to the k6-results dashboard — every value spliced
+    // in is either a fixed label from DEMO_LABELS or a number, never
+    // user-controlled text, so this is safe.
+    statusEl.innerHTML = doneEvent.passed
+      ? `Backend/API load test against ${DEMO_LABELS[target]} passed its thresholds — see the <a href="${grafanaDashboardUrlFor(target)}" target="_blank" rel="noopener">Grafana dashboard</a> for the full results.`
+      : `Backend/API load test against ${DEMO_LABELS[target]} finished but missed a threshold (exit code ${doneEvent.exitCode}) — see the <a href="${grafanaDashboardUrlFor(target)}" target="_blank" rel="noopener">Grafana dashboard</a> for details.`;
+  } catch (e) {
+    statusEl.className = 'tile-run-status err';
+    statusEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    busyTriggerIds.delete(triggerBtn.id);
+    triggerBtn.disabled = false;
+    refreshDemoStatus();
+  }
+}
+
+// Re-runs whatever BDD suite is currently restored into tests/ — same
+// underlying route generate.html's own "Run tests" button already uses
+// (/api/tests/run), just surfaced here per-tile for convenience. Not
+// destructive, no confirm dialog, same reasoning as runLoadTest above.
+// {descriptor: target} is passed through for buildTestRunEnv()'s own
+// per-target env-override lookup (descriptors/<name>.env) — optional,
+// matches what a real deploy already threads through internally.
+async function runBddTests(target, triggerBtn) {
+  busyTriggerIds.add(triggerBtn.id);
+  triggerBtn.disabled = true;
+
+  const panel = document.getElementById(`bdd-run-panel-${target}`);
+  const statusEl = document.getElementById(`bdd-run-status-${target}`);
+  const logEl = document.getElementById(`bdd-run-log-${target}`);
+  panel.classList.add('open');
+  statusEl.className = 'tile-run-status pending';
+  statusEl.textContent = `Re-running the BDD suite for ${DEMO_LABELS[target]}…`;
+  logEl.textContent = '';
+
+  try {
+    let doneEvent = null;
+    let errorMessage = null;
+    await streamNdjson('/api/tests/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ descriptor: target, resetDatabase: shouldResetDatabase(target) }),
+    }, (evt) => {
+      if (evt.type === 'progress') {
+        logEl.textContent += evt.message + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (evt.type === 'done') {
+        doneEvent = evt;
+      } else if (evt.type === 'error') {
+        errorMessage = evt.error;
+      }
+    });
+    if (errorMessage) throw new Error(errorMessage);
+    if (!doneEvent) throw new Error('Server closed the connection without a result — check workbench logs.');
+    statusEl.className = doneEvent.testsPassed ? 'tile-run-status ok' : 'tile-run-status err';
+    statusEl.textContent = doneEvent.testsPassed
+      ? `BDD suite for ${DEMO_LABELS[target]} passed — see the Cucumber report for the full results.`
+      : `BDD suite for ${DEMO_LABELS[target]} finished with failures (exit code ${doneEvent.testsExitCode}) — see the Cucumber report for details.`;
+  } catch (e) {
+    statusEl.className = 'tile-run-status err';
+    statusEl.textContent = 'Failed: ' + e.message;
+  } finally {
+    busyTriggerIds.delete(triggerBtn.id);
+    triggerBtn.disabled = false;
     refreshDemoStatus();
   }
 }
