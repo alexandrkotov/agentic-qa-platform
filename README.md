@@ -60,13 +60,14 @@ explicit human `y` — then re-runs the real suite to confirm it's green. No aut
 
 Start to finish — from onboarding a brand-new target system through to a self-healing test suite:
 
-![Agentic QA Platform — end to end: Discovery, Analysis, Test Suite, and the E2E Agent's closed loop](docs/assets/architecture-overview.png)
+![Agentic QA Platform — end to end: Discovery, Analysis, BDD Test Suite, the E2E Agent's closed loop, and Load Test](docs/assets/architecture-overview.png)
 
 Discovery and Generate run once to bootstrap a suite (already committed for every target this repo
 ships, e.g. OrderFlow and Uptime Kuma — you don't need to re-run them); the E2E Agent then runs
 against that suite for real, any time, on demand, closing the loop by re-verifying its own guarded
-patch actually fixed the failure. Analysis is optional and doesn't block anything downstream — it
-exists purely to help a human understand what Discovery found.
+patch actually fixed the failure. Analysis and Load Test are both optional and don't block anything
+downstream — Analysis exists purely to help a human understand what Discovery found, and Load Test
+runs against a deployed target independently of the functional test suite.
 
 ## What's in this repo
 
