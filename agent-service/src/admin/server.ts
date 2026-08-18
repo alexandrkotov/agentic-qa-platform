@@ -2747,9 +2747,23 @@ app.post('/api/load/:descriptor/run', async (req, res) => {
       }
 
       const composeFile = rootComposeFile();
+      // Real bug found live 2026-08-19: this only ever passed K6_BASE_URL —
+      // nothing from the descriptor's own headers/credentials ever reached
+      // the k6 container, so a rest-api component with `headers` (e.g.
+      // NocoDB's xc-token, see project_restapi_auth_headers_idea) silently
+      // ran unauthenticated and every single request failed (100%
+      // http_req_failed, confirmed live: 2645/2645). Same descriptor-env-
+      // sidecar mechanism buildTestRunEnv() already uses for BDD/E2E runs,
+      // reused here directly rather than the full process.env-spread
+      // version — a k6 subprocess only needs this target's own overrides
+      // (BACKEND_URL/XC_TOKEN/NC_API_TOKEN/etc.), not ANTHROPIC_API_KEY and
+      // everything else buildTestRunEnv() also carries.
+      const descriptorEnvOverrides = expandOverrides(await loadTestEnvOverrides(descriptorPath(name)));
       const args = [
         'compose', '-p', 'agentic-qa-platform', '-f', composeFile, '--profile', 'tools', 'run', '--rm',
-        '-e', `K6_BASE_URL=${baseUrl}`, 'k6', 'run', `/scripts/${name}-load.js`,
+        '-e', `K6_BASE_URL=${baseUrl}`,
+        ...Object.entries(descriptorEnvOverrides).flatMap(([key, value]) => ['-e', `${key}=${value}`]),
+        'k6', 'run', `/scripts/${name}-load.js`,
         '--out', 'influxdb=http://influxdb:8086/k6', '--tag', `descriptor=${name}`,
       ];
       // Captured before the run starts, not after — used as cleanup.mjs's
