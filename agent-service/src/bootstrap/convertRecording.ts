@@ -119,20 +119,34 @@ export function convertRecording(raw: string, descriptorName: string): Converted
     kept.push(cur);
   }
 
-  // Parametrize fill()/press() literals — same literal value reuses the same var (password +
+  // Parametrize fill() literals ONLY — same literal value reuses the same var (password +
   // confirmation, or the same password retyped on a later login screen).
   //
-  // Real bug found live 2026-08-18: two DIFFERENT literal values (e.g. a
-  // field filled once, cleared, then filled again with a corrected value —
-  // a real human retry, not staged) can derive the SAME toEnvVarName result
-  // when they come from fields with the same accessible name/label. Only
-  // dedup-by-VALUE was checked here, so two distinct values silently
-  // produced two `const E_MAIL = ...` declarations in the same scope — a
-  // genuine JS syntax error (duplicate identifier), confirmed live via a
-  // real generated draft that failed to even parse. usedVarNames tracks
-  // every name already handed out (regardless of which value it came from)
-  // so a second, different value landing on the same derived name gets a
-  // numeric suffix instead of colliding.
+  // Real bug found live 2026-08-18: this used to parametrize press() calls
+  // the exact same way as fill(), on the assumption both take a "typed
+  // value" worth hiding behind an env var. That's wrong for press() — it
+  // always takes a KEY NAME ('Enter', 'Tab', 'Control+a'), never a literal
+  // value to protect. Confirmed live and reproduced 3 times: NocoDB's own
+  // signup form triggers a recorded `.press(<same email just filled>)` step
+  // (most likely an autofill-suggestion dismissal codegen captures oddly),
+  // which got "parametrized" into `.press(E_MAIL_2)` — a genuine
+  // `locator.press: Unknown key` runtime failure, since press() needs an
+  // actual key name string, not an arbitrary value. press() literals are
+  // now re-emitted as their own literal (JSON-quoted, so a real key name
+  // stays a real key name), never turned into an env var.
+  //
+  // Real bug found live 2026-08-18 (separate from the above): two DIFFERENT
+  // fill() literal values (e.g. a field filled once, cleared, then filled
+  // again with a corrected value — a real human retry, not staged) can
+  // derive the SAME toEnvVarName result when they come from fields with the
+  // same accessible name/label. Only dedup-by-VALUE was checked here, so
+  // two distinct values silently produced two `const E_MAIL = ...`
+  // declarations in the same scope — a genuine JS syntax error (duplicate
+  // identifier), confirmed live via a real generated draft that failed to
+  // even parse. usedVarNames tracks every name already handed out
+  // (regardless of which value it came from) so a second, different value
+  // landing on the same derived name gets a numeric suffix instead of
+  // colliding.
   const varByValue = new Map<string, string>();
   const usedVarNames = new Set<string>();
   const envVars: string[] = [];
@@ -144,7 +158,10 @@ export function convertRecording(raw: string, descriptorName: string): Converted
       // verbatim, don't re-append an action call onto it.
       return `      await ${step.chain};`;
     }
-    if (step.action !== 'fill' && step.action !== 'press') {
+    if (step.action === 'press') {
+      return `      await ${step.chain}.press(${JSON.stringify(step.argLiteral ?? '')});`;
+    }
+    if (step.action !== 'fill') {
       return `      await ${step.chain}.${step.action}();`;
     }
     const literal = step.argLiteral ?? '';
