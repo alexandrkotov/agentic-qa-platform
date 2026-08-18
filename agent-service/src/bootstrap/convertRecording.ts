@@ -145,11 +145,21 @@ export function convertRecording(raw: string, descriptorName: string): Converted
     return `      await ${step.chain}.${step.action}(${varName});`;
   });
 
+  // Real bug found live 2026-08-18: this function used to return `envVars`
+  // bare (e.g. "E_MAIL") for the UI's own "detected env vars" form/Save-to-.env
+  // feature, while the generated code below always reads the DESCRIPTOR-
+  // PREFIXED name (`env.NOCODB_E_MAIL`) — filling the form and saving exactly
+  // as the UI intends wrote the wrong (unprefixed) key, so the freshly
+  // generated script failed immediately with its own "needs NOCODB_E_MAIL"
+  // error. `envPrefix` is computed once and used for both the generated
+  // code's own env reads AND the returned `envVars` list, so what the UI
+  // shows/saves and what the code actually reads can no longer drift apart.
+  const envPrefix = descriptorName.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
   const envReads = envVars
     .map(
       (v) =>
-        `  const ${v} = env.${descriptorName.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_${v};\n` +
-        `  if (!${v}) throw new Error('${descriptorName} setup needs ${descriptorName.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_${v} in descriptors/${descriptorName}.env');`,
+        `  const ${v} = env.${envPrefix}_${v};\n` +
+        `  if (!${v}) throw new Error('${descriptorName} setup needs ${envPrefix}_${v} in descriptors/${descriptorName}.env');`,
     )
     .join('\n');
 
@@ -206,5 +216,5 @@ ${codeSteps.join('\n')}
 export default ${fnName};
 `;
 
-  return { code, envVars, warnings };
+  return { code, envVars: envVars.map((v) => `${envPrefix}_${v}`), warnings };
 }
