@@ -281,6 +281,12 @@
   .component-card .card-head select { flex: 1; }
   .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; font-size: 0.85rem; }
   .nested { padding-left: 1rem; border-left: 2px solid var(--line); margin-bottom: 0.6rem; }
+  /* renderHeaders()'s key/value rows — .field's own `input` rule already
+     styles these (it's a descendant selector, not scoped to direct
+     children), this just handles the row layout itself. */
+  .header-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.4rem; }
+  .header-row input { flex: 1; min-width: 0; }
+  .header-row button.link { flex-shrink: 0; }
 
   .save-bar { display: flex; align-items: center; gap: 0.8rem; margin-top: 1.5rem; }
   #status { font-size: 0.83rem; }
@@ -688,9 +694,10 @@ const FIELD_DEFS = {
   // directly in the descriptor's JSON file. It's the alternative to
   // swaggerUrl for a real API with no OpenAPI/Swagger spec — see
   // descriptor/components/restApi.ts's own comment. headers (a
-  // Record<string, string> of static auth headers, e.g. an API token) is
-  // left out for the same reason — no bespoke key/value widget built for
-  // one field, edit it directly in the descriptor's JSON file too.
+  // Record<string, string> of static auth headers, e.g. an API token) DOES
+  // get its own widget — renderHeaders(), wired up in renderCard() next to
+  // renderKafkaSasl()/renderKafkaTls(), not through this list (it's a
+  // dynamic list of rows, not a fixed text/lines/number field).
   'rest-api': [
     { key: 'swaggerUrl', label: 'Swagger / OpenAPI URL (optional if using knownEndpoints)', type: 'text', placeholder: 'http://localhost:3000/docs-json' },
     { key: 'baseUrl', label: 'Base URL (required if using knownEndpoints)', type: 'text', placeholder: 'defaults to swagger URL origin' },
@@ -1030,6 +1037,10 @@ function renderCard(comp, idx) {
     card.appendChild(renderKafkaTls(comp));
   }
 
+  if (comp.type === 'rest-api') {
+    card.appendChild(renderHeaders(comp));
+  }
+
   return card;
 }
 
@@ -1114,6 +1125,82 @@ function renderKafkaTls(comp) {
   label.textContent = 'TLS enabled';
   row.appendChild(cb); row.appendChild(label);
   return row;
+}
+
+// rest-api's `headers` (a Record<string, string> of static auth headers —
+// see descriptor/components/restApi.ts) is a dynamic list of key/value
+// pairs, not a fixed text/lines/number field, so it can't go through
+// renderField()/FIELD_DEFS like swaggerUrl/baseUrl. renderKafkaSasl() above
+// looked like a possible reusable pattern but isn't one: it's a *fixed*
+// three-field group behind a checkbox, not a repeatable row list.
+function renderHeaders(comp) {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  wrap.innerHTML = '<label>Headers <span class="hint">(sent with every request, e.g. an API token; values are masked as secrets)</span></label>';
+
+  // Local staging copy, seeded once from comp.headers here — kept as an
+  // array (not mutated key-by-key straight into comp.headers) so a header
+  // NAME can be edited mid-typing, including through a momentarily blank or
+  // duplicate value, without a row silently vanishing or clobbering another
+  // one. sync() below is what actually commits it back to comp.headers,
+  // same "stage locally, then commit" shape as renderKafkaSasl()'s own
+  // sync().
+  const rows = Object.entries(comp.headers || {}).map(([key, value]) => ({ key, value }));
+
+  const rowsEl = document.createElement('div');
+  rowsEl.className = 'header-rows';
+
+  function sync() {
+    const headers = {};
+    for (const row of rows) {
+      if (row.key) headers[row.key] = row.value;
+    }
+    comp.headers = Object.keys(headers).length ? headers : undefined;
+  }
+
+  function renderRows() {
+    rowsEl.innerHTML = '';
+    rows.forEach((row, idx) => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'header-row';
+
+      const keyInput = document.createElement('input');
+      keyInput.placeholder = 'Header name (e.g. xc-token)';
+      keyInput.value = row.key;
+      keyInput.oninput = () => { row.key = keyInput.value; sync(); };
+
+      const valueInput = document.createElement('input');
+      valueInput.type = 'password';
+      valueInput.placeholder = 'Value';
+      valueInput.value = row.value;
+      valueInput.oninput = () => { row.value = valueInput.value; sync(); };
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'link';
+      removeBtn.textContent = 'Remove';
+      // A click, unlike the inputs' own 'input' events above, doesn't
+      // bubble as something the #editor delegated listener treats as a
+      // dirty-tracking signal — same reason add-component/removeBtn
+      // elsewhere in this file call updateSaveUndoDisabled() (via
+      // renderComponents()) explicitly rather than relying on it.
+      removeBtn.onclick = () => { rows.splice(idx, 1); sync(); renderRows(); updateSaveUndoDisabled(); };
+
+      rowEl.appendChild(keyInput);
+      rowEl.appendChild(valueInput);
+      rowEl.appendChild(removeBtn);
+      rowsEl.appendChild(rowEl);
+    });
+  }
+  renderRows();
+  wrap.appendChild(rowsEl);
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'ghost';
+  addBtn.textContent = '+ Add header';
+  addBtn.onclick = () => { rows.push({ key: '', value: '' }); sync(); renderRows(); updateSaveUndoDisabled(); };
+  wrap.appendChild(addBtn);
+
+  return wrap;
 }
 
 document.getElementById('add-component').onclick = () => {
