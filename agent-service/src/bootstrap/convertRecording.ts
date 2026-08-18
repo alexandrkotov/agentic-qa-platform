@@ -121,7 +121,20 @@ export function convertRecording(raw: string, descriptorName: string): Converted
 
   // Parametrize fill()/press() literals — same literal value reuses the same var (password +
   // confirmation, or the same password retyped on a later login screen).
+  //
+  // Real bug found live 2026-08-18: two DIFFERENT literal values (e.g. a
+  // field filled once, cleared, then filled again with a corrected value —
+  // a real human retry, not staged) can derive the SAME toEnvVarName result
+  // when they come from fields with the same accessible name/label. Only
+  // dedup-by-VALUE was checked here, so two distinct values silently
+  // produced two `const E_MAIL = ...` declarations in the same scope — a
+  // genuine JS syntax error (duplicate identifier), confirmed live via a
+  // real generated draft that failed to even parse. usedVarNames tracks
+  // every name already handed out (regardless of which value it came from)
+  // so a second, different value landing on the same derived name gets a
+  // numeric suffix instead of colliding.
   const varByValue = new Map<string, string>();
+  const usedVarNames = new Set<string>();
   const envVars: string[] = [];
   let fallbackIndex = 0;
   const codeSteps = kept.map((step) => {
@@ -138,7 +151,14 @@ export function convertRecording(raw: string, descriptorName: string): Converted
     let varName = varByValue.get(literal);
     if (!varName) {
       fallbackIndex++;
-      varName = toEnvVarName(fieldNameFromChain(step.chain), fallbackIndex);
+      let candidate = toEnvVarName(fieldNameFromChain(step.chain), fallbackIndex);
+      let suffix = 2;
+      while (usedVarNames.has(candidate)) {
+        candidate = `${toEnvVarName(fieldNameFromChain(step.chain), fallbackIndex)}_${suffix}`;
+        suffix++;
+      }
+      varName = candidate;
+      usedVarNames.add(varName);
       varByValue.set(literal, varName);
       envVars.push(varName);
     }

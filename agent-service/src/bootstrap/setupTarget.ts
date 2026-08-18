@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -72,7 +73,21 @@ export async function runSetup(
   // never needs to know the full list of descriptors with setup scripts
   // ahead of time. hasSetup()'s existsSync check above already guarantees
   // the file is there before this ever runs.
-  const mod = (await import(`./setup/${name}.ts`)) as { default?: SetupFn };
+  //
+  // Real bug found live 2026-08-18: Node's ESM loader caches a dynamic
+  // import by its exact specifier — a bare `./setup/${name}.ts` import
+  // silently kept serving whatever version was imported FIRST in this
+  // process's lifetime, even after the file was edited/regenerated on disk
+  // (confirmed live: a freshly generated, syntactically broken draft still
+  // reported "Done." because the old, working, already-cached module ran
+  // instead). This breaks the UI's own advertised "generate/edit -> run ->
+  // look -> edit again" loop for any target whose script was ever run once
+  // before. A `?mtime=` cache-busting query forces a genuinely fresh import
+  // whenever the file's content actually changed, while an unchanged file
+  // still reuses its own cached module (bounded, not a new entry every run).
+  const scriptPath = setupScriptPath(name);
+  const mtime = (await stat(scriptPath)).mtimeMs;
+  const mod = (await import(`./setup/${name}.ts?mtime=${mtime}`)) as { default?: SetupFn };
   if (typeof mod.default !== 'function') {
     throw new Error(`bootstrap/setup/${name}.ts must have a default export matching SetupFn's shape (env, onProgress?) => Promise<void>.`);
   }
