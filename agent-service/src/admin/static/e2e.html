@@ -358,13 +358,28 @@ function setPassFailStatus(el, passedCount, total) {
   }
 }
 
-const state = { scenarios: [], selected: new Set() };
+const state = { scenarios: [], selected: new Set(), descriptor: null };
 
 // --- Scenario picker --------------------------------------------------------
 
 async function loadScenarios() {
   state.scenarios = await api('/api/e2e/scenarios');
   renderScenarioList();
+  // Real bug found live 2026-08-19: this page never told the server which
+  // descriptor tests/ currently belongs to, so /api/e2e/run's own
+  // buildTestRunEnv(descriptor) silently fell back to the OrderFlow-only
+  // BASE_TEST_RUN_ENV (BACKEND_URL http://app:3000 etc.) for every OTHER
+  // target — generate.html's own "Run tests" already avoids this (reads
+  // #descriptor-name), E2E just never got the same treatment. Reusing
+  // /api/generate/specs-for-current-suite purely for its own `descriptor`
+  // field (it already reads tests/.current-descriptor, the one honest
+  // record of what's really on disk right now) rather than adding a new
+  // route for one string.
+  try {
+    state.descriptor = (await api('/api/generate/specs-for-current-suite')).descriptor;
+  } catch {
+    state.descriptor = null; // best-effort — a stale/missing marker just means the old OrderFlow-only behavior, not a crash
+  }
 }
 
 function renderScenarioList() {
@@ -441,7 +456,7 @@ document.getElementById('run-selected-btn').onclick = async () => {
     let started = 0;
     await streamNdjson(
       '/api/e2e/run',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenarioIds: ids }) },
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenarioIds: ids, descriptor: state.descriptor ?? undefined }) },
       (evt) => {
         if (evt.type === 'progress') {
           logEl.textContent += evt.message + '\n';
@@ -666,7 +681,13 @@ function renderApplyPreview(body, reportName, preview) {
       let errorMessage = null;
       await streamNdjson(
         '/api/e2e/apply/confirm',
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: reportName }) },
+        // Same real bug, same fix, as the "Run selected" body above — this
+        // route also calls buildTestRunEnv(descriptor) server-side and
+        // also silently fell back to OrderFlow's own BACKEND_URL without
+        // it (confirmed live: "Apply & re-run" against a real NocoDB fix
+        // hit the exact same getaddrinfo ENOTFOUND app error THIS field
+        // exists to prevent).
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: reportName, descriptor: state.descriptor ?? undefined }) },
         (evt) => {
           if (evt.type === 'progress') {
             logEl.textContent += evt.message + '\n';
