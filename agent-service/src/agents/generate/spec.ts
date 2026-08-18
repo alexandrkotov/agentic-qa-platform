@@ -124,7 +124,12 @@ character-for-character will fail an automated check before this generation is e
    with a validation error" should use that literal step text verbatim in both, so they share one step
    definition. Do not invent a slightly different phrasing for the same thing.
 3. Tag every scenario \`@<type> @${renderGroup.key}\` on the line above \`Scenario:\`, where \`<type>\` is
-   that scenario's exact \`type\` from the report (e.g. \`@happy_path @${renderGroup.key}\`).
+   that scenario's exact \`type\` from the report (e.g. \`@happy_path @${renderGroup.key}\`) — UNLESS
+   \`<type>\` and \`${renderGroup.key}\` are the exact same word, in which case write it ONCE, not twice.
+   Correct, group key "security", scenario type "security": \`@security\`. WRONG (do not do this):
+   \`@security @security\` — the same literal word must never appear twice on one tag line, regardless of
+   why it would otherwise repeat. Correct, group key "api", scenario type "happy_path": \`@happy_path
+   @api\` (two DIFFERENT words — always fine, this is the normal case).
 4. Where the report itself is genuinely uncertain (says "verify behavior", "may be allowed or blocked",
    etc.) and no Known correction above resolves it, write a \`# TODO (unconfirmed): ...\` comment line
    directly above that scenario's first step, explaining what's unconfirmed and what you assumed — never
