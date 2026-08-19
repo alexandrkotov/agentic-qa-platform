@@ -41,6 +41,13 @@ const GOTO_RE = /^page\.goto\(\s*(['"`])(.*?)\1\s*(?:,.*)?\)$/;
 const TRAILING_CALL_RE = /^(.*)\.(click|check|uncheck)\(\s*\)$/;
 const TRAILING_FILL_OR_PRESS_RE = /^(.*)\.(fill|press)\(\s*(['"`])((?:\\.|(?!\3).)*)\3\s*\)$/;
 const NAME_ATTR_RE = /name:\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
+// Real bug, found live 2026-08-19 on camera: NocoDB's own signin form is recorded via
+// `getByTestId('nc-form-signin__password')`, not `getByRole(..., { name: '...' })` — NAME_ATTR_RE
+// alone found nothing for either the email or password field, so both silently fell back to the
+// generic `FIELD_1`/`FIELD_2` names, which then defeated a password-vs-email heuristic downstream
+// (the recorder script filled the same credential into both). getByTestId/getByLabel/etc. take
+// their name as a positional string, not a `name:` attribute — pick that up too.
+const POSITIONAL_NAME_RE = /getBy(?:TestId|Label|Placeholder|Title|AltText|Text)\(\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
 
 function classify(stmt: string): Step {
   const fillOrPress = stmt.match(TRAILING_FILL_OR_PRESS_RE);
@@ -54,14 +61,20 @@ function classify(stmt: string): Step {
   return { chain: stmt, action: 'other' };
 }
 
-/** Last `name: '...'` in the chain wins — the outermost/most specific locator in a chain like
+/** Last name-like token in the chain wins — the outermost/most specific locator in a chain like
  *  `page.getByRole('textbox', { name: 'Password', exact: true })` only ever has one, but a chained
  *  `.filter({ ... })` could add a second; the field's own name is what a human actually typed
- *  next to, so it's the more useful source for a variable name. */
+ *  next to (or the testid/label/placeholder the target's own markup carries), so it's the more
+ *  useful source for a variable name. Merges both the `name:`-attribute style (getByRole/filter)
+ *  and the positional-string style (getByTestId/getByLabel/...), ordered by where each actually
+ *  appears in the chain, so "last wins" still reflects the real outermost locator either way. */
 function fieldNameFromChain(chain: string): string | null {
-  let last: string | null = null;
-  for (const m of chain.matchAll(NAME_ATTR_RE)) last = m[2];
-  return last;
+  const matches: Array<{ index: number; value: string }> = [];
+  for (const m of chain.matchAll(NAME_ATTR_RE)) matches.push({ index: m.index ?? 0, value: m[2] });
+  for (const m of chain.matchAll(POSITIONAL_NAME_RE)) matches.push({ index: m.index ?? 0, value: m[2] });
+  if (!matches.length) return null;
+  matches.sort((a, b) => a.index - b.index);
+  return matches[matches.length - 1].value;
 }
 
 function toEnvVarName(fieldName: string | null, fallbackIndex: number): string {
