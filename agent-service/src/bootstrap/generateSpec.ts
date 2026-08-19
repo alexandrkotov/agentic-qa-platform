@@ -74,6 +74,7 @@ export async function runGenerateSpec(
     corrections,
     resolvedGroupingPath,
     TESTS_STEPS_DIR,
+    config.reportsDir,
     uatContext,
   );
 

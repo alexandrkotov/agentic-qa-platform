@@ -24,7 +24,7 @@ import { generateGeneration } from '../agents/generate/spec.ts';
 import { generateLoadTestScript } from '../agents/loadtest/spec.ts';
 import type { AgentProvider } from '../providers/AgentProvider.ts';
 import { renderGeneration, writeRenderedFiles } from '../agents/generate/render.ts';
-import { compileAndVerify, collectExistingStepPatterns } from '../agents/generate/verify.ts';
+import { compileAndVerify, collectExistingStepPatterns, collectApprovedSpecPatterns } from '../agents/generate/verify.ts';
 import {
   ProposedGroupingSchema,
   ApprovedGroupingSchema,
@@ -1819,6 +1819,7 @@ app.post('/api/generate/spec', async (req, res) => {
         corrections,
         groupingPath,
         TESTS_STEPS_DIR,
+        config.reportsDir,
         uatContext,
         (message) => send({ type: 'progress', message }),
       );
@@ -1844,10 +1845,17 @@ app.post('/api/generate/spec/approve', async (req, res) => {
     // approving — an edit could reintroduce a step-text/pattern mismatch the
     // generation-time check wouldn't have seen. Re-verify every group here
     // too, before persisting, not just at generation time.
-    const patternRegistry = await collectExistingStepPatterns(
-      TESTS_STEPS_DIR,
-      [...new Set(proposed.groups.map((g) => g.sourceKey))],
-    );
+    const excludeSourceKeys = [...new Set(proposed.groups.map((g) => g.sourceKey))];
+    const patternRegistry = await collectExistingStepPatterns(TESTS_STEPS_DIR, excludeSourceKeys);
+    // Same gap as generateGeneration's own collectApprovedSpecPatterns call
+    // (spec.ts) — a sibling group for this SAME grouping may already be
+    // approved from an earlier, separate round and not written to disk yet,
+    // so the on-disk scan above can't see it. Without this, approving group
+    // B here can't catch that it collides with already-approved group A
+    // until "Write files" -> bddgen, well after both look approved.
+    for (const [pattern, owner] of await collectApprovedSpecPatterns(config.reportsDir, proposed.sourceGroupingPath, excludeSourceKeys)) {
+      if (!patternRegistry.has(pattern)) patternRegistry.set(pattern, owner);
+    }
     for (const group of proposed.groups) {
       const ownPatterns = compileAndVerify(group, patternRegistry);
       for (const [pattern, owner] of ownPatterns) patternRegistry.set(pattern, owner);

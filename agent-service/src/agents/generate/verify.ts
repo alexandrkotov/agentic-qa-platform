@@ -245,3 +245,56 @@ export async function collectExistingStepPatterns(stepsDir: string, excludeKeys:
   }
   return registry;
 }
+
+/**
+ * Seeds additional pattern-registry entries from every OTHER
+ * `generate-spec-approved-*.json` for the SAME grouping, except the groups
+ * currently being (re)generated/(re)approved — closes a real gap
+ * collectExistingStepPatterns leaves: when a large grouping is generated as
+ * several independent Claude calls/approval rounds (e.g. one call per
+ * cross-functional group, done on purpose to avoid a different collision
+ * that a single oversized call risked), a group approved in an earlier round
+ * isn't written to tests/steps/ yet — "Write files" is a separate, later,
+ * human-triggered step — so collectExistingStepPatterns's on-disk scan can't
+ * see it. Two independently-approved groups can then both claim the exact
+ * same step wording and nothing catches it until bddgen itself refuses to
+ * build, well after both were already approved. Newest approval per group
+ * key wins, same "latest state" semantics as
+ * server.ts's /api/generate/spec-for-grouping merge. Malformed/partial JSON
+ * (e.g. a file mid-write) is skipped rather than thrown — this is a safety
+ * net, it must never itself be the reason generation/approval fails.
+ */
+export async function collectApprovedSpecPatterns(
+  reportsDir: string,
+  sourceGroupingPath: string,
+  excludeKeys: string[],
+): Promise<Map<string, string>> {
+  const registry = new Map<string, string>();
+  let files: string[];
+  try {
+    files = await readdir(reportsDir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return registry;
+    throw err;
+  }
+  const candidates = files.filter((f) => f.startsWith('generate-spec-approved-') && f.endsWith('.json')).sort().reverse(); // newest first
+  const seenKeys = new Set<string>(excludeKeys);
+  for (const file of candidates) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(await readFile(join(reportsDir, file), 'utf-8'));
+    } catch {
+      continue;
+    }
+    if (!raw || typeof raw !== 'object' || (raw as { sourceGroupingPath?: unknown }).sourceGroupingPath !== sourceGroupingPath) continue;
+    const groups = (raw as { groups?: { key?: unknown; stepsContent?: unknown }[] }).groups ?? [];
+    for (const group of groups) {
+      if (typeof group.key !== 'string' || typeof group.stepsContent !== 'string' || seenKeys.has(group.key)) continue;
+      seenKeys.add(group.key);
+      for (const p of extractStepDefinitionPatterns(group.stepsContent)) {
+        registry.set(p.pattern, group.key);
+      }
+    }
+  }
+  return registry;
+}

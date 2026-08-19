@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import { GeneratedGroupSchema, type Corrections, type GeneratedGroup, type ProposedGeneration, type RenderGroup } from './contract.ts';
-import { compileAndVerify, collectExistingStepPatterns } from './verify.ts';
+import { compileAndVerify, collectExistingStepPatterns, collectApprovedSpecPatterns } from './verify.ts';
 import { mergeGroups } from './merge.ts';
 
 // ---------------------------------------------------------------------------
@@ -265,6 +265,8 @@ export async function generateGeneration(
   corrections: Corrections,
   sourceGroupingPath: string,
   testsStepsDir: string,
+  /** Where `generate-spec-approved-*.json` files live (config.reportsDir) — seeds the collision registry from every OTHER already-approved-but-not-yet-written-to-disk group for this same grouping (see collectApprovedSpecPatterns), not just tests/steps/ itself. Closes the gap that let two independently-approved groups (e.g. two of several isolated Claude calls for one large grouping) claim the exact same step wording undetected until bddgen. */
+  reportsDir: string,
   /** User-provided UAT/acceptance-test notes (see uat.ts), mixed into every render-group's prompt alongside the report and corrections. Defaults to '' (no extra section) for CLI/older callers that don't have one. */
   uatContext: string = '',
   // Mirrors this function's own console.log/console.error calls (not
@@ -280,11 +282,21 @@ export async function generateGeneration(
   // Excludes by sourceKey, not each render-group's own (possibly split) key —
   // on-disk .steps.ts files are named by sourceKey (see merge.ts/render.ts),
   // so a group split into "customers-1"/"customers-2" must still exclude the
-  // single on-disk "customers.steps.ts" it's about to replace.
-  const patternRegistry = await collectExistingStepPatterns(
-    testsStepsDir,
-    [...new Set(renderGroups.map((g) => g.sourceKey))],
-  );
+  // single on-disk "customers.steps.ts" it's about to replace (and, below,
+  // the same sourceKey's own prior approval for this grouping, if any).
+  const excludeSourceKeys = [...new Set(renderGroups.map((g) => g.sourceKey))];
+  const patternRegistry = await collectExistingStepPatterns(testsStepsDir, excludeSourceKeys);
+  // Other groups for this SAME grouping may already be approved (a human
+  // clicked Approve) without being written to disk yet — "Write files" is a
+  // separate, later step, so collectExistingStepPatterns's on-disk scan
+  // above can't see them. Merge those in too (disk wins on overlap — see
+  // collectApprovedSpecPatterns), so this call's own duplicate-step check,
+  // AND the "already claimed" list the model itself is shown
+  // (buildClaimedPatternsBlock), both know about a sibling group approved
+  // in an earlier, separate round.
+  for (const [pattern, owner] of await collectApprovedSpecPatterns(reportsDir, sourceGroupingPath, excludeSourceKeys)) {
+    if (!patternRegistry.has(pattern)) patternRegistry.set(pattern, owner);
+  }
 
   // budget.ts may have split one Stage 1 group across several render-groups
   // purely to stay under a single call's token budget — cluster back by
