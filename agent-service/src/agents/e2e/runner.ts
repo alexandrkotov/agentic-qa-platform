@@ -12,6 +12,26 @@ export interface RunnerResult {
 const TAIL_CHARS = 4000;
 const tail = (s: string, n = TAIL_CHARS) => (s.length > n ? s.slice(-n) : s);
 
+// Playwright's own --grep takes its argument as a regex source, matched
+// against each test's full title (feature name, the scenario title itself,
+// then its tags — e.g. "api › Features Bulk Update @happy_path @api"), not
+// as a literal string. Passing a bare scenario title through unescaped and
+// unanchored means any OTHER scenario whose title starts with this one's
+// title as a substring also matches — confirmed live: "Features Bulk
+// Update" silently pulled in "Features Bulk Update with Conditions" too,
+// re-running (and diagnosing) a scenario nobody asked for and corrupting
+// this scenario's own pass/fail outcome with an unrelated one's result.
+// Escaping regex metacharacters in the title, then requiring what follows
+// the match to be either the tag list's leading " @" or end-of-string,
+// closes this without needing a full `^...$` anchor (which would also have
+// to account for the feature-name prefix playwright-bdd always adds).
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function exactTitleGrep(scenarioTitle: string): string {
+  return `${escapeRegExp(scenarioTitle)}( @|$)`;
+}
+
 export async function runProcess(
   command: string,
   args: string[],
@@ -76,7 +96,7 @@ export async function runScenario(
       ? bddgenResult // don't run playwright against a possibly-stale .features-gen/
       : await runProcess(
           join(testsRoot, 'node_modules', '.bin', 'playwright'),
-          ['test', '--grep', scenarioTitle],
+          ['test', '--grep', exactTitleGrep(scenarioTitle)],
           testsRoot,
           playwrightTimeoutMs,
           env,
