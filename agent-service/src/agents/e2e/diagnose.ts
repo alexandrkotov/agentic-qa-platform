@@ -182,17 +182,6 @@ export async function diagnoseFailure(
     }
   }
 
-  const raw = await provider.run({
-    systemPrompt: SYSTEM_PROMPT,
-    userMessage: buildUserMessage(scenario, sources, evidence),
-    mcpServers: [],
-    tools: [],
-    maxIterations: 5,
-    operation: `e2e-diagnose:${scenario.id}`,
-    descriptor,
-  });
-
-  const jsonText = extractJsonObject(raw);
   const fallback = (reason: string): Diagnosis => ({
     classification: 'unknown',
     reasoning: reason,
@@ -201,19 +190,48 @@ export async function diagnoseFailure(
     recommendedAction: null,
     confidence: 'low',
   });
-  if (!jsonText) return fallback(`No JSON in diagnosis response. Raw: ${raw.slice(0, 500)}`);
 
-  try {
-    const parsed = JSON.parse(jsonText) as Diagnosis;
-    // Enforce the guardrail in code — don't trust the model to have followed it.
-    if (parsed.classification === 'application_bug') {
-      if (parsed.proposedPatch) parsed.proposedPatch = null;
-      parsed.structuredFix = null;
-    } else {
-      parsed.structuredFix = sanitizeStructuredFix(parsed.structuredFix, testsRoot, scenario);
+  // The model sometimes leads with narrative analysis and never actually
+  // lands a complete, valid JSON object at all — confirmed live, roughly a
+  // third to a half of calls for the same scenario/evidence on a bad day —
+  // not something a prompt tweak has reliably fixed here before (see
+  // extractJsonObject's own header comment for the earlier greedy-regex
+  // version of this same problem). Retrying the same call is cheap relative
+  // to silently losing the diagnosis (and its cost) to a parse failure, so
+  // this tries up to MAX_ATTEMPTS times before giving up.
+  const MAX_ATTEMPTS = 3;
+  let lastRaw = '';
+  let lastError = '';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const raw = await provider.run({
+      systemPrompt: SYSTEM_PROMPT,
+      userMessage: buildUserMessage(scenario, sources, evidence),
+      mcpServers: [],
+      tools: [],
+      maxIterations: 5,
+      operation: `e2e-diagnose:${scenario.id}`,
+      descriptor,
+    });
+    lastRaw = raw;
+
+    const jsonText = extractJsonObject(raw);
+    if (!jsonText) {
+      lastError = 'No JSON in diagnosis response.';
+      continue;
     }
-    return parsed;
-  } catch (err) {
-    return fallback(`JSON.parse failed: ${(err as Error).message}. Raw: ${raw.slice(0, 500)}`);
+    try {
+      const parsed = JSON.parse(jsonText) as Diagnosis;
+      // Enforce the guardrail in code — don't trust the model to have followed it.
+      if (parsed.classification === 'application_bug') {
+        if (parsed.proposedPatch) parsed.proposedPatch = null;
+        parsed.structuredFix = null;
+      } else {
+        parsed.structuredFix = sanitizeStructuredFix(parsed.structuredFix, testsRoot, scenario);
+      }
+      return parsed;
+    } catch (err) {
+      lastError = `JSON.parse failed: ${(err as Error).message}`;
+    }
   }
+  return fallback(`${lastError} (after ${MAX_ATTEMPTS} attempts). Last raw: ${lastRaw.slice(0, 500)}`);
 }
