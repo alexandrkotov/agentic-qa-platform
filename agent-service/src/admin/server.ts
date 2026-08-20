@@ -3388,7 +3388,20 @@ app.post('/api/e2e/run', async (req, res) => {
  *  (`e2e-<id>-applied-<ts>.json`, has an `outcome` instead), newest first. */
 app.get('/api/e2e/reports', async (_req, res) => {
   const files = await readdir(config.reportsDir).catch(() => [] as string[]);
-  const candidates = files.filter((f) => E2E_REPORT_NAME_PATTERN.test(f)).sort().reverse();
+  // NOT sorted here anymore — see the real sort below. Report filenames are
+  // `e2e-<scenarioId>-<timestamp>.json`, so sorting the raw filename LIST
+  // sorts by scenarioId first (it's the longer, leading part of the
+  // string) and only falls back to timestamp within one scenario's own
+  // filenames — a global "History" view built off that isn't chronological
+  // at all, it's grouped-by-scenario-name-reversed. Live-caught reviewing a
+  // Stage 7 recording: the panel's first ~20 rows were dominated by
+  // whichever scenario IDs happen to sort late alphabetically ("zero-...",
+  // "xss-...", "view-..."), surfacing FAILED reports from days-old runs
+  // (2026-07-26, 2026-08-10, 2026-08-18) ahead of today's own real results
+  // — reading as "way more than 2 failures" when the real count was 2. This
+  // also subsumes the older, narrower "an -applied- report can sort ahead
+  // of a newer plain report for the same scenario" note — same root cause.
+  const candidates = files.filter((f) => E2E_REPORT_NAME_PATTERN.test(f));
 
   const summaries: { name: string; scenarioId: string; scenarioTitle: string; kind: 'run' | 'applied'; status: string; startedAt: string }[] = [];
   for (const name of candidates) {
@@ -3407,6 +3420,10 @@ app.get('/api/e2e/reports', async (_req, res) => {
       // Not a usable report — omit it, same as /api/generate/reports's own philosophy.
     }
   }
+  // The real sort: each report's own parsed startedAt, newest first — an
+  // actual chronological order across every scenario, not a filename-string
+  // artifact.
+  summaries.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   res.json(summaries);
 });
 
