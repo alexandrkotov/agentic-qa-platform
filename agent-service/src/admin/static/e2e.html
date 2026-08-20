@@ -84,6 +84,34 @@
      layout, not a plain pick list). */
   .e2e-scenario-list { max-height: 18rem; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 0 0.9rem; margin-bottom: 1rem; }
   .e2e-scenario-row { display: flex; gap: 0.65rem; align-items: flex-start; padding: 0.55rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+
+  /* Every fixed-height scrollable panel on this page (scenario list, the
+     live progress log, a diff column) relies on the OS/browser's own
+     scrollbar rendering by default — on some Linux/Chromium setups that's
+     an invisible-until-hover overlay, which reads as "that's everything"
+     rather than "scroll for more". Live-caught reviewing a Stage 7
+     recording: #scenario-list showed only its first ~6 of 31 rows with zero
+     visual cue more existed, even though the container scrolled fine
+     underneath (confirmed via scrollHeight/clientHeight — never a real data
+     problem, purely a missing affordance). A themed, always-visible
+     scrollbar fixes that without touching any container's own markup —
+     scrollbar-width/-color for Firefox, ::-webkit-scrollbar for
+     Chromium/Safari, both keyed off this page's own --line/--surface-2
+     theme vars so it stays correct in light and dark. */
+  .e2e-scenario-list, .gen-log, .e2e-diff-col pre {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  .e2e-scenario-list::-webkit-scrollbar, .gen-log::-webkit-scrollbar, .e2e-diff-col pre::-webkit-scrollbar {
+    width: 8px;
+  }
+  .e2e-scenario-list::-webkit-scrollbar-track, .gen-log::-webkit-scrollbar-track, .e2e-diff-col pre::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .e2e-scenario-list::-webkit-scrollbar-thumb, .gen-log::-webkit-scrollbar-thumb, .e2e-diff-col pre::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 4px;
+  }
   .e2e-scenario-row:last-child { border-bottom: none; }
   .e2e-scenario-row input { margin-top: 0.2rem; }
   .e2e-scenario-title { font-size: 0.85rem; }
