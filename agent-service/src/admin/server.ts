@@ -14,6 +14,7 @@ import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts
 import { probeTarget, ProbeTargetError } from '../bootstrap/probeTarget.ts';
 import { syncKafkaUi } from '../bootstrap/kafkaUiSync.ts';
 import { targetsDirFromEnv } from '../bootstrap/targetsDir.ts';
+import { resolveComposeServiceNetworks, joinNetwork, leaveNetwork } from '../bootstrap/composeNetworks.ts';
 import { convertRecording } from '../bootstrap/convertRecording.ts';
 import { runCommand } from '../util/runCommand.ts';
 import { expandHostProjectRoot } from '../util/expandHostProjectRoot.ts';
@@ -1718,6 +1719,42 @@ async function buildTestRunEnv(descriptor?: string): Promise<NodeJS.ProcessEnv> 
 }
 
 /**
+ * A real, live-discovered environment limitation, same shape as the one
+ * documented in descriptor/components/mssql.ts's own header comment: a
+ * DB-touching test step (tests/support/db.ts's ensureDbConnected(), used by
+ * generated Postgres-backed steps like NocoDB's) resolves its DATABASE_URL
+ * host purely from process.env — it has no way to know that host only
+ * exists on the *target's own* docker-compose network, not this
+ * `workbench` container's. Confirmed live against NocoDB: `db`'s only
+ * network alias lives on `bdd-target-nocodb_nocodb-network`; `workbench`
+ * sits on `agentic-qa-platform-net`; the db container publishes no host
+ * port at all (so host.docker.internal can't help either) — every
+ * DB-touching step failed with `getaddrinfo ENOTFOUND db` before this fix.
+ *
+ * The fix follows the exact same "join the target's own network for the
+ * duration, not a published port" precedent mssql.ts already established —
+ * just scoped around an entire bddgen+Playwright run instead of one query,
+ * since a live pg connection is held open across the whole run, not
+ * reconnected per step. Opt-in via a descriptor's own testEnv.ts sidecar
+ * (`descriptors/<name>.env`): setting `DB_NETWORK_JOIN_SERVICE=<compose
+ * service name>` alongside a real `DATABASE_URL` pointing at that same
+ * service is what turns this on — orderflow/kafka-demo/uptime-kuma and any
+ * other descriptor without that key see zero behavior change, exactly the
+ * same no-op-by-default shape buildTestRunEnv() itself already has.
+ */
+async function withDbNetworkJoin<T>(descriptor: string | undefined, testEnv: NodeJS.ProcessEnv, fn: () => Promise<T>): Promise<T> {
+  const service = testEnv.DB_NETWORK_JOIN_SERVICE;
+  if (!descriptor || !service) return fn();
+  const networks = await resolveComposeServiceNetworks(descriptor, service);
+  for (const network of networks) await joinNetwork(network);
+  try {
+    return await fn();
+  } finally {
+    for (const network of networks) await leaveNetwork(network);
+  }
+}
+
+/**
  * The snapshot's own "what env was really used" file — deliberately NOT a
  * copy of the raw descriptors/<name>.env sidecar (that file doesn't exist
  * at all for orderflow/kafka-demo, which rely purely on CONTAINER_ENV_DEFAULTS
@@ -2633,32 +2670,34 @@ app.post('/api/tests/run', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
-      // Reset to baseline BEFORE this run, not after — so the state a
-      // human inspects right after a "Re-Run BDD tests" click reflects
-      // exactly what THIS run created, not last time's leftovers layered
-      // on top. resetDatabase is only ever true from the hub's OrderFlow
-      // tile (its checkbox is the one UI surface that sets it); harmless
-      // no-op for any other caller (generate.html's own "Run tests"
-      // button never sends it) since the field is simply absent there.
-      if (resetDatabase && descriptor === 'orderflow') {
-        send({ type: 'progress', message: `$ node support/cleanup.mjs --since ${RESET_ALL_SINCE}` });
-        const resetResult = await runCommand('node', ['support/cleanup.mjs', '--since', RESET_ALL_SINCE], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
-        if (resetResult.code !== 0) {
-          send({ type: 'progress', message: `Warning: cleanup.mjs exited ${resetResult.code} — proceeding anyway.` });
+      await withDbNetworkJoin(descriptor, testEnv, async () => {
+        // Reset to baseline BEFORE this run, not after — so the state a
+        // human inspects right after a "Re-Run BDD tests" click reflects
+        // exactly what THIS run created, not last time's leftovers layered
+        // on top. resetDatabase is only ever true from the hub's OrderFlow
+        // tile (its checkbox is the one UI surface that sets it); harmless
+        // no-op for any other caller (generate.html's own "Run tests"
+        // button never sends it) since the field is simply absent there.
+        if (resetDatabase && descriptor === 'orderflow') {
+          send({ type: 'progress', message: `$ node support/cleanup.mjs --since ${RESET_ALL_SINCE}` });
+          const resetResult = await runCommand('node', ['support/cleanup.mjs', '--since', RESET_ALL_SINCE], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+          if (resetResult.code !== 0) {
+            send({ type: 'progress', message: `Warning: cleanup.mjs exited ${resetResult.code} — proceeding anyway.` });
+          }
         }
-      }
-      send({ type: 'progress', message: '$ npx bddgen && npx playwright test' });
-      const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
-      // Always regenerate the HTML report afterward, whether or not the run
-      // above passed — the report's whole purpose is showing what failed.
-      send({ type: 'progress', message: '$ node support/generate-html-report.mjs' });
-      const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
-      send({
-        type: 'done',
-        testsPassed: testRun.code === 0,
-        testsExitCode: testRun.code,
-        reportGenerated: reportRun.code === 0,
-        output: (testRun.output + '\n' + reportRun.output).slice(-8000),
+        send({ type: 'progress', message: '$ npx bddgen && npx playwright test' });
+        const testRun = await runCommand('sh', ['-c', 'npx bddgen && npx playwright test'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+        // Always regenerate the HTML report afterward, whether or not the run
+        // above passed — the report's whole purpose is showing what failed.
+        send({ type: 'progress', message: '$ node support/generate-html-report.mjs' });
+        const reportRun = await runCommand('node', ['support/generate-html-report.mjs'], TESTS_ROOT, testEnv, (line) => send({ type: 'progress', message: line }));
+        send({
+          type: 'done',
+          testsPassed: testRun.code === 0,
+          testsExitCode: testRun.code,
+          reportGenerated: reportRun.code === 0,
+          output: (testRun.output + '\n' + reportRun.output).slice(-8000),
+        });
       });
     } catch (err) {
       send({ type: 'error', error: (err as Error).message });
@@ -3316,20 +3355,23 @@ app.post('/api/e2e/run', async (req, res) => {
     const provider = new ClaudeProvider();
     const testEnv = await buildTestRunEnv(descriptor);
     try {
-      const reports = [];
-      for (const scenario of scenariosToRun) {
-        send({ type: 'scenario-start', scenarioId: scenario.id, scenarioTitle: scenario.title });
-        const { report, reportPath } = await runOneScenario(provider, 'claude', scenario, TESTS_ROOT, {
-          env: testEnv,
-          onProgress: (message) => send({ type: 'progress', message }),
-          descriptor,
-        });
-        reports.push(report);
-        // reportName (not the full path) is what /api/e2e/apply/preview and
-        // /api/e2e/apply/confirm take — lets the UI offer "Apply fix"
-        // directly off a just-finished run without a separate lookup.
-        send({ type: 'scenario-done', report, reportName: reportPath.split('/').pop() });
-      }
+      const reports = await withDbNetworkJoin(descriptor, testEnv, async () => {
+        const collected = [];
+        for (const scenario of scenariosToRun) {
+          send({ type: 'scenario-start', scenarioId: scenario.id, scenarioTitle: scenario.title });
+          const { report, reportPath } = await runOneScenario(provider, 'claude', scenario, TESTS_ROOT, {
+            env: testEnv,
+            onProgress: (message) => send({ type: 'progress', message }),
+            descriptor,
+          });
+          collected.push(report);
+          // reportName (not the full path) is what /api/e2e/apply/preview and
+          // /api/e2e/apply/confirm take — lets the UI offer "Apply fix"
+          // directly off a just-finished run without a separate lookup.
+          send({ type: 'scenario-done', report, reportName: reportPath.split('/').pop() });
+        }
+        return collected;
+      });
       send({ type: 'done', reports });
     } catch (err) {
       send({ type: 'error', error: (err as Error).message });
@@ -3433,10 +3475,13 @@ app.post('/api/e2e/apply/confirm', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
     try {
       const startedAt = new Date().toISOString();
-      const report = await performApply(reportPath, TESTS_ROOT, result.preview, startedAt, {
-        env: await buildTestRunEnv(descriptor),
-        onProgress: (message) => send({ type: 'progress', message }),
-      });
+      const applyTestEnv = await buildTestRunEnv(descriptor);
+      const report = await withDbNetworkJoin(descriptor, applyTestEnv, () =>
+        performApply(reportPath, TESTS_ROOT, result.preview, startedAt, {
+          env: applyTestEnv,
+          onProgress: (message) => send({ type: 'progress', message }),
+        }),
+      );
       send({ type: 'done', report });
     } catch (err) {
       send({ type: 'error', error: (err as Error).message });

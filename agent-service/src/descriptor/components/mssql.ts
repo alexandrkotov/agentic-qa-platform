@@ -1,10 +1,8 @@
-import { hostname } from 'node:os';
 import sql from 'mssql';
 import type { CustomTool } from '../../providers/AgentProvider.ts';
 import type { BuilderContext, ComponentBuilder } from '../registry.ts';
 import type { MssqlComponent } from '../schema.ts';
-import { resolveComposeServiceNetworks } from '../../bootstrap/composeNetworks.ts';
-import { runCommand } from '../../util/runCommand.ts';
+import { resolveComposeServiceNetworks, joinNetwork, leaveNetwork } from '../../bootstrap/composeNetworks.ts';
 
 /**
  * A real, live-discovered environment limitation, and the fix for it —
@@ -93,37 +91,11 @@ function parseConnectionString(raw: string): ParsedConnection {
 
 // ---------------------------------------------------------------------------
 // Network-join — see this file's own header comment for the why.
-// resolveComposeServiceNetworks() itself now lives in
-// bootstrap/composeNetworks.ts (factored out once bootstrap/kafkaUiSync.ts
-// needed the identical resolved.json lookup) — this file just calls it.
+// resolveComposeServiceNetworks()/joinNetwork()/leaveNetwork() all live in
+// bootstrap/composeNetworks.ts now (factored out once server.ts needed the
+// identical join-for-a-test-run pattern for a Postgres-backed target) —
+// this file just calls them.
 // ---------------------------------------------------------------------------
-
-// Docker sets a container's hostname to its own short ID by default
-// (docker-compose.yml doesn't override `hostname:` for workbench) — this
-// container's own identity for `docker network connect/disconnect`, same
-// trick bootstrap/deployTarget.ts's assertMirroredMount() already uses.
-const SELF_CONTAINER_ID = hostname();
-
-async function joinNetwork(network: string): Promise<void> {
-  const { code, output } = await runCommand('docker', ['network', 'connect', network, SELF_CONTAINER_ID], process.cwd(), process.env);
-  // "already exists" — Docker's own wording when this container is already
-  // on that network (e.g. a previous call's own disconnect never ran,
-  // crash or otherwise) — not a real failure, safe to proceed.
-  if (code !== 0 && !/already exists/i.test(output)) {
-    throw new Error(`"docker network connect ${network}" failed (exit ${code}): ${output.slice(-400)}`);
-  }
-}
-
-async function leaveNetwork(network: string): Promise<void> {
-  // Best-effort, deliberately never throws — this runs from a `finally`
-  // block after a query has already succeeded or failed; a disconnect
-  // hiccup here shouldn't mask that real outcome. Same best-effort spirit
-  // as bootstrap/deployTarget.ts's own network-cleanup fallback.
-  const { code, output } = await runCommand('docker', ['network', 'disconnect', network, SELF_CONTAINER_ID], process.cwd(), process.env);
-  if (code !== 0 && !/is not connected/i.test(output)) {
-    console.error(`Warning: "docker network disconnect ${network}" failed (exit ${code}): ${output.slice(-400)}`);
-  }
-}
 
 // Serializes every mssql query's own connect→query→disconnect window
 // within this one process — see this file's header comment for why this
