@@ -97,6 +97,65 @@ function sanitizeStructuredFix(
   return { filePath, oldText, newText };
 }
 
+/**
+ * The system prompt tells the model to output ONLY the JSON object, no
+ * prose — but that's advisory, not enforced, and it's confirmed live that
+ * the model sometimes leads with narrative analysis anyway ("Looking at
+ * this failure, I need to analyze..."). A single greedy `/\{[\s\S]*\}/`
+ * match doesn't survive that: it grabs from the FIRST `{` anywhere in the
+ * response (which the prose itself can easily contain — a quoted API
+ * response shape, an example code snippet) through to the LAST `}`,
+ * swallowing everything in between into one invalid JSON blob. Confirmed
+ * live this was the actual cause of two of Stage 7's own recon failures
+ * coming back `classification: unknown` with a JSON.parse error, not a
+ * real model/content problem.
+ *
+ * This instead scans the whole response once, tracking brace depth with
+ * string-literal awareness (so a `{`/`}` inside a quoted string never
+ * throws off the count), and collects every complete top-level `{...}`
+ * span. The real payload is normally the last one the model emits, so
+ * candidates are tried last-to-first against a real `JSON.parse` and the
+ * first one that actually parses wins — falling back to just the last
+ * candidate (for its own error message) if none do.
+ */
+function extractJsonObject(raw: string): string | null {
+  const candidates: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) candidates.push(raw.slice(start, i + 1));
+      }
+    }
+  }
+  if (candidates.length === 0) return null;
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    try {
+      JSON.parse(candidates[i]);
+      return candidates[i];
+    } catch {
+      // not this one — try an earlier candidate
+    }
+  }
+  return candidates[candidates.length - 1];
+}
+
 export async function diagnoseFailure(
   provider: AgentProvider,
   testsRoot: string,
@@ -133,7 +192,7 @@ export async function diagnoseFailure(
     descriptor,
   });
 
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  const jsonText = extractJsonObject(raw);
   const fallback = (reason: string): Diagnosis => ({
     classification: 'unknown',
     reasoning: reason,
@@ -142,10 +201,10 @@ export async function diagnoseFailure(
     recommendedAction: null,
     confidence: 'low',
   });
-  if (!jsonMatch) return fallback(`No JSON in diagnosis response. Raw: ${raw.slice(0, 500)}`);
+  if (!jsonText) return fallback(`No JSON in diagnosis response. Raw: ${raw.slice(0, 500)}`);
 
   try {
-    const parsed = JSON.parse(jsonMatch[0]) as Diagnosis;
+    const parsed = JSON.parse(jsonText) as Diagnosis;
     // Enforce the guardrail in code — don't trust the model to have followed it.
     if (parsed.classification === 'application_bug') {
       if (parsed.proposedPatch) parsed.proposedPatch = null;
