@@ -112,6 +112,28 @@
     background: var(--line);
     border-radius: 4px;
   }
+
+  /* The engine-drawn scrollbar above (scrollbar-width/::-webkit-scrollbar)
+     turned out not to be enough on its own — confirmed live via a plain
+     screenshot (not just computed style) that this environment's headless
+     Chromium doesn't paint ANY scrollbar decoration, styled or not. Real
+     product fix, not just a recording workaround: a genuinely visible
+     scrollbar drawn as ordinary page DOM/CSS, a SIBLING of #scenario-list
+     rather than a descendant so it never scrolls away with the content it's
+     indicating — same "don't rely on the browser/OS to paint it, build the
+     real thing out of normal elements" precedent as this project's own
+     selectElVisual() fake-dropdown helper. JS below (updateScrollIndicator)
+     sizes/positions the thumb from the real scrollTop/scrollHeight ratio and
+     hides the whole indicator when there's nothing to scroll. */
+  .e2e-scroll-wrap { position: relative; }
+  .e2e-scroll-indicator {
+    position: absolute; top: 0; right: 2px; bottom: 0; width: 6px;
+    pointer-events: none;
+  }
+  .e2e-scroll-thumb {
+    position: absolute; left: 0; width: 100%; min-height: 24px;
+    background: var(--line); border-radius: 3px;
+  }
   .e2e-scenario-row:last-child { border-bottom: none; }
   .e2e-scenario-row input { margin-top: 0.2rem; }
   .e2e-scenario-title { font-size: 0.85rem; }
@@ -234,7 +256,10 @@
       <button class="primary" id="run-selected-btn" disabled>Run selected</button>
       <span id="run-status" class="status-text"></span>
     </div>
-    <div class="e2e-scenario-list" id="scenario-list"></div>
+    <div class="e2e-scroll-wrap">
+      <div class="e2e-scenario-list" id="scenario-list"></div>
+      <div class="e2e-scroll-indicator" id="scenario-list-scroll-indicator"><div class="e2e-scroll-thumb"></div></div>
+    </div>
     <pre class="gen-log" id="run-log" style="display:none"></pre>
   </section>
 
@@ -410,11 +435,35 @@ async function loadScenarios() {
   }
 }
 
+// Real, always-visible scroll thumb for #scenario-list — see this file's
+// own .e2e-scroll-indicator CSS comment for why (headless Chromium here
+// paints no scrollbar decoration at all, styled or not). Sized/positioned
+// from the container's real scrollTop/scrollHeight/clientHeight, called on
+// every render and on every real scroll event — hides itself entirely when
+// there's nothing to scroll, exactly like a real scrollbar would.
+function updateScrollIndicator() {
+  const list = document.getElementById('scenario-list');
+  const indicator = document.getElementById('scenario-list-scroll-indicator');
+  const thumb = indicator.querySelector('.e2e-scroll-thumb');
+  const { scrollTop, scrollHeight, clientHeight } = list;
+  if (scrollHeight <= clientHeight) {
+    indicator.style.display = 'none';
+    return;
+  }
+  indicator.style.display = '';
+  const thumbHeightPct = Math.max((clientHeight / scrollHeight) * 100, 4);
+  const thumbTopPct = (scrollTop / scrollHeight) * 100;
+  thumb.style.height = thumbHeightPct + '%';
+  thumb.style.top = thumbTopPct + '%';
+}
+document.getElementById('scenario-list').addEventListener('scroll', updateScrollIndicator);
+
 function renderScenarioList() {
   const root = document.getElementById('scenario-list');
   root.innerHTML = '';
   if (state.scenarios.length === 0) {
     root.innerHTML = '<div class="empty-note" style="padding:0.75rem 0">No scenarios discovered under tests/features/.</div>';
+    updateScrollIndicator();
     return;
   }
   for (const sc of state.scenarios) {
@@ -441,6 +490,7 @@ function renderScenarioList() {
     root.appendChild(row);
   }
   syncSelectionControls();
+  updateScrollIndicator();
 }
 
 function syncSelectionControls() {
