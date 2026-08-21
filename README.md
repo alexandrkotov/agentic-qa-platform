@@ -69,6 +69,12 @@ Start to finish — from onboarding a brand-new target system through to a self-
 
 ![Agentic QA Platform — end to end: Discovery, Analysis, BDD Test Suite, the E2E Agent's closed loop, and Load Test](docs/assets/architecture-overview.png)
 
+**Full video walkthrough** — a real, unscripted run against NocoDB (a real open-source app,
+never built for by this project) from a bare GitHub link to a passing test suite and a live
+load-test dashboard:
+
+[![Agentic QA Platform — AI Agent Tests a Real App End-to-End (NocoDB Demo)](docs/assets/flagship-video-thumb.png)](https://youtu.be/GR7R2_znkqA)
+
 Discovery and Generate run once to bootstrap a suite (already committed for every target this repo
 ships, e.g. OrderFlow and Uptime Kuma — you don't need to re-run them); the E2E Agent then runs
 against that suite for real, any time, on demand, closing the loop by re-verifying its own guarded
