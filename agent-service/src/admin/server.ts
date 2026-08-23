@@ -62,6 +62,7 @@ import { ClaudeProvider } from '../providers/ClaudeProvider.ts';
 import { discoverScenarios, resolveScenarioSelectors } from '../agents/e2e/scenarios.ts';
 import { runOneScenario } from '../agents/e2e/index.ts';
 import { loadApplyPreview, performApply } from '../agents/e2e/applyCore.ts';
+import { getAgentStatus } from './agentStatus.ts';
 import { config } from '../config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -3506,6 +3507,39 @@ app.post('/api/e2e/apply/confirm', async (req, res) => {
     res.end();
   } catch (err) {
     res.status((err as { status?: number }).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Agent status — polled by the physical ESP32+ST7789 status monitor
+// (github.com/alexandrkotov/agentic-qa-hardware-monitor), LAN-only, no auth
+// (same trust model as every other route in this file). Deliberately not
+// under /api/ — the firmware's STATUS_URL points at this exact path and
+// changing it means changing firmware too. See agentStatus.ts's own header
+// comment for the JSON contract and where each section's data comes from.
+// `descriptor` defaults to whatever tests/.current-descriptor says (the
+// same "what's actually deployed/tested right now" signal /api/demo/status
+// already reads), so the device works with no query string at all against
+// whichever target is currently live; ?descriptor=<name> overrides it for
+// a device pointed at a specific target on purpose.
+// ---------------------------------------------------------------------------
+app.get('/agent/status', async (req, res) => {
+  const requested = typeof req.query.descriptor === 'string' ? req.query.descriptor : null;
+  let descriptor = requested;
+  if (!descriptor) {
+    descriptor = await readFile(join(TESTS_ROOT, '.current-descriptor'), 'utf-8')
+      .then((s) => s.trim() || null)
+      .catch(() => null);
+  }
+  descriptor ??= 'orderflow';
+  if (!NAME_PATTERN.test(descriptor)) {
+    res.status(400).json({ error: 'Descriptor name must be alphanumeric (with - or _ only)' });
+    return;
+  }
+  try {
+    res.json(await getAgentStatus(descriptor, TESTS_ROOT));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 
