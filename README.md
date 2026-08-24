@@ -1,23 +1,6 @@
 # Agentic QA Platform
 
-[![Author](https://img.shields.io/badge/Author-Alexander%20Kotov-181717?style=flat&logo=github&logoColor=white)](https://github.com/alexandrkotov)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
-![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat&logo=nestjs&logoColor=white)
-![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)
-![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat&logo=mysql&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)
-![SQL Server](https://img.shields.io/badge/SQL%20Server-CC2927?style=flat&logo=microsoftsqlserver&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)
-![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white)
-![Swagger](https://img.shields.io/badge/OpenAPI-85EA2D?style=flat&logo=swagger&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
-![Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=flat&logo=apachekafka&logoColor=white)
-![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white)
-![k6](https://img.shields.io/badge/k6-7D64FF?style=flat&logo=k6&logoColor=white)
-![AI](https://img.shields.io/badge/AI%20Providers-Claude%20%2F%20OpenAI-8A2BE2?style=flat)
+[![Author](https://img.shields.io/badge/Author-Alexander%20Kotov-181717?style=flat&logo=github&logoColor=white)](https://github.com/alexandrkotov) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat&logo=nestjs&logoColor=white) ![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white) ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat&logo=mysql&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white) ![SQL Server](https://img.shields.io/badge/SQL%20Server-CC2927?style=flat&logo=microsoftsqlserver&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white) ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat&logo=prisma&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white) ![Swagger](https://img.shields.io/badge/OpenAPI-85EA2D?style=flat&logo=swagger&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) ![Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=flat&logo=apachekafka&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white) ![k6](https://img.shields.io/badge/k6-7D64FF?style=flat&logo=k6&logoColor=white) ![AI](https://img.shields.io/badge/AI%20Providers-Claude%20%2F%20OpenAI-8A2BE2?style=flat)
 
 An SDET and AI-automation portfolio project, built around a real containerized order-processing
 app, **OrderFlow** (backend + frontend + Postgres + Kafka).
@@ -39,10 +22,12 @@ What this actually proves:
 
 - An AI agent explores an unfamiliar system (UI + API + database) on its own and writes a
   real, executable BDD test suite from what it finds.
-- Not tuned to one app: proven on 5 real, unrelated open-source apps it had never seen before —
-  [wger](https://github.com/wger-project/wger), Uptime Kuma, Snipe-IT, Wekan, nopCommerce — each
-  deployed straight from its own repo with a one-click "Deploy target" action, across 5 different
-  database engines (Postgres, MySQL, MongoDB, MS SQL, SQLite). See "Adding a new target" below.
+- Not tuned to one app: proven on 6 real, unrelated open-source apps it had never seen before —
+  [wger](https://github.com/wger-project/wger), Uptime Kuma, Snipe-IT, Wekan, nopCommerce, and
+  NocoDB — each deployed straight from its own repo with a one-click "Deploy target" action. Five
+  of them each prove out a different database engine (Postgres, MySQL, MongoDB, MS SQL, SQLite);
+  NocoDB is the flagship video's own target below, not a permanent fixture in this repo. See
+  "The System Descriptor" below.
 - Test results stay deterministic — pass/fail always comes from the test's real exit code,
   never an LLM's opinion.
 - The AI is only called in after a real failure, to diagnose why (app bug / test bug /
@@ -89,11 +74,9 @@ runs against a deployed target independently of the functional test suite.
 **OrderFlow below is this repo's own bundled example — not the only thing under test anymore.**
 It's its own compose project (`bdd-target-demo-orderflow`, alongside the platform's own
 `docker-compose.yml` — see "Running this locally" below), independently deployable/tearable-down,
-and its own suite is preserved and restorable any time (see "The test suite" below). But the same
-pipeline, unmodified, now also runs against 5 real, unrelated open-source apps it was never built
-for — [wger](https://github.com/wger-project/wger), Uptime Kuma, Snipe-IT, Wekan, nopCommerce —
-each deployed straight from its own repo (see "The System Descriptor" and "Adding a new target"
-below). Right now it's actually one of those, Uptime Kuma, whose suite `tests/.current-descriptor`
+and its own suite is preserved and restorable any time (see "The test suite" below). The same
+pipeline, unmodified, also runs against the external apps named above (see "The System Descriptor"
+below) — right now it's actually one of those, Uptime Kuma, whose suite `tests/.current-descriptor`
 names.
 
 Not a Todo list — a small order-processing app, **OrderFlow**, chosen specifically because it creates
@@ -121,55 +104,25 @@ side channel (a Kafka outage never blocks the request), not demo data seeded by 
 |---|---|---|
 | **System Discovery Agent** | Explores a *live* target system — described declaratively by a **System Descriptor** (JSON, see below), not hardcoded — using a real agentic tool-use loop, including a real write scenario to observe actual behavior. Produces a structured discovery report (schema/endpoints/UI pages/topics, business rules, candidate test scenarios). | [`agent-service/src/bootstrap/discovery.ts`](agent-service/src/bootstrap/discovery.ts) |
 | **Generate** | Turns that discovery report into a Playwright + `playwright-bdd` test suite (`.feature` + `.steps.ts`) through a three-stage, human-approved pipeline: deterministic grouping, one Claude call per group that writes the real Gherkin/step text directly (checked deterministically before review, not just trusted), then a plain write-to-disk stage. No stage runs on top of the previous one's output until a human approves it. | [`agent-service/src/agents/generate/`](agent-service/src/agents/generate/) |
-| **E2E Agent** | Runs a real Playwright scenario, diagnoses only actual failures (via Claude, once), and applies an exact guarded patch only after explicit human approval. Two separate stages — details below. | [`agent-service/src/agents/e2e/`](agent-service/src/agents/e2e/) |
+| **E2E Agent** | Runs a real Playwright scenario, diagnoses only actual failures (via Claude, once), and applies an exact guarded patch only after explicit human approval. | [`agent-service/src/agents/e2e/`](agent-service/src/agents/e2e/) |
 | **Load** | Runs a k6 script against a target's REST API — backend/HTTP load only, no browser rendering — producing request-rate/latency/error-rate metrics in a shared Grafana dashboard. Can optionally have Claude write the script from a discovery report, human-approved (and k6-validated) before it's ever saved or run. Descriptor-agnostic — any target with a `rest-api` component works, not just OrderFlow. | [`agent-service/src/agents/loadtest/`](agent-service/src/agents/loadtest/), [`loadtests/`](loadtests/) |
 
-**Generate Agent, in detail** — three stages, matching three CLI commands; the first two each need
-human approval (workbench UI at `:4400`, or the CLI + hand-edited JSON) before the next one runs:
+**Generate** turns a discovery report into real Gherkin + Playwright step code through three
+human-approved CLI stages (group → spec → render) — a deterministic checker (`verify.ts`) catches
+step-pattern ambiguity, handler-arity mismatches, and cross-group collisions before a human ever
+reviews it, not just trusts the model's output. **E2E** runs a real scenario, and only on a real
+failure calls Claude once to classify the cause (`application_bug` / `test_bug` /
+`environment_issue` / `test_data_issue` / `tool_error` / `unknown`) and propose a fix — applied
+only after an explicit human `y`, then re-verified with no further AI involvement. Guardrails (no
+touching `app/`/`frontend/`, no patch when the cause is an app bug, exact-match-only edits) are
+enforced in code, not just prompted. Full stage-by-stage mechanics, every guardrail adversarially
+tested, and the redesign history — why the old hardcoded-domain Generate had to go, with real
+evidence, not a hypothetical: [docs/phase4-status.md](docs/phase4-status.md) (E2E) and
+[docs/phase5-status.md](docs/phase5-status.md) (Generate).
 
-- **Stage 1 — group** (`pnpm generate:group`): a deterministic heuristic, no LLM call. Clusters
-  discovery-report scenarios by cross-functional type (e.g. every `security` scenario in one
-  group, regardless of which entity it touches) or by keyword overlap with table/endpoint names
-  extracted from the report's own component *shape*. Scenarios matching zero or more-than-one
-  entity go to `ungrouped` rather than being guessed into a group; if too many end up there, the
-  whole result honestly collapses to one flat group instead of pretending there's structure. A
-  human approves the grouping (and can hand-edit it) before Stage 2 runs; corrected facts about
-  individual scenarios (e.g. "the report says X succeeds, but that's outdated — it's actually a
-  409") live next to the target system's own descriptor (`descriptors/orderflow.corrections.json`),
-  keyed by scenario name so they survive regrouping.
-- **Stage 2 — spec** (`pnpm generate:spec`): a mechanical, no-LLM budget split first breaks any
-  oversized group into `<key>-1`, `<key>-2`, ... to stay under `ClaudeProvider.ts`'s output token
-  ceiling (packaging, not a decision — no approval step of its own). Then one Claude call per
-  resulting render-group writes the real `.feature`/`.steps.ts` content directly — real
-  parameterized Gherkin, real Playwright/DB/Kafka step code, not a DSL a template expands later —
-  and a deterministic checker (`verify.ts`) verifies it (scenario coverage, step-pattern ambiguity,
-  handler arity, cross-group collisions) before a human ever sees it. Budget-split siblings are
-  merged back into one file and re-verified as a whole first, so a human reviews one card per Stage
-  1 group, never the raw split — hand-editing the real Gherkin/step text in the workbench UI's
-  Feature/Steps grid, not JSON. Past approval, the scenario list can't change without going back
-  through review.
-- **Stage 3 — render** (`pnpm generate:render`): no LLM, no templating — just writes each approved
-  group's already-final content to disk as `.feature`/`.steps.ts`.
-
-**E2E Agent, in detail** — two explicit stages a human triggers separately:
-
-- **Suggest mode** (`pnpm e2e`): runs an existing scenario as a real Playwright process — pass/fail
-  is always the real exit code, never an LLM's opinion. Only on failure, calls Claude once to
-  classify the cause (`application_bug` / `test_bug` / `environment_issue` / `test_data_issue` /
-  `tool_error` / `unknown`) and propose a fix. Nothing is written to disk.
-- **Execute with approval** (`pnpm apply-fix`): reads that report, shows the exact before/after,
-  and — only after an explicit `y`/`yes` typed by a human — applies the fix to the one file it
-  targets, type-checks it, and re-runs the scenario with no further AI involvement.
-- **Guardrails**, enforced in code, not just prompted: no touching `app/`/`frontend/`, no patch at
-  all when the cause is an app bug, exact-match-only file edits.
-- All scenarios in whichever suite `tests/.current-descriptor` currently names are auto-discovered
-  from the `.feature` files (currently 20, Uptime Kuma's suite — see "The test suite" below);
-  `--scenario` accepts an id, an exact title, or a Gherkin tag.
-
-A real (trimmed) diagnosis, captured against OrderFlow's own suite (preserved under `archive/`,
-see "The test suite" below — not the Uptime Kuma suite currently checked into `tests/`) — the same
-`orders.feature` scenario's expected status deliberately changed to `"SUBMITTED_WRONG"`, run for
-real, caught and correctly classified as a test bug, not an app bug:
+A real (trimmed) diagnosis — the same `orders.feature` scenario's expected status deliberately
+changed to `"SUBMITTED_WRONG"`, run for real against OrderFlow's own archived suite, caught and
+correctly classified as a test bug, not an app bug:
 
 ```json
 {
@@ -188,20 +141,15 @@ real, caught and correctly classified as a test bug, not an app bug:
 }
 ```
 
-All three agents are **independent, manually-triggered tools** — "run it, get an artifact, a
-human takes it from there" — not steps in an automated pipeline. None is invoked by the test
-suite itself or by CI. See [`agent-service/README.md`](agent-service/README.md) for the full
-technical reference (provider abstraction, MCP tool configs, how to add a new tool/phase,
-Claude-vs-OpenAI comparison), [docs/phase4-status.md](docs/phase4-status.md) for the full
-E2E Agent design history, including every guardrail adversarially tested and the live
-verification runs across each failure type, and [docs/phase5-status.md](docs/phase5-status.md)
-for the Generate Agent redesign above — why the old hardcoded-domain version had to go (with real
-evidence, not a hypothetical), the propose→approve→apply design, and every gap the final live
-end-to-end run surfaced and fixed.
+All agents are **independent, manually-triggered tools** — run it, get an artifact, a human takes
+it from there — not steps in an automated pipeline; none is invoked by the test suite itself or by
+CI. See [`agent-service/README.md`](agent-service/README.md) for the full technical reference:
+provider abstraction, MCP tool configs, how to add a new tool/phase/target, Claude-vs-OpenAI
+comparison.
 
-Every AI call, from any of the three agents, is logged with its token usage and (where priced)
-its cost to a persistent local report, viewable live at `http://localhost:8080/usage/` (served
-by the same `report` container as the test report below).
+Every AI call, from any agent, is logged with its token usage and (where priced) its cost to a
+persistent local report, viewable live at `http://localhost:8080/usage/` (served by the same
+`report` container as the test report below).
 
 ### The System Descriptor
 
@@ -215,12 +163,12 @@ validated with zod) describing a target system as a list of typed components:
 | `mysql` | `connectionString` | Read-only `SELECT`/`SHOW`/`DESCRIBE` queries, via a hand-written tool (no official MCP server exists for MySQL/MariaDB) |
 | `mongo` | `connectionString` | Schema + sample docs, via the official `mongodb-mcp-server` |
 | `mssql` | `connectionString` | Read-only `SELECT` queries, via a hand-written tool (same reasoning as `mysql`) |
-| `sqlite` | `path` (a `.db` file, `${HOST_PROJECT_ROOT}`-relative — see below) | Read-only queries against a docker-compose-deployed target's own bind-mounted `.db` file, via the real `sqlite3` CLI |
+| `sqlite` | `path` (a `.db` file, `${HOST_PROJECT_ROOT}`-relative — see `agent-service/README.md`) | Read-only queries against a docker-compose-deployed target's own bind-mounted `.db` file, via the real `sqlite3` CLI |
 | `rest-api` | `swaggerUrl` (or `knownEndpoints` when no spec exists), optional `baseUrl`, optional `headers` (static auth headers, e.g. an API token) | The full OpenAPI spec, or a hand-verified endpoint list |
 | `web-ui` | `baseUrl`, `routes` | Live browser navigation, via Playwright MCP |
 | `kafka` | `brokers`, optional `sasl`/`tls` | Whole-broker exploration — topics, configs, sample messages, consumer groups, via [`tuannvm/kafka-mcp-server`](https://github.com/tuannvm/kafka-mcp-server) |
 | `kafka-consumer` | `brokers`, `topic`, optional `sampleSize` | One named topic only — message count, inferred payload shape, anomalies (same MCP server, narrower prompt) |
-| `docker-compose` | `repoUrl`, optional `ref`/`composeFile`/`postUpExec` | Nothing — deployment provenance only, see below |
+| `docker-compose` | `repoUrl`, optional `ref`/`composeFile`/`postUpExec` | Nothing — deployment provenance only, see `agent-service/README.md` |
 
 A [`registry`](agent-service/src/descriptor/registry.ts) maps each component type to a **builder**
 ([`agent-service/src/descriptor/components/`](agent-service/src/descriptor/components/)) — which
@@ -232,18 +180,14 @@ adding a new *kind* of component means one new builder file plus one line in the
 Nine descriptors exist today, all under
 [`agent-service/descriptors/`](agent-service/descriptors/): `orderflow.json` (this app — postgres +
 rest-api + web-ui + a `kafka-consumer` watching the `orders.status-changed` topic),
-`kafka-demo.json` (a bare Kafka broker, nothing else — whole-broker exploration via the plain
-`kafka` component), `kafka-consumer-demo.json` (the same broker, narrowed to one topic), five
-real, unrelated open-source apps this project has never seen before, each deployed via its own
-`docker-compose` component (see above) and each proving out a different `mysql`/`mongo`/`mssql`/
-`sqlite` component type against a real, independently-built database engine — not a mock:
-[wger](https://github.com/wger-project/wger) (postgres), `snipe-it.json` (mysql),
-`wekan.json` (mongo), `nopcommerce.json` (mssql), and `uptime-kuma.json` (sqlite), and one more
-minimal one so far (just a `docker-compose` component), `nocodb.json`.
-Two of these nine (`uptime-kuma.json`, `nocodb.json`) also need a first-run setup
-script, see "Adding a new target" below. Point
-discovery at any of them with `pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag
-defaults to `orderflow.json`, so `pnpm discovery` behaves exactly as before.
+`kafka-demo.json`/`kafka-consumer-demo.json` (a bare Kafka broker, whole-broker vs. narrowed-to-
+one-topic exploration), and six real, unrelated open-source apps this project has never seen
+before, each deployed via its own `docker-compose` component: [wger](https://github.com/wger-project/wger)
+(postgres), `snipe-it.json` (mysql), `wekan.json` (mongo), `nopcommerce.json` (mssql),
+`uptime-kuma.json` (sqlite), and `nocodb.json` (web-ui + rest-api — the flagship video's own target
+above). Two of these nine (`uptime-kuma.json`, `nocodb.json`) also need a first-run setup script —
+see `agent-service/README.md`'s "Adding a New Target". Point discovery at any of them with
+`pnpm discovery -- --descriptor descriptors/kafka-demo.json`; no flag defaults to `orderflow.json`.
 
 None of these nine are git-tracked directly (see "The test suite" below) — only `orderflow.json`
 and `uptime-kuma.json` are restorable on a fresh clone, from their own `archive/` snapshot. The
@@ -254,271 +198,91 @@ present, so they're simply gone on a fresh clone by design.
 direct, write-capable Postgres connection the LLM never sees, since the agent's own `postgres`
 tool is deliberately read-only and can't remove the test fixtures its write-scenario creates.
 
-A `docker-compose` component is different in kind from the others above: it's not something the
-Discovery Agent explores at all, only a record of where the descriptor's *other* components came
-from. It names a repo that ships its own `docker-compose.yml` (e.g. a self-hostable open-source
-app's deploy manifest) — the Workbench's "Deploy target" action
-([`agent-service/src/bootstrap/deployTarget.ts`](agent-service/src/bootstrap/deployTarget.ts))
-clones it and runs that compose file for real, via the same Docker socket
-`descriptor/components/kafka.ts` already uses for its own sibling MCP container, reusing the
-target's own declared host ports where they're free and remapping only on a real conflict. Once a
-deploy is up, a "Propose components" button
-([`agent-service/src/bootstrap/probeTarget.ts`](agent-service/src/bootstrap/probeTarget.ts))
-mechanically inspects the running stack — the same flattened compose config and port map the deploy
-already wrote to disk, plus a handful of real HTTP requests — and drops candidate `web-ui`/
-`rest-api`/`postgres`/`mysql`/`mongo`/`mssql`/`sqlite`/`kafka` components straight into the descriptor
-editor, pre-filled and ready to review. No Claude call here either; a database (or Kafka broker)
-whose port was never published to the host, or an engine this app has no component type for yet, is
-reported honestly as "couldn't auto-detect" rather than guessed at. A human still reviews, edits, and
-saves — same propose-then-confirm shape as every other agent output in this app, just entirely
-mechanical this time. Proven end to end against [wger](https://github.com/wger-project/wger) and
-[Uptime Kuma](https://github.com/louislam/uptime-kuma), two real, unrelated open-source apps this
-project has never seen before.
-
-**Kafka UI (`:8081`) is multi-cluster and stays in sync automatically.** Any target with a detected
-Kafka broker (by image — the same `probeTarget.ts` pass above) gets a predictable
-`kafka-<targetName>` network alias planted at deploy time
-([`deployTarget.ts`](agent-service/src/bootstrap/deployTarget.ts)'s own `injectKafkaBrokerAliases()`)
-and a live entry in Kafka UI's own cluster list, kept correct on every deploy/undeploy by
-[`kafkaUiSync.ts`](agent-service/src/bootstrap/kafkaUiSync.ts) — no human step needed beyond the
-ordinary Deploy/Undeploy click. Kafka UI itself is a container on the Docker network (not
-host-network like `kafka-mcp-server`), so it reaches each broker via a network join rather than a
-published port — works even for a target that never publishes its broker's port at all.
-
-**Multiple targets can be deployed and stay up at the same time, with zero conflict.** Each deploy
-is its own Compose project (`deployTarget.ts`'s own `projectNameFor()`), so each gets its own Docker
-network and its own independently allocated host ports — `assignPorts()`'s remap-on-conflict logic
-already guarantees no two targets' published ports collide, with no coordination needed between
-them. Confirmed live: wger (7 services) and Uptime Kuma ran fully deployed at once for real stretches
-of this project's own development, neither one ever told to coexist deliberately — nothing in the
-design assumes only one target is ever live. The only real cost is host resources (CPU/RAM for
-however many stacks happen to be up); there's no artificial single-target limit anywhere in the
-architecture.
-
-### Adding a new target
-
-Everything above composes into one path for onboarding a brand-new external target system so it
-just works end to end — including CI, with zero pipeline edits. Checklist, in order:
-
-1. **Descriptor + deploy.** Create `agent-service/descriptors/<name>.json` with a `docker-compose`
-   component pointing at the target's own deploy-manifest repo (see above), deploy it from the
-   Workbench, then use "Propose components" to mechanically draft the rest — currently proposes
-   `web-ui`/`rest-api`/`postgres`/`mysql`/`mongo`/`mssql`/`sqlite`/`kafka` components straight from
-   the running stack. If the target has its own Kafka broker, Kafka UI (`:8081`) picks it up
-   automatically too, no extra step — see above.
-2. **Portable paths.** Any component field that names a file under this deployment's own mirrored
-   `targets/` mount (today, only `sqlite`'s `path`) must use the `${HOST_PROJECT_ROOT}` placeholder
-   — e.g. `"${HOST_PROJECT_ROOT}/targets/<name>/repo/data/foo.db"` — not a literal absolute prefix.
-   `descriptor/components/sqlite.ts`'s `resolveSafePath` expands it against this container's own
-   `HOST_PROJECT_ROOT` env var at read time. A hardcoded dev-machine path works by pure coincidence
-   on the machine it was written on and breaks everywhere else (this exact bug shipped once, real
-   symptom: `sqlite3` failing with "unable to open database file" on a CI runner whose checkout
-   lives at a different path than the author's laptop).
-3. **Env overrides, if needed.** A target only reachable via `host.docker.internal:<port>` (not this
-   project's own `app`/`frontend` compose network) needs `agent-service/descriptors/<name>.env` —
-   `FRONTEND_URL`/`BACKEND_URL`/credentials/etc., editable from the Workbench's Test Suite tab. See
-   `agent-service/src/agents/generate/testEnv.ts`'s own comment for the full mechanism.
-4. **Generate + write the suite.** Run Discovery → Generate → Write & Run as usual. Writing the
-   suite (`POST /api/generate/render`) automatically records which descriptor `tests/features/`/
-   `tests/steps/` now belong to, in `tests/.current-descriptor` — this is what lets CI (below) stay
-   descriptor-agnostic; nothing to edit by hand.
-5. **First-run setup, only if the target needs it.** Most targets don't — either a one-time manual
-   step already covers it (e.g. copying a `.env`, running an install wizard once against a target
-   whose data then persists in its own volume) or there's no such wizard at all. It's needed when a
-   target's own admin account/config does **not** survive a fresh `docker-compose` deploy (its data
-   lives outside git, in a directory the bind mount only populates once something has walked through
-   the app's own first-run wizard) — CI hits exactly this on every single run. When it applies,
-   create `agent-service/src/bootstrap/setup/<name>.ts` with a default export matching `SetupFn`
-   (`(env, onProgress?) => Promise<void>`) — the filename **is** the registration, matching the
-   descriptor's own name; nothing else to wire up (`bootstrap/setupTarget.ts`'s `hasSetup`/`runSetup`
-   discover it dynamically). Use real Playwright browser automation of the target's actual wizard,
-   not an undocumented internal API — see
-   [`agent-service/src/bootstrap/setup/uptime-kuma.ts`](agent-service/src/bootstrap/setup/uptime-kuma.ts)
-   as the reference example. Check whether setup is already done before doing anything (the target's
-   own "am I configured yet" endpoint, or equivalent) and return early if so — CI calls this
-   unconditionally on every run, so it has to be a safe no-op against an already-set-up instance, not
-   just a fresh one. A descriptor with no script here still gets a real HTTP 400 (not a silent skip)
-   if something explicitly calls `POST /api/descriptors/<name>/setup` for it — CI treats that 400 as
-   "nothing to do" and moves on.
-
-From here, CI just works: `.github/workflows/tests.yml`'s `e2e` job reads `tests/.current-descriptor`,
-restores that descriptor's own archived suite via `tests/support/restore-suite.mjs` (`tests/features`/
-`tests/steps` aren't git-tracked themselves, see "The test suite" below), then drives the real
-Workbench over its own HTTP API — `/deploy` → `/setup` → `/tests/run` → `/undeploy` — the same
-routes a human already uses from the browser, not a separate reimplementation. Swapping which
-target's suite `tests/.current-descriptor` names (step 4 above, next time — or the hub's own
-"Deploy ... and its BDD suite" buttons) is the only thing that changes what CI runs; the workflow
-file itself never needs touching again. A target's own setup
-script (if it has one) is also bundled automatically into every archive snapshot
-(`POST /api/generate/snapshot`) alongside its descriptor/corrections/env, so a snapshot stays
-self-contained enough to actually reproduce the target's tested state, not just its test code.
+A `docker-compose` component is different in kind from the rest: not something Discovery explores
+at all, just a record of where the descriptor's other components came from — a repo shipping its
+own `docker-compose.yml`, which the Workbench's "Deploy target" action clones and runs for real,
+then "Propose components" mechanically drafts the rest of the descriptor from the running stack
+(no Claude call). **Kafka UI (`:8081`) is multi-cluster and stays in sync automatically** on every
+deploy/undeploy, no human step needed. **Multiple targets can be deployed and stay up at the same
+time, with zero port conflict** — confirmed live running wger (7 services) and Uptime Kuma
+simultaneously, for real stretches of this project's own development. Full mechanics (network
+aliasing, port-conflict resolution) and the step-by-step checklist for onboarding a brand-new
+target end to end, including CI, with zero pipeline edits: [`agent-service/README.md`](agent-service/README.md).
 
 ### The Workbench
 
 What started as a plain descriptor-JSON editor is now a full browser control panel for everything
-above — [`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400`. Five tabs,
-deliberately plain static HTML pages (not a React/Vite app — none of this is big enough to justify
-that tooling), deliberately not part of `app`/`frontend` (the system *under test* has no business
-managing the QA framework's own configuration):
+above — [`agent-service/src/admin/`](agent-service/src/admin/), `http://localhost:4400`:
 
-- **Discovery** (`/index.html`, the default page) — lists, creates, edits, and deletes System
-  Descriptor files (writes validated through the same zod schema the CLI uses, so a bad save comes
-  back with the exact field-level error instead of silently writing an invalid file), plus a "Run
-  discovery" button that runs the real System Discovery Agent against a chosen descriptor from the
-  browser — a real, costed Claude call, with live progress streamed while the agentic tool-use loop
-  runs, not just a static spinner. A "New target wizard" onboards a brand-new external target from
-  a few fields — target address, descriptor name, which test types to focus on — instead of
-  hand-writing the descriptor JSON. A "Deploy target" tile does the same live-streamed thing for a
-  `docker-compose` component instead — no Claude call, but real containers, real image pulls, real
-  host ports — reporting back where each service actually ended up, and multiple targets can stay
-  deployed at once with zero conflict (see "The System Descriptor" below). A "Propose components"
-  button then mechanically drafts the rest of the descriptor from that same running stack, so it's
-  no longer entirely by hand.
-- **Analysis** (`/visualize.html`) — turns an approved discovery report into diagrams. Architecture
-  and entity-relationship diagrams are fully deterministic (instant, free, no LLM call — rendered
-  straight from the report's own component list). UI inventory, cross-component sequence flow, and
-  per-entity business-workflow state machines are AI-generated (one Claude call each) through the
-  same propose → human-edits → approve cycle as Generate's spec stage, with approved models saved
-  as versioned JSON under `agent-service/reports/` and re-rendered as Mermaid diagrams any time.
-  This is effectively a fourth agent-shaped capability in the codebase
-  ([`agent-service/src/agents/workflow/`](agent-service/src/agents/workflow/)) — unlike
-  Discovery/Generate/E2E it has no CLI entry point, reachable only through this page.
-- **Test Suite** (`/generate.html`) — the Generate Agent's three human-approved stages in detail
-  above (Grouping → Generate → Write & Run), plus a Corrections tab (a small editor for a target
-  system's `*.corrections.json`) and a Snapshots tab. Write & Run renders the approved spec to real
-  `.feature`/`.steps.ts` files under `tests/`, and its own "Run tests" button runs the real
-  Playwright suite against the live app stack straight from the browser, live progress streamed the
-  same way Discovery's run does. Write & Run itself offers a "Save snapshot" confirm step first — it
-  copies whatever's about to be overwritten (the current `tests/`, the descriptor and its sidecars
-  corrections/UAT/env/setup-script, and the discovery report/grouping/spec that produced them) into
-  a permanent, timestamped folder under [`archive/`](archive/), since Write & Run's own overwrite-
-  in-place otherwise leaves no history of a prior suite once a newer one is written. The Snapshots
-  tab is where that history actually lives — see "The test suite" below for the full detail.
-- **E2E** (`/e2e.html`) — the E2E Agent's two stages (below), from the browser instead of the CLI.
-  Pick one or more scenarios and run them for real, live progress streamed the same way as
-  Discovery/Test Suite; a failure shows Claude's classification, reasoning, and step-by-step
-  evidence, plus an "Apply fix" button when a patch was proposed — shows the exact before/after,
-  applies only after an explicit confirm, then type-checks and re-runs the scenario live. Every
-  run and applied-fix report stays browsable afterward under History.
-- **Load** (`/load.html`) — generate, review/approve, and run a k6 backend/API load test for any
-  target with a REST API component, same propose-then-approve pattern as Generate's spec stage
-  (Claude writes the script from a discovery report; a "Save" is only accepted once k6 itself
-  validates the script via `k6 inspect`). Results are visualized in a shared Grafana dashboard, not
-  on this page itself — a link to it is one click away once a run finishes.
+| Tab | What it does |
+|---|---|
+| **Discovery** (`/index.html`) | Descriptor CRUD; a "New target wizard" to onboard an external target from a few fields; "Deploy target" (real containers, real ports, live progress) + "Propose components" (mechanical descriptor draft from the running stack, no Claude call); "Run discovery" (a real, costed Claude call, live progress); **Record Setup** — an embedded noVNC browser session, live inside the Workbench, to record a target's first-run setup wizard by hand and save it straight into that target's setup script. |
+| **Analysis** (`/visualize.html`) | Turns an approved discovery report into diagrams. Architecture, entity-relationship, and API Inventory are free/instant/no LLM, rendered straight from the report. UI inventory, cross-component sequence flow, and per-entity business-workflow state machines are one Claude call each, propose → human-edits → approve. Any diagram can be opened side by side against a second report, with synced pan/zoom. |
+| **Test Suite** (`/generate.html`) | The Generate Agent's three human-approved stages (Grouping → Generate → Write & Run), a Corrections editor for a target's `*.corrections.json`, and a Snapshots tab — browse/save, export/import as `.zip`, restore (suite-only or full context), delete. |
+| **E2E** (`/e2e.html`) | Pick one or more scenarios and run them for real, live progress; a failure shows Claude's classification, reasoning, and step-by-step evidence, plus an "Apply fix" button — exact before/after, applies only after explicit confirm, then type-checks and re-runs. History browses every past run. |
+| **Load** (`/load.html`) | Generate, review/approve, and run a k6 backend/API load test for any target with a `rest-api` component — same propose-then-approve pattern; a "Save" is only accepted once k6 itself validates the script. Results in a shared Grafana dashboard, one click away. |
 
 Runs as the `workbench` service in `docker-compose.yml` — starts with everything else, no separate
-step. Built from a dedicated [`agent-service/Dockerfile.workbench`](agent-service/Dockerfile.workbench)
-rather than the full agent-service image, though it now installs agent-service's full
-`package.json` (Discovery/Generate/Analysis all need the same `ClaudeProvider`/MCP/usage-logging
-machinery the CLI uses, "just express + zod" stopped being true once the workbench could trigger
-real agent calls itself) plus its own Playwright browser install for "Run tests" (`tests/` is a
-separate package with its own Playwright version, so it needs its own browser binary). Both
-`agent-service/descriptors/` and `agent-service/reports/` are bind-mounted read-write, and so is
-`tests/` (Write & Run and "Run tests" both need the real directory, not the container's own
-ephemeral copy) — so edits, generated files, and test runs made through the browser all land on
-the host filesystem like any other change. (`pnpm workbench` from `agent-service/` still works
-too, for iterating on the workbench's own code without rebuilding the image.)
+step. Deliberately plain static HTML pages, not a React/Vite app, and deliberately not part of
+`app`/`frontend` (the system *under test* has no business managing the QA framework's own
+configuration). `agent-service/descriptors/`, `agent-service/reports/`, and `tests/` are all
+bind-mounted read-write, so anything done through the browser — edits, generated files, test runs
+— lands on the host filesystem like any other change.
 
 ### The test suite
 
-A standalone Playwright + `playwright-bdd` project generated by the `generate` agent above, then
-manually debugged to a stable, green state (locators, race conditions, duplicate step
-definitions — see [docs/phase2-status.md](docs/phase2-status.md) for the full list of what broke
-and why, using this app's own original OrderFlow suite as the example). Produces both a Playwright
-HTML report and a Cucumber-format HTML report (via `multiple-cucumber-html-reporter`), viewable
-through a small local `nginx` container. See [docs/phase3-status.md](docs/phase3-status.md) for the
-original reporting details. Path: [`tests/`](tests/).
+A standalone Playwright + `playwright-bdd` project, generated by the Generate Agent above, then
+hardened by hand to a stable, green state (locators, race conditions, duplicate step definitions —
+see [docs/phase2-status.md](docs/phase2-status.md) for the original OrderFlow debugging log).
+Produces both a Playwright HTML report and a Cucumber-format HTML report (via
+`multiple-cucumber-html-reporter`), viewable through a small `nginx` container. Path:
+[`tests/`](tests/).
 
-`tests/features/`/`tests/steps/` hold whichever *one* descriptor's suite is currently live — not
-fixed to OrderFlow forever, and **not git-tracked themselves** (gitignored; a working copy, not
-source content in its own right). `tests/.current-descriptor` names which one, and **is** tracked
-(a one-line pointer, not bulk content). Two ways this directory gets (re)populated:
+`tests/features/`/`tests/steps/` hold whichever *one* descriptor's suite is currently live, and
+aren't git-tracked themselves — gitignored, a working copy, not source content in its own right.
+`tests/.current-descriptor` names which one, and **is** tracked. "Write & Run" (Workbench)
+regenerates this directory from an approved spec; [`tests/support/restore-suite.mjs`](tests/support/restore-suite.mjs)
+copies one back out of a past snapshot instead — the one mechanism CI, the hub's own "Deploy .../BDD
+suite" buttons, and manual local setup (below) all share.
 
-- **"Write & Run"** generates a fresh suite from an approved spec and overwrites what's there
-  (`POST /api/generate/render`), updating `tests/.current-descriptor` to match.
-- **[`tests/support/restore-suite.mjs`](tests/support/restore-suite.mjs)** copies a suite back out
-  of one of its own past snapshots instead of regenerating it — the one real mechanism CI, the
-  hub's "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons, manual local setup (Quick Start
-  above), and the Snapshots tab's own Restore button (below) all share. Takes an optional
-  descriptor name (defaults to reading `tests/.current-descriptor`) and an optional exact snapshot
-  name (defaults to that descriptor's latest). Also fills in `agent-service/descriptors/<name>.json`/
-  `.corrections.json`/`.uat.md`/`.env` from the same snapshot — restore-if-missing only, so it
-  never overwrites a descriptor that's already on disk (e.g. one a human is actively editing); on a
-  fresh checkout, where none of these are git-tracked either (see below), this is what actually puts
-  them there at all.
-
-Every past suite still has its own permanent, timestamped copy under [`archive/`](archive/) — the
-Test Suite tab's snapshot action bundles the `.feature`/`.steps.ts` files alongside the
-descriptor/corrections/env/setup-script that produced them, so switching which suite is live in
-`tests/` never loses an earlier one. The Snapshots tab (`/generate.html`, next to Write & Run) is
-the browser UI for all of this:
-
-- **Browse & save** — every snapshot listed with its descriptor and timestamp; "Save snapshot"
-  captures one on demand (without also writing files), for whenever something changed outside a
-  fresh render — a hand-edited correction, a fix the E2E tab applied.
-- **Export / Import** — download any snapshot as a `.zip`, or import one exported elsewhere (e.g.
-  from a different machine) as a new `archive/` entry.
-- **Restore** — either just the suite files (`tests/features`/`tests/steps`, the same thing
-  `restore-suite.mjs` above does — which will also fill in a *missing* descriptor sidecar, but
-  never overwrite one already on disk), or "Full context," which unconditionally restores the
-  descriptor/corrections/UAT (auto-backing up the current copies first) and adds back the discovery
-  report/grouping/spec/analytics under `agent-service/reports/` if they're not already there — the
-  case that actually matters for a snapshot imported from a different machine. The one thing "Full
-  context" can't restore is the setup script itself: `agent-service/src/` is baked into the
-  `workbench` image at build time, not bind-mounted, so a write to it from inside the running
-  container never reaches the host — it's backed up for reference and flagged if it differs, not
-  silently "restored" as if the write actually worked.
-- **Delete** — removes a snapshot that's no longer needed. Only **two** of those snapshots are
-  themselves git-tracked (OrderFlow's and Uptime Kuma's — the two the restore script and CI
-  actually rely on existing on a fresh checkout, now for their descriptor/corrections/UAT/env
-  sidecars too, not just the suite files); the Snapshots tab won't delete either of them, even on
-  request, and confirms the same server-side. Every other snapshot in `archive/` stays disk-only,
-  gitignored, a point-in-time convenience rather than permanent history.
-
-None of the descriptors under `agent-service/descriptors/` are git-tracked directly any more either
-(same reasoning as `tests/features`/`tests/steps` above) — only OrderFlow's and Uptime Kuma's are
-restorable at all, from their own `archive/` snapshot; the other seven have no snapshot and no
-restore path, so they simply don't exist on a fresh clone.
+Every past suite has its own permanent, timestamped copy under [`archive/`](archive/), bundled with
+the descriptor/corrections/env/setup-script that produced it — the Workbench's Snapshots tab
+(above) is the browser UI for browsing, exporting/importing, restoring, and deleting them. Only two
+of those snapshots (OrderFlow's, Uptime Kuma's) are themselves git-tracked — the two
+`restore-suite.mjs` and CI actually rely on existing on a fresh clone; deleting either is blocked,
+server-side, even on request. Neither the other seven descriptors nor their snapshots are
+git-tracked — local dev/test fixtures, simply gone on a fresh clone by design.
 
 ### CI
 
 A GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)),
-descriptor-agnostic: it reads `tests/.current-descriptor`, restores that descriptor's own archived
-suite (`tests/support/restore-suite.mjs` — right after checkout, before anything else reads a
-descriptor file; `tests/features`/`tests/steps` and the descriptor itself aren't git-tracked
-themselves, only `tests/.current-descriptor` and the two `archive/bdd-test-suite-*` snapshots are),
-then drives the real `workbench` container over its own HTTP API — `/deploy` → `/setup` →
+descriptor-agnostic: reads `tests/.current-descriptor`, restores that descriptor's own archived
+suite, then drives the real `workbench` container over its own HTTP API — `/deploy` → `/setup` →
 `/tests/run` → `/undeploy`, the same routes a human already uses from the browser — rather than
 reimplementing deploy/run logic in YAML. Whichever descriptor `tests/.current-descriptor` names is
-what CI deploys and tests; no workflow edit needed when that changes (see "Adding a new target"
-above). Uploads both HTML reports
-as artifacts regardless of pass/fail. **Verified green on a real GitHub-hosted runner**, most
-recently against the Uptime Kuma suite (2026-08-10) after this descriptor-agnostic rewrite — five
-real environment-only bugs surfaced and fixed along the way (lockfile drift; an npm-vs-pnpm phantom
-dependency; a Playwright browser-cache path mismatch; bind-mount ownership on a different runner
-uid, hit twice — `targets/`, then `tests/` — before being generalized to every bind-mounted write
-target in one pass; and the `${HOST_PROJECT_ROOT}`-placeholder fix mentioned above), none of them
-suite logic. The
-original OrderFlow-specific run (2026-07-26) is preserved for history in
-[docs/phase3-status.md](docs/phase3-status.md)/[docs/phase4-status.md](docs/phase4-status.md); its
-own two environment bugs from that run (an ungenerated Prisma client, a report-viewer container
-leaving root-owned directories behind) are unrelated to the rewrite and still accurate as written.
+what CI deploys and tests; no workflow edit needed when that changes. Uploads both HTML reports as
+artifacts regardless of pass/fail.
+
+**Verified green on a real GitHub-hosted runner**, most recently against the Uptime Kuma suite
+after this descriptor-agnostic rewrite — five real environment-only bugs surfaced and fixed along
+the way (lockfile drift, an npm-vs-pnpm phantom dependency, a Playwright browser-cache path
+mismatch, bind-mount ownership on a different runner uid, a hardcoded dev-machine path), none of
+them suite logic. The original OrderFlow-specific run is preserved for history in
+[docs/phase3-status.md](docs/phase3-status.md)/[docs/phase4-status.md](docs/phase4-status.md).
 
 ## Project status
 
 Done, verified, and running:
 - System Discovery Agent — verified against 7 independent systems: this app, a standalone Kafka
-  broker, and 5 real, unrelated open-source apps it had never seen before (wger, Uptime Kuma,
-  Snipe-IT, Wekan, nopCommerce), each deployed straight from its own repo and each proving out a
-  different database engine (Postgres, SQLite, MySQL, MongoDB, MS SQL respectively)
+  broker, and the 6 external apps named above
 - AI-generated Playwright/BDD suite — 20/20 scenarios passing against the currently-checked-in
   Uptime Kuma suite, hand-hardened after generation; OrderFlow's original 29/29 suite is preserved
-  under `archive/` (see "The test suite" below)
+  under `archive/` (see "The test suite" above)
 - E2E Agent (diagnose + guarded fix) — every guardrail and failure classification adversarially
   tested (see [docs/phase4-status.md](docs/phase4-status.md))
 - CI — verified green on a real GitHub-hosted runner
-- The Workbench (descriptors, live Discovery/Generate/Analysis/E2E runs, live test runs) and the AI
-  usage/cost dashboard — both live at `docker compose up`
+- The Workbench (5 tabs, live agent runs) and the AI usage/cost dashboard — both live at
+  `docker compose up`
 
 Deliberately out of scope, not missing pieces:
 - No agent runs automatically in CI or triggers another agent — every phase is a manually-triggered,
@@ -532,53 +296,37 @@ Deliberately out of scope, not missing pieces:
 
 ### Quick start
 
-The minimum to get a real target deployed and its test suite green — no AI calls needed, since the
-discovery report and generated suite are already committed as an archived snapshot. `tests/features`/
-`tests/steps`, and the descriptor itself (`agent-service/descriptors/uptime-kuma.json`/`.env`/etc.),
-all start out empty/absent (gitignored — restored working copies, not source content in their own
-right; see "The test suite" below) — the first real step for either target is restoring one of the
-two git-tracked `archive/bdd-test-suite-*` snapshots, which is why `restore-suite.mjs` below has to
-run *before* `/deploy` (that route reads the descriptor straight off disk). Assumes WSL2 + Docker
-Desktop (see [Prerequisites](#prerequisites) below); every command runs from the repo root unless
-noted.
+The minimum to get a real target deployed and its test suite green — no AI calls needed (the
+discovery report and generated suite are already committed as an archived snapshot), and no manual
+deploy/setup/run dance either: one button on the hub page does all of that for you. Assumes WSL2 +
+Docker Desktop (see [Prerequisites](#prerequisites) below).
 
 ```bash
-docker compose up -d --build                                                                     # platform
-docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build   # demo: OrderFlow
-
-# give the workbench container a few seconds to finish starting, then restore
-# Uptime Kuma's descriptor from its archived snapshot before deploying —
-# same order CI and the hub's own demo-switch route use:
-node tests/support/restore-suite.mjs uptime-kuma
-
-# deploy and set up Uptime Kuma — the same two API calls CI itself makes:
-curl -X POST http://localhost:4400/api/descriptors/uptime-kuma/deploy
-curl -X POST http://localhost:4400/api/descriptors/uptime-kuma/setup
-
-cp agent-service/descriptors/uptime-kuma.env tests/.env
-cd tests
-pnpm install
-npx playwright install --with-deps chromium   # one-time, downloads the browser
-pnpm run test
+docker compose up -d --build   # platform, from the repo root
+cd tests && pnpm install       # one-time: tests/ is bind-mounted, not baked into the image
 ```
 
-That's Uptime Kuma deployed for real (its own containers, host ports auto-allocated) plus a real
-20-scenario Playwright/BDD run against it. The bundled OrderFlow demo is also already up, in its own
-`bdd-target-demo-orderflow` project (the platform's `docker compose up` above must run first — it
-owns creation of the shared network both projects join). To try OrderFlow's own suite instead, swap
-the restore + env steps: `node tests/support/restore-suite.mjs orderflow` and set
-`DATABASE_URL=postgresql://user:pass@localhost:5432/testdb` in `tests/.env` — no manual migration
-step needed, the demo compose file's own `app` service runs `prisma migrate deploy` on every start.
-The hub page's own "Deploy OrderFlow/Uptime Kuma and its BDD suite" buttons automate this whole
-tear-down-and-redeploy dance with one click each (see "The Workbench" below). The full walkthrough
-below adds: `.env` files for the other two parts, the Cucumber HTML report, the AI usage dashboard,
-and how to run the agents (discovery/generate/E2E) yourself.
+Then open `http://localhost` and click **"Deploy Uptime Kuma and its BDD suite."** That one button
+is the entire rest of the dance: restores Uptime Kuma's descriptor from its own archived snapshot
+([`tests/support/restore-suite.mjs`](tests/support/restore-suite.mjs) — the same script CI uses),
+deploys it for real (its own containers, host ports auto-allocated), runs its first-run setup, then
+runs the real suite (`bddgen && playwright test`) and regenerates the Cucumber HTML report — live
+progress streamed right there on the page. Open `http://localhost:8080/` afterward to see it.
+
+"Deploy OrderFlow and its BDD suite" does the same for this repo's own bundled demo app instead —
+both targets can be deployed and stay up at the same time, with zero conflict (see "The System
+Descriptor" above). For the full manual walkthrough — driving the same steps by hand instead of
+through the button, `.env` files for each part, database migrations, running Discovery/Generate/E2E
+from the CLI: see [docs/running-locally.md](docs/running-locally.md).
 
 ### Services & URLs
 
-Once both compose commands above are running, here's everything with a web UI — or just open
-`http://localhost` for a page linking to all of them ([`hub/index.html`](hub/index.html), served
-by the same `report` container on the default port, no `:8080` to remember):
+The **Platform** table below needs only `docker compose up` (Quick start above); the **Demo** table
+needs a target actually deployed too — the hub's own "Deploy OrderFlow"/"Deploy Uptime Kuma" tiles
+(Quick start above), or the manual compose/API route in
+[docs/running-locally.md](docs/running-locally.md). Or just open `http://localhost` for a page
+linking to all of them ([`hub/index.html`](hub/index.html), served by the same `report` container on
+the default port, no `:8080` to remember):
 
 **Hub — links to everything below**: `http://localhost`, started by `docker compose up`. The hub
 itself mirrors this same **Platform** / **Demo** split, in that order:
@@ -586,13 +334,13 @@ itself mirrors this same **Platform** / **Demo** split, in that order:
 | Platform | URL | What it is | Started by |
 |---|---|---|---|
 | Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
-| Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until you run `pnpm run test && pnpm run report` in `tests/` |
+| Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until a suite actually runs — either hub button (Quick start above), or `pnpm run test && pnpm run report` in `tests/` |
 | Grafana — backend/API load test results | `http://localhost:9091` | Request rate, p95/p99 latency, error rate for k6's HTTP-only load tests (OrderFlow's REST API, no browser involved) — one dashboard shared across every target, filterable by its own `descriptor` tag | `docker compose up` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
 
 | Demo | URL | What it is | Started by |
 |---|---|---|---|
-| Frontend | `http://localhost:5173` | OrderFlow, the app under test | the demo compose command above, or the hub's own "Deploy OrderFlow" tile |
+| Frontend | `http://localhost:5173` | OrderFlow, the app under test | the hub's own "Deploy OrderFlow" tile (Quick start above), or the demo compose command directly |
 | Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | same as Frontend |
 | Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) — multi-cluster: shows OrderFlow's own broker plus any other deployed target's, auto-detected and kept in sync on every deploy/undeploy | same as Frontend |
 
@@ -624,143 +372,9 @@ Workbench.
   stack is up: `localhost:5432`, user `user`, password `pass`, database `testdb` (see
   `docker-compose.yml`).
 
-### 1. Clone and prepare environment files
-
-None of the `.env` files are committed (all gitignored) — recreate them from what each part
-actually reads:
-
-```bash
-# app/.env — only used for local Prisma commands run from the host (migrations, studio);
-# the containerized app itself gets DATABASE_URL from docker-compose.yml instead.
-echo 'DATABASE_URL="postgresql://user:pass@localhost:5432/testdb"' > app/.env
-
-# tests/.env — read by tests/support/db.ts for direct DB assertions/cleanup
-echo 'DATABASE_URL=postgresql://user:pass@localhost:5432/testdb' > tests/.env
-
-# agent-service/.env — only needed if you're going to run discovery/generate yourself
-cd agent-service && cp .env.example .env
-# then edit .env and fill in ANTHROPIC_API_KEY (and OPENAI_API_KEY if you want the
-# OpenAI-provider comparison run) — see agent-service/README.md for details
-cd ..
-```
-
-No prompt files to prepare — the discovery/generate system prompts are plain TypeScript string
-constants committed directly in `agent-service/src/bootstrap/*.ts`, not externalized.
-
-### 2. Start the app stack
-
-```bash
-docker compose up -d --build                                                                     # platform
-docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml up -d --build   # demo: OrderFlow
-```
-
-The first command starts `kafka-ui` (cluster admin UI, `:8081` — for humans only, nothing in this
-repo depends on it), `report` (nginx, `:8080` — serves the Cucumber test report at `/` once you
-generate one in step 4, and the AI usage/cost log at `/usage/`, which shows a friendly placeholder
-until any agent call happens in step 5 or 6; the same container also serves the hub page above on
-the default port, `:80`), and `workbench` (the Workbench control panel — Discovery/Analysis/Test
-Suite/E2E tabs, `:4400` — see below). It also creates the `agentic-qa-platform-net` network the
-second command's own project joins — always run this one first.
-
-The second command starts `app` (NestJS, `:3000`), `frontend` (React/Vite, `:5173`), `db`
-(Postgres, `:5432`), and `kafka` (single-node broker, external listener `:9094`) — the bundled
-OrderFlow demo, its own compose project (`bdd-target-demo-orderflow`) so it can be torn down and
-redeployed independently of the platform above (see "The Workbench" below for the hub's own
-buttons that do exactly this, suite included). Kafka is intentionally not persisted across
-rebuilds (no volume) — it's a derived event stream, not data worth keeping, and `app`'s
-health-gated dependency on it means a full `--build` always comes up clean regardless.
-
-### 3. Database migrations
-
-The demo compose file's own `app` service runs `prisma migrate deploy` automatically on every
-start (needed so a fresh `pgdata` volume — e.g. after the hub's "Deploy OrderFlow" button does a
-clean teardown+redeploy — always ends up with a real schema, not just `prisma generate`) — nothing
-to do here normally. To re-run migrations by hand against an already-running container:
-
-```bash
-docker compose -p bdd-target-demo-orderflow -f docker-compose.demo-orderflow.yml exec app npx prisma migrate deploy
-```
-
-Once step 2 is done, `http://localhost:3000/customers` and `http://localhost:5173` should both
-respond.
-
-### 4. Run the test suite
-
-`tests/features`/`tests/steps` start out empty (gitignored — see "The test suite" below) — restore
-one of the two git-tracked `archive/bdd-test-suite-*` snapshots into them first:
-
-```bash
-node tests/support/restore-suite.mjs uptime-kuma   # or: orderflow
-cd tests
-pnpm install
-npx playwright install --with-deps chromium   # one-time, downloads the browser
-pnpm run test      # bddgen + playwright test — checkmark output in terminal + writes JSON
-pnpm run report    # renders reports/cucumber-html/ from that JSON
-pnpm run cleanup   # sweeps the test data this run created out of the database
-```
-
-Running against `uptime-kuma` needs it deployed+set up first (see the Quick Start above); running
-against `orderflow` needs `tests/.env`'s `DATABASE_URL` pointed at
-`postgresql://user:pass@localhost:5432/testdb` (step 1 already sets this by default).
-
-Then open `http://localhost:8080/` to view the Cucumber HTML report (served by the `report`
-container from step 2 — refresh the page any time you regenerate the report, no restart needed).
-
-### 5. (Optional) Re-run the agents yourself
-
-The discovery report and generated test suite are already committed — you don't need to run the
-discovery/generate agents to use this repo. If you want to see them work, or point them at a
-modified app:
-
-```bash
-cd agent-service
-pnpm install
-# one-time: install the Chromium build Playwright MCP needs
-node_modules/.pnpm/@playwright+mcp@*/node_modules/@playwright/mcp/node_modules/.bin/playwright install chromium
-
-pnpm discovery          # Phase 1 — explores descriptors/orderflow.json by default, writes agent-service/reports/discovery-<timestamp>-orderflow.json
-pnpm discovery -- --descriptor descriptors/kafka-demo.json   # or point it at the bare-Kafka descriptor instead
-
-# Phase 2 — three human-approved stages (see "Generate Agent, in detail" above). The workbench UI
-# below drives all three end to end; the CLI equivalents, run in sequence:
-pnpm generate:group                                                          # Stage 1 — writes a proposed grouping
-pnpm generate:spec -- --grouping reports/generate-grouping-approved-<ts>.json # Stage 2 — after approving it
-pnpm generate:render -- --spec reports/generate-spec-approved-<ts>.json      # Stage 3 — after approving that
-
-# The Workbench (descriptors, Discovery, Analysis, the Generate pipeline, test runs, E2E) already runs
-# via `docker compose up` (http://localhost:4400) -- pnpm workbench below is only for iterating on
-# its own code without rebuilding its Docker image:
-pnpm workbench          # http://localhost:4400
-```
-
-See [`agent-service/README.md`](agent-service/README.md) for provider switching
-(`--provider openai`), `--group` filtering for `generate:spec` retries, and the full architecture reference.
-
-### 6. (Optional) Try the E2E Agent
-
-Unlike discovery/generate, this one is meant to be run against the test suite you already have
-(step 4) whenever you want — it's not a one-time bootstrap step:
-
-```bash
-cd agent-service
-
-# Suggest mode: runs one scenario for real, diagnoses it only if it fails. Nothing is written
-# to tests/. --scenario accepts an exact id, an exact title, or a Gherkin tag (e.g. "security"
-# runs all 5 security scenarios in the currently-checked-in Uptime Kuma suite; omit --scenario
-# to run all 20, but read the console warning first — it's much slower than running the suite
-# directly via `pnpm run test` in tests/).
-pnpm e2e -- --scenario "Create HTTP monitor with valid URL"
-
-# If it failed and a fix was proposed, the console prints the report path. Review the report,
-# then, only if you want to try the fix:
-pnpm apply-fix -- --report reports/e2e-<scenario-id>-<timestamp>.json
-# Shows the exact before/after and asks "Apply this fix and re-run the scenario? [y/N]" —
-# nothing happens until you type y/yes. Nothing is ever committed automatically either way.
-```
-
-Every call above (and every `discovery`/`generate:spec` call from step 5) is logged with token usage
-and cost to `http://localhost:8080/usage/` — open it in a browser and leave it open, it
-auto-refreshes every 5 seconds.
+For the full manual walkthrough — `.env` files for each part, database migrations by hand, and
+running Discovery/Generate/E2E from the CLI instead of the Workbench — see
+[docs/running-locally.md](docs/running-locally.md).
 
 ## Author
 
