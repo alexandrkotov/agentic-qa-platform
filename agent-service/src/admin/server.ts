@@ -42,6 +42,7 @@ import AdmZip from 'adm-zip';
 import { proposeWorkflow } from '../agents/workflow/propose.ts';
 import { proposeUiFlow } from '../agents/workflow/proposeUiFlow.ts';
 import { proposeSequenceFlow } from '../agents/workflow/proposeSequenceFlow.ts';
+import { verifyWorkflow, verifySequenceFlow, verifyUiFlow, collectReportRoutes } from '../agents/workflow/verify.ts';
 import {
   renderErDiagram,
   renderStateDiagram,
@@ -1061,6 +1062,7 @@ app.post('/api/workflow/propose', async (req, res) => {
 app.post('/api/workflow/approve', async (req, res) => {
   try {
     const proposed = ProposedWorkflowSchema.parse(req.body);
+    verifyWorkflow(proposed.entities);
     const approved = ApprovedWorkflowSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
     await mkdir(config.reportsDir, { recursive: true });
     const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
@@ -1156,6 +1158,8 @@ app.post('/api/workflow/propose-ui-flow', async (req, res) => {
 app.post('/api/workflow/approve-ui-flow', async (req, res) => {
   try {
     const proposed = ProposedUiFlowSchema.parse(req.body);
+    const report = parseDiscoveryReport(JSON.parse(await readFile(proposed.sourceReportPath, 'utf-8')));
+    verifyUiFlow(proposed.pages, collectReportRoutes(report));
     const approved = ApprovedUiFlowSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
     await mkdir(config.reportsDir, { recursive: true });
     const timestamp = approved.approvedAt.replace(/[:.]/g, '-');
@@ -1222,6 +1226,8 @@ app.post('/api/workflow/propose-sequence', async (req, res) => {
 app.post('/api/workflow/approve-sequence', async (req, res) => {
   try {
     const proposed = ProposedSequenceFlowSchema.parse(req.body);
+    const report = parseDiscoveryReport(JSON.parse(await readFile(proposed.sourceReportPath, 'utf-8')));
+    verifySequenceFlow(proposed.scenarios, Object.keys(report.components));
     const approved = ApprovedSequenceFlowSchema.parse({ ...proposed, approvedAt: new Date().toISOString() });
     await mkdir(config.reportsDir, { recursive: true });
     const timestamp = approved.approvedAt.replace(/[:.]/g, '-');

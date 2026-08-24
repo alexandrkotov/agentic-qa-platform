@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import type { DiscoveryReport } from '../generate/reportSchema.ts';
 import { UiPageFlowSchema, type ProposedUiFlow } from './contract.ts';
+import { collectReportRoutes, verifyUiFlow } from './verify.ts';
 
 // ---------------------------------------------------------------------------
 // One LLM call, structuring a discovery report's `web_ui.uiPages[]` (each
@@ -79,6 +80,7 @@ export async function proposeUiFlow(
     );
   }
   const parsed = z.object({ pages: z.array(UiPageFlowSchema) }).parse(JSON.parse(jsonMatch[0]));
+  verifyUiFlow(parsed.pages, collectReportRoutes(report));
 
   return {
     generatedAt: new Date().toISOString(),

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import type { DiscoveryReport } from '../generate/reportSchema.ts';
 import { ScenarioFlowSchema, type ProposedSequenceFlow } from './contract.ts';
+import { verifySequenceFlow } from './verify.ts';
 
 // ---------------------------------------------------------------------------
 // One LLM call, structuring a handful of the discovery report's testScenarios
@@ -87,6 +88,7 @@ export async function proposeSequenceFlow(
     );
   }
   const parsed = z.object({ scenarios: z.array(ScenarioFlowSchema) }).parse(JSON.parse(jsonMatch[0]));
+  verifySequenceFlow(parsed.scenarios, componentKeys);
 
   return {
     generatedAt: new Date().toISOString(),

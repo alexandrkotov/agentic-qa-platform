@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentProvider } from '../../providers/AgentProvider.ts';
 import type { DiscoveryReport } from '../generate/reportSchema.ts';
 import { EntityWorkflowSchema, type ProposedWorkflow } from './contract.ts';
+import { verifyWorkflow } from './verify.ts';
 
 // ---------------------------------------------------------------------------
 // One LLM call, structuring a discovery report's free-text businessRules
@@ -85,6 +86,7 @@ export async function proposeWorkflow(
     );
   }
   const entities = z.array(EntityWorkflowSchema).parse(JSON.parse(jsonMatch[0]));
+  verifyWorkflow(entities);
 
   return {
     generatedAt: new Date().toISOString(),
