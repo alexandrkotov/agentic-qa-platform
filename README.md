@@ -333,26 +333,29 @@ itself mirrors this same **Platform** / **Demo** split, in that order:
 
 | Platform | URL | What it is | Started by |
 |---|---|---|---|
-| Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
+| Workbench | `http://localhost:4400` | Discovery/Analysis/Test Suite/E2E/Load control panel — descriptors, diagrams, the generate pipeline, live test runs, guarded E2E diagnose+fix | `docker compose up` |
 | Cucumber test report | `http://localhost:8080/` | BDD suite results (HTML) | container starts with `docker compose up`, but shows nothing until a suite actually runs — either hub button (Quick start above), or `pnpm run test && pnpm run report` in `tests/` |
 | Grafana — backend/API load test results | `http://localhost:9091` | Request rate, p95/p99 latency, error rate for k6's HTTP-only load tests (OrderFlow's REST API, no browser involved) — one dashboard shared across every target, filterable by its own `descriptor` tag | `docker compose up` |
 | AI usage/cost log | `http://localhost:8080/usage/` | Every agent call's tokens + cost, live | `docker compose up` (any agent call updates it) |
+| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) — multi-cluster: shows OrderFlow's own broker plus any other deployed target's, auto-detected and kept in sync on every deploy/undeploy | `docker compose up` |
+| Workbench Swagger | `http://localhost:4400/api-docs.html` | Every endpoint the Workbench's own backend exposes — not a discovered target's own API, see Analysis's API Inventory diagram for that | `docker compose up` |
 
 | Demo | URL | What it is | Started by |
 |---|---|---|---|
 | Frontend | `http://localhost:5173` | OrderFlow, the app under test | the hub's own "Deploy OrderFlow" tile (Quick start above), or the demo compose command directly |
 | Backend API + Swagger | `http://localhost:3000/docs` | OpenAPI docs | same as Frontend |
-| Kafka UI | `http://localhost:8081` | Kafka cluster admin (topics, messages) — multi-cluster: shows OrderFlow's own broker plus any other deployed target's, auto-detected and kept in sync on every deploy/undeploy | same as Frontend |
 
-On the hub itself, Frontend/Backend/Kafka UI aren't plain always-there links — they're **sub-cards
-nested inside the "Deploy OrderFlow" tile**, hidden until OrderFlow is confirmed actually deployed
-and reachable, shown automatically (no extra click) once it is. Uptime Kuma's own tile gets a
-matching sub-card, a live link to its dashboard using whatever port it was actually assigned.
+On the hub itself, Frontend/Backend aren't plain always-there links — they're **sub-cards nested
+inside the "Deploy OrderFlow" tile**, hidden until OrderFlow is confirmed actually deployed and
+reachable, shown automatically (no extra click) once it is. Uptime Kuma's own tile gets a matching
+sub-card, a live link to its dashboard using whatever port it was actually assigned. Kafka UI lives
+in the Platform section instead, not nested in either tile — it's genuinely platform infrastructure
+now (multi-cluster, shows every deployed target's own broker automatically), not tied to one demo.
 
 A full tour, starting from the hub: click "Deploy OrderFlow and its BDD suite" (skip straight to
-the tour below if it's already deployed) to bring the sample app up — its Frontend/Backend/Kafka UI
+the tour below if it's already deployed) to bring the sample app up — its Frontend/Backend
 sub-cards reveal themselves once it's ready — then create an order, verify it in Swagger, find its
-Kafka message, open the biggest Cucumber scenario, toggle the AI usage log, and browse the
+message in Kafka UI, open the biggest Cucumber scenario, toggle the AI usage log, and browse the
 Workbench.
 
 ![Hub tour: from the landing page through the app, Swagger, Kafka UI, the Cucumber report, the AI usage log, and the Workbench](docs/assets/hub-tour-demo.gif)
