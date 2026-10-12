@@ -811,6 +811,19 @@ function setStatus(el, text, kind) {
   el.className = kind || '';
 }
 
+// Why one of the three free, mechanical diagrams can come back empty —
+// worded in terms of the TARGET, not just the report, because the common
+// reason is simply that the target has no such layer (a static, browser-
+// only site has no REST API and no database; a single UI has nothing to
+// link to). A bare "this report doesn't have…" read as if discovery had
+// failed.
+const NO_ARCHITECTURE_MESSAGE =
+  'Nothing to connect: the architecture view links layers (UI, API, database, message broker) and this report has fewer than two of them. A target with a single UI and no backend, such as a static, browser-only site, has no layers to link.';
+const NO_API_MESSAGE =
+  'No REST endpoints in this report. The target either exposes no REST API (for example a static, browser-only site) or none was found at discovery time.';
+const NO_DATABASE_MESSAGE =
+  'No database structure in this report. The target either has no database (for example a static, browser-only site) or none was reachable at discovery time.';
+
 async function loadReportOptions(selectId) {
   const names = await api('/api/generate/reports');
   const select = document.getElementById(selectId);
@@ -879,7 +892,7 @@ document.getElementById('arch-render-btn').onclick = async () => {
       body: JSON.stringify({ report }),
     });
     if (!text) {
-      setStatus(statusEl, "This report doesn't have enough distinct components to diagram an architecture.", 'err');
+      setStatus(statusEl, NO_ARCHITECTURE_MESSAGE, 'err');
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
@@ -929,7 +942,7 @@ async function renderArchCompare() {
     });
     if (!text) {
       container.innerHTML = '';
-      setStatus(statusEl, "This report doesn't have enough distinct components to diagram an architecture.", 'err');
+      setStatus(statusEl, NO_ARCHITECTURE_MESSAGE, 'err');
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
@@ -993,7 +1006,7 @@ document.getElementById('api-render-btn').onclick = async () => {
       body: JSON.stringify({ report }),
     });
     if (!text) {
-      setStatus(statusEl, "This report doesn't have any REST endpoints to diagram.", 'err');
+      setStatus(statusEl, NO_API_MESSAGE, 'err');
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
@@ -1029,7 +1042,7 @@ async function renderApiCompare() {
     });
     if (!text) {
       container.innerHTML = '';
-      setStatus(statusEl, "This report doesn't have any REST endpoints to diagram.", 'err');
+      setStatus(statusEl, NO_API_MESSAGE, 'err');
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
@@ -1091,7 +1104,7 @@ document.getElementById('er-render-btn').onclick = async () => {
     });
     if (!text) {
       // Stays collapsed, button label unchanged — nothing to toggle open.
-      setStatus(statusEl, 'This report has no database structure to diagram.', 'err');
+      setStatus(statusEl, NO_DATABASE_MESSAGE, 'err');
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
@@ -1131,7 +1144,7 @@ async function renderErCompare() {
     });
     if (!text) {
       container.innerHTML = '';
-      setStatus(statusEl, 'This report has no database structure to diagram.', 'err');
+      setStatus(statusEl, NO_DATABASE_MESSAGE, 'err');
       return;
     }
     container.innerHTML = '<pre class="mermaid"></pre>';
