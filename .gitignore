@@ -22,6 +22,11 @@ agent-service/.playwright-mcp/
 !/archive/bdd-test-suite-orderflow-2026-08-17T22-03-25-058Z/**
 !/archive/bdd-test-suite-uptime-kuma-2026-08-17T21-56-31-507Z/
 !/archive/bdd-test-suite-uptime-kuma-2026-08-17T21-56-31-507Z/**
+# Electronic Catalog Maker — the user's own project, a real `process`-component
+# target (cloned, built from source and served as plain processes). Allow-listed
+# on purpose so CI can restore and run it; same exact-name convention as above.
+!/archive/bdd-test-suite-ECM-2026-10-12T18-41-13-931Z/
+!/archive/bdd-test-suite-ECM-2026-10-12T18-41-13-931Z/**
 # Same reasoning as tests/features/tests/steps above, same mechanism —
 # loadtests/<descriptor>-load.js (hand-written or AI-generated+approved,
 # see agent-service/src/admin/static/load.html) is regenerable/mutable

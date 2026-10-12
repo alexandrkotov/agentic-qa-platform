@@ -1,0 +1,628 @@
+{
+  "generatedAt": "2026-10-12T17:06:15.000Z",
+  "components": {
+    "site": {
+      "uiPages": [
+        {
+          "route": "/editor/",
+          "title": "Electronic Catalog — Editor",
+          "formFields": [
+            {
+              "section": "Image",
+              "field": "Name",
+              "type": "textbox"
+            },
+            {
+              "section": "Image",
+              "field": "Folder (leave empty for none)",
+              "type": "combobox"
+            },
+            {
+              "section": "Image",
+              "field": "Fit to the window when opened",
+              "type": "checkbox"
+            },
+            {
+              "section": "Edit link",
+              "field": "Goes to image",
+              "type": "combobox",
+              "options": [
+                "— nothing: an item with a table row —",
+                "other images in catalog"
+              ]
+            },
+            {
+              "section": "Edit link",
+              "field": "Link name",
+              "type": "textbox"
+            },
+            {
+              "section": "Edit link",
+              "field": "Address, unique across the whole catalog",
+              "type": "textbox"
+            },
+            {
+              "section": "Edit table row",
+              "field": "Name",
+              "type": "textbox"
+            },
+            {
+              "section": "Edit table row",
+              "field": "SKU",
+              "type": "textbox"
+            },
+            {
+              "section": "Edit table row",
+              "field": "Description",
+              "type": "textbox"
+            },
+            {
+              "section": "Edit table row / Extra characteristics",
+              "field": "Key",
+              "type": "combobox"
+            },
+            {
+              "section": "Edit table row / Extra characteristics",
+              "field": "Value",
+              "type": "textbox"
+            },
+            {
+              "section": "Search",
+              "field": "Search every row…",
+              "type": "textbox"
+            },
+            {
+              "section": "Search",
+              "field": "Field filter",
+              "type": "combobox",
+              "options": [
+                "All fields",
+                "Name",
+                "SKU",
+                "Description",
+                "Extra: <key>"
+              ]
+            },
+            {
+              "section": "Store settings",
+              "field": "Catalog type",
+              "type": "radio",
+              "options": [
+                "Commercial — labeled \"Buy\" / \"Cart\"",
+                "Education — \"Learn more\" / \"Collection\" (📚)",
+                "Fitness — \"Watch exercise\" / \"My workout\" (🏋️)",
+                "Booking — \"Book\" / \"My picks\" (📅)",
+                "Quiz — self-test with correct/incorrect answers"
+              ]
+            },
+            {
+              "section": "Store settings",
+              "field": "Store URL (for your own reference)",
+              "type": "textbox"
+            },
+            {
+              "section": "Store settings",
+              "field": "Buy button behavior",
+              "type": "radio",
+              "options": [
+                "Add to cart, checkout for everything at once",
+                "Go straight to payment for each item"
+              ]
+            },
+            {
+              "section": "Store settings",
+              "field": "Default view (on a narrow screen/embed)",
+              "type": "radio",
+              "options": [
+                "Images",
+                "Diagram",
+                "Table"
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "name": "New catalog",
+              "description": "Creates a new catalog (prompts for name via native dialog)"
+            },
+            {
+              "name": "Open catalog…",
+              "description": "Opens a .ecatm file from disk"
+            },
+            {
+              "name": "Copy remote catalog…",
+              "description": "Copies a catalog from a URL"
+            },
+            {
+              "name": "Add image…",
+              "description": "Adds a new image to the catalog"
+            },
+            {
+              "name": "Save",
+              "description": "Saves changes to the catalog"
+            },
+            {
+              "name": "Undo",
+              "description": "Undoes the last action (disabled when no changes)"
+            },
+            {
+              "name": "Redo",
+              "description": "Redoes an undone action (disabled when nothing to redo)"
+            },
+            {
+              "name": "Export .ecatm",
+              "description": "Exports catalog as .ecatm file"
+            },
+            {
+              "name": "Export protected…",
+              "description": "Exports password-protected catalog (requires HTTPS)"
+            },
+            {
+              "name": "Export PDF…",
+              "description": "Exports catalog as PDF"
+            },
+            {
+              "name": "Search…",
+              "description": "Opens search panel to find rows across all images"
+            },
+            {
+              "name": "Store settings…",
+              "description": "Opens store configuration dialog"
+            },
+            {
+              "name": "Start collaboration",
+              "description": "Enables real-time collaboration"
+            },
+            {
+              "name": "Language",
+              "description": "Changes UI language (English, Русский, Українська)"
+            },
+            {
+              "name": "Dark/Light",
+              "description": "Toggles dark mode"
+            },
+            {
+              "name": "Zoom controls",
+              "description": "−, +, Fit, Reset for image zoom (shows percentage)"
+            },
+            {
+              "name": "Apply (Image)",
+              "description": "Applies changes to image settings"
+            },
+            {
+              "name": "Apply (Edit link)",
+              "description": "Saves hotspot edits"
+            },
+            {
+              "name": "Cancel (Edit link)",
+              "description": "Cancels hotspot edits"
+            },
+            {
+              "name": "Delete (Edit link)",
+              "description": "Deletes a hotspot"
+            },
+            {
+              "name": "Apply (Edit table row)",
+              "description": "Saves table row edits"
+            },
+            {
+              "name": "Cancel (Edit table row)",
+              "description": "Cancels table row edits"
+            },
+            {
+              "name": "Delete (Edit table row)",
+              "description": "Deletes a table row"
+            },
+            {
+              "name": "+ Add pair",
+              "description": "Adds a new key-value pair to extra characteristics"
+            },
+            {
+              "name": "Edit as JSON…",
+              "description": "Opens JSON editor for extra characteristics"
+            },
+            {
+              "name": "× (Delete image)",
+              "description": "Deletes an image (disabled for demo files)"
+            }
+          ],
+          "panels": [
+            {
+              "name": "Image list",
+              "description": "Left sidebar with folders and images organized hierarchically"
+            },
+            {
+              "name": "Image viewer",
+              "description": "Center panel showing the current image with draggable hotspots"
+            },
+            {
+              "name": "Right sidebar",
+              "description": "Contains Image settings, New link, Links on this image, Edit link, New table row, Edit table row, and Table sections"
+            }
+          ]
+        },
+        {
+          "route": "/viewer/",
+          "title": "Electronic Catalog — Viewer",
+          "formFields": [
+            {
+              "section": "Search",
+              "field": "Search every row…",
+              "type": "textbox"
+            },
+            {
+              "section": "Search",
+              "field": "Field filter",
+              "type": "combobox",
+              "options": [
+                "All fields",
+                "Name",
+                "SKU",
+                "Description",
+                "Extra: <key>"
+              ]
+            },
+            {
+              "section": "Password (protected catalogs)",
+              "field": "Password",
+              "type": "textbox"
+            }
+          ],
+          "actions": [
+            {
+              "name": "Open catalog…",
+              "description": "Opens a .ecatm file from disk"
+            },
+            {
+              "name": "Open remote catalog…",
+              "description": "Opens a catalog from a URL"
+            },
+            {
+              "name": "Refresh",
+              "description": "Reloads the current catalog"
+            },
+            {
+              "name": "Search…",
+              "description": "Opens search panel"
+            },
+            {
+              "name": "Share view…",
+              "description": "Generates shareable link to current view"
+            },
+            {
+              "name": "Export PDF…",
+              "description": "Exports catalog as PDF"
+            },
+            {
+              "name": "Cart (n)",
+              "description": "Opens cart dropdown showing items, Buy links, Clear cart and Checkout buttons"
+            },
+            {
+              "name": "Language",
+              "description": "Changes UI language"
+            },
+            {
+              "name": "Dark/Light",
+              "description": "Toggles dark mode"
+            },
+            {
+              "name": "Zoom controls",
+              "description": "−, +, Reset, Fit for image zoom"
+            },
+            {
+              "name": "Add to cart",
+              "description": "Adds item to cart"
+            },
+            {
+              "name": "In cart ✓",
+              "description": "Indicates item is already in cart"
+            },
+            {
+              "name": "Buy",
+              "description": "Link to purchase item (in cart dropdown)"
+            },
+            {
+              "name": "✕ (remove from cart)",
+              "description": "Removes item from cart"
+            },
+            {
+              "name": "Clear cart",
+              "description": "Empties the cart"
+            },
+            {
+              "name": "Checkout (n)",
+              "description": "Proceeds to checkout with all cart items"
+            },
+            {
+              "name": "Unlock",
+              "description": "Unlocks password-protected catalog"
+            }
+          ],
+          "modes": {
+            "commercial": {
+              "cartLabel": "Cart",
+              "actionLabel": "Add to cart / Buy"
+            },
+            "education": {
+              "cartLabel": "Collection (📚)",
+              "actionLabel": "Learn more"
+            },
+            "fitness": {
+              "cartLabel": "My workout (🏋️)",
+              "actionLabel": "Watch exercise"
+            },
+            "booking": {
+              "cartLabel": "My picks (📅)",
+              "actionLabel": "Book"
+            },
+            "quiz": {
+              "actions": [
+                "Next question →",
+                "Print results",
+                "Start over"
+              ],
+              "statusBar": "Correct X of Y answered · Z questions",
+              "tableHeaders": [
+                "Answer option",
+                "Option",
+                "Explanation"
+              ]
+            }
+          },
+          "behaviors": [
+            "Clicking a hotspot highlights corresponding table row",
+            "Clicking a table row highlights corresponding hotspot(s)",
+            "Navigation hotspots open linked images",
+            "Password-protected catalogs show unlock form (requires HTTPS for encryption)"
+          ]
+        },
+        {
+          "route": "/composer/",
+          "title": "ECM Grid Composer",
+          "formFields": [
+            {
+              "section": "1. Settings",
+              "field": "Catalog name",
+              "type": "textbox",
+              "placeholder": "My catalog"
+            },
+            {
+              "section": "1. Settings",
+              "field": "Tiles per row",
+              "type": "combobox",
+              "options": [
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              "default": "3"
+            },
+            {
+              "section": "1. Settings",
+              "field": "Photo in tile",
+              "type": "combobox",
+              "options": [
+                "Whole photo (fit)",
+                "Fill the tile (crop)"
+              ]
+            },
+            {
+              "section": "1. Settings",
+              "field": "Under the name on the tile",
+              "type": "combobox",
+              "options": [
+                "Nothing",
+                "SKU",
+                "(extra columns from table)"
+              ]
+            },
+            {
+              "section": "1. Settings",
+              "field": "Grid title color",
+              "type": "textbox",
+              "default": "#2563eb"
+            },
+            {
+              "section": "2. Photos",
+              "field": "Choose photo folder…",
+              "type": "file-picker"
+            },
+            {
+              "section": "2. Photos",
+              "field": "…or select files",
+              "type": "file-picker"
+            },
+            {
+              "section": "3. Table",
+              "field": "Choose CSV / TSV file…",
+              "type": "file-picker"
+            },
+            {
+              "section": "3. Table",
+              "field": "Paste from Excel/Google Sheets",
+              "type": "textbox",
+              "placeholder": "Copy the cells including the header row, then paste here (Ctrl+V)"
+            }
+          ],
+          "actions": [
+            {
+              "name": "Download template",
+              "description": "Downloads grid-composer-template.csv with required columns"
+            },
+            {
+              "name": "Language",
+              "description": "Changes UI language"
+            },
+            {
+              "name": "Dark/Light",
+              "description": "Toggles dark mode"
+            }
+          ],
+          "wizardSteps": [
+            {
+              "step": 1,
+              "name": "Settings",
+              "description": "Configure catalog name, tiles per row, photo display, subtitle field, and grid title color"
+            },
+            {
+              "step": 2,
+              "name": "Photos",
+              "description": "Select folder or files with photos named by number (1.jpg, 2.jpg, …)"
+            },
+            {
+              "step": 3,
+              "name": "Table",
+              "description": "Load CSV/TSV or paste data. Required columns: No., Folder, Name, SKU, Description. Optional: extra keys (Price, buy_url, …)"
+            },
+            {
+              "step": 4,
+              "name": "Report",
+              "description": "Shows validation report - requires both photos and table to proceed"
+            }
+          ],
+          "tableFormat": {
+            "requiredColumns": [
+              "No.",
+              "Folder",
+              "Name",
+              "SKU",
+              "Description"
+            ],
+            "optionalColumns": [
+              "Price",
+              "buy_url",
+              "any extra keys"
+            ],
+            "notes": [
+              "First row = headers",
+              "Empty Folder puts item in root grid",
+              "Photos named by No. column value"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "businessRules": [
+    "A catalog is stored as a single .ecatm file (SQLite database with embedded images)",
+    "Everything runs client-side in the browser - no backend required",
+    "Hotspot Address must be unique across the entire catalog",
+    "Multiple hotspots can share the same Address when the same part appears multiple times",
+    "A table row is linked to hotspot(s) via the Address field",
+    "A hotspot can either link to a table row OR navigate to another image, not both",
+    "Password-protected catalogs require HTTPS (or localhost) for encryption",
+    "Quiz mode requires Extra key 'correct' = 1 to mark right answers, optional 'need' for multiple correct answers",
+    "Grid Composer requires photos named numerically (1.jpg, 2.jpg) matching No. column in table",
+    "Undo/Redo buttons are disabled when there's nothing to undo/redo",
+    "Cart button is disabled when cart is empty",
+    "Demo files cannot be modified (delete buttons disabled)",
+    "Search can filter by specific fields (Name, SKU, Description, or Extra keys)",
+    "Store settings allow different catalog types: Commercial, Education, Fitness, Booking, Quiz",
+    "Buy button behavior can be 'Add to cart' or 'Go straight to payment'",
+    "Default view setting only affects narrow screens/embeds"
+  ],
+  "testScenarios": [
+    {
+      "name": "Create new catalog and add image with hotspot",
+      "type": "happy_path",
+      "description": "Create a new catalog via 'New catalog' button, add an image, place a hotspot on it, fill in link details and table row data, then save"
+    },
+    {
+      "name": "Edit existing hotspot position and data",
+      "type": "happy_path",
+      "description": "Open demo catalog, click on a hotspot to edit, drag it to new position, modify name/address, apply changes and verify undo/redo works"
+    },
+    {
+      "name": "Search functionality across catalog",
+      "type": "happy_path",
+      "description": "Open furniture catalog, use Search to find items by name, SKU, and extra fields, verify filtering by specific field works"
+    },
+    {
+      "name": "Cart workflow in viewer",
+      "type": "happy_path",
+      "description": "Add multiple items to cart, verify cart count updates, open cart dropdown, verify Buy links work, use Clear cart and verify cart empties"
+    },
+    {
+      "name": "Hotspot-table row highlighting sync",
+      "type": "happy_path",
+      "description": "Click a hotspot and verify corresponding table row highlights, click table row and verify hotspot highlights"
+    },
+    {
+      "name": "Navigation hotspot between images",
+      "type": "happy_path",
+      "description": "Open living-room catalog, click a navigation hotspot that opens another image, verify correct image loads"
+    },
+    {
+      "name": "Quiz mode answer validation",
+      "type": "happy_path",
+      "description": "Open quiz catalog, click answer options, verify correct answers turn green and incorrect turn red, verify score updates"
+    },
+    {
+      "name": "Grid Composer complete workflow",
+      "type": "happy_path",
+      "description": "Set catalog name and settings, upload photos, load table data, verify report shows no errors, export catalog"
+    },
+    {
+      "name": "Duplicate hotspot address validation",
+      "type": "edge_case",
+      "description": "Try to create two hotspots with different addresses that should be unique, then try to change one to match another's address"
+    },
+    {
+      "name": "Empty catalog name",
+      "type": "edge_case",
+      "description": "Try to create a new catalog with empty name, verify validation behavior"
+    },
+    {
+      "name": "Grid Composer missing photos",
+      "type": "edge_case",
+      "description": "Load table data without photos, verify Report section shows appropriate error message"
+    },
+    {
+      "name": "Grid Composer mismatched photo numbers",
+      "type": "edge_case",
+      "description": "Load table with No. values that don't match photo file names, verify validation report"
+    },
+    {
+      "name": "Invalid password for protected catalog",
+      "type": "edge_case",
+      "description": "Open password-protected catalog, enter wrong password, verify error message"
+    },
+    {
+      "name": "Export protected without HTTPS",
+      "type": "edge_case",
+      "description": "Try to use Export protected feature on non-HTTPS connection, verify encryption unavailable message"
+    },
+    {
+      "name": "Unsaved changes warning",
+      "type": "edge_case",
+      "description": "Make changes to catalog, try to navigate away or close, verify unsaved changes warning appears"
+    },
+    {
+      "name": "Large image upload handling",
+      "type": "edge_case",
+      "description": "Upload very large images, verify system handles them appropriately (resize/compress or error)"
+    },
+    {
+      "name": "XSS in catalog name or hotspot data",
+      "type": "security",
+      "description": "Enter script tags in catalog name, image name, hotspot name, SKU, description, verify proper escaping"
+    },
+    {
+      "name": "Malicious URL in buy_url field",
+      "type": "security",
+      "description": "Enter javascript: URL or data: URL in buy_url extra field, verify it's sanitized or blocked"
+    },
+    {
+      "name": "Remote catalog URL validation",
+      "type": "security",
+      "description": "Use 'Copy remote catalog' or 'Open remote catalog' with file:// URL or internal network URL, verify SSRF protection"
+    },
+    {
+      "name": "Password-protected catalog brute force",
+      "type": "security",
+      "description": "Attempt multiple wrong passwords on protected catalog, verify no rate limiting bypass possible"
+    }
+  ]
+}

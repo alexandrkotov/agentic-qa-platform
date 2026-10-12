@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-10-12T17:17:52.200Z",
+  "sourceReportPath": "reports/discovery-2026-10-12T17-07-22-266Z-ECM.json",
+  "crossFunctionalTypes": [
+    "security"
+  ],
+  "threshold": 0.3,
+  "groups": [
+    {
+      "key": "editor",
+      "scenarioNames": [
+        "Create new catalog and add image with hotspot",
+        "Edit existing hotspot position and data",
+        "Duplicate hotspot address validation",
+        "Empty catalog name",
+        "Export protected without HTTPS",
+        "Unsaved changes warning",
+        "Large image upload handling"
+      ],
+      "rationale": "scenarios exercised in the Editor app (/editor/)"
+    },
+    {
+      "key": "viewer",
+      "scenarioNames": [
+        "Search functionality across catalog",
+        "Cart workflow in viewer",
+        "Hotspot-table row highlighting sync",
+        "Navigation hotspot between images",
+        "Quiz mode answer validation",
+        "Invalid password for protected catalog"
+      ],
+      "rationale": "scenarios exercised in the Viewer app (/viewer/)"
+    },
+    {
+      "key": "composer",
+      "scenarioNames": [
+        "Grid Composer complete workflow",
+        "Grid Composer missing photos",
+        "Grid Composer mismatched photo numbers"
+      ],
+      "rationale": "scenarios exercised in the Grid Composer app (/composer/)"
+    },
+    {
+      "key": "security",
+      "scenarioNames": [
+        "XSS in catalog name or hotspot data",
+        "Malicious URL in buy_url field",
+        "Remote catalog URL validation",
+        "Password-protected catalog brute force"
+      ],
+      "rationale": "cross-functional: type=\"security\""
+    }
+  ],
+  "ungrouped": [],
+  "flatFallback": false,
+  "approvedAt": "2026-10-12T17:18:45.611Z"
+}
