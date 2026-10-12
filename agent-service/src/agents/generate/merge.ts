@@ -57,7 +57,15 @@ function mergeFeatureContents(pieces: GeneratedGroup[], sourceKey: string): stri
 
 interface ImportInfo {
   names: Set<string>;
-  defaultName: string | null;
+  // Sets, not single slots: two split pieces may bind the same module under
+  // different local names (`import * as fs` in one, `import * as fsx` in
+  // another) and BOTH names are used by their own piece's body.
+  defaultNames: Set<string>;
+  // `import * as ns from 'm'` — a NamespaceImport, which the NamedImports
+  // handling below never sees; without this it was silently dropped and the
+  // merged file got `import  from 'm';` (a syntax error found live on the
+  // first target whose steps used `import * as fs from 'fs'`).
+  namespaceNames: Set<string>;
 }
 
 // playwright-bdd's createBdd() destructure — the hook functions a piece
@@ -94,11 +102,14 @@ function mergeStepsContents(pieces: GeneratedGroup[], sourceKey: string): string
     for (const stmt of sourceFile.statements) {
       if (ts.isImportDeclaration(stmt) && ts.isStringLiteral(stmt.moduleSpecifier)) {
         const moduleSpecifier = stmt.moduleSpecifier.text;
-        const info = imports.get(moduleSpecifier) ?? { names: new Set<string>(), defaultName: null };
+        const info = imports.get(moduleSpecifier) ?? { names: new Set<string>(), defaultNames: new Set<string>(), namespaceNames: new Set<string>() };
         const clause = stmt.importClause;
-        if (clause?.name) info.defaultName = clause.name.text;
+        if (clause?.name) info.defaultNames.add(clause.name.text);
         if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
           for (const el of clause.namedBindings.elements) info.names.add(el.name.text);
+        }
+        if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+          info.namespaceNames.add(clause.namedBindings.name.text);
         }
         imports.set(moduleSpecifier, info);
         continue;
@@ -137,11 +148,20 @@ function mergeStepsContents(pieces: GeneratedGroup[], sourceKey: string): string
     bodyParts.push(body);
   }
 
-  const importLines = [...imports.entries()].map(([moduleSpecifier, info]) => {
-    const parts: string[] = [];
-    if (info.defaultName) parts.push(info.defaultName);
-    if (info.names.size > 0) parts.push(`{ ${[...info.names].join(', ')} }`);
-    return `import ${parts.join(', ')} from '${moduleSpecifier}';`;
+  const importLines = [...imports.entries()].flatMap(([moduleSpecifier, info]) => {
+    const lines: string[] = [];
+    const [firstDefault, ...extraDefaults] = [...info.defaultNames];
+    // A default import may share a statement with ONE named-import list or ONE
+    // namespace import, but a namespace import can never share it with a
+    // named list (`import * as a, { b }` is a syntax error) — emit those as
+    // separate statements.
+    const head = [firstDefault, info.names.size > 0 ? `{ ${[...info.names].join(', ')} }` : null].filter((x): x is string => !!x);
+    if (head.length > 0) lines.push(`import ${head.join(', ')} from '${moduleSpecifier}';`);
+    for (const name of extraDefaults) lines.push(`import ${name} from '${moduleSpecifier}';`);
+    for (const name of info.namespaceNames) lines.push(`import * as ${name} from '${moduleSpecifier}';`);
+    // Side-effect-only import (`import 'm';`) has no clause at all.
+    if (lines.length === 0) lines.push(`import '${moduleSpecifier}';`);
+    return lines;
   });
 
   const constLines = [...namedConsts.values()].join('\n\n');
