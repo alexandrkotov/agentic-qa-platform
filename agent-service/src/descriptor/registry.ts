@@ -6,6 +6,7 @@ import { kafkaBuilder } from './components/kafka.ts';
 import { kafkaConsumerBuilder } from './components/kafkaConsumer.ts';
 import { webUiBuilder } from './components/webUi.ts';
 import { dockerComposeBuilder } from './components/dockerCompose.ts';
+import { processBuilder } from './components/process.ts';
 import { sqliteBuilder } from './components/sqlite.ts';
 import { mysqlBuilder } from './components/mysql.ts';
 import { mongoBuilder } from './components/mongo.ts';
@@ -47,6 +48,7 @@ export const componentRegistry: BuilderMap = {
   'kafka-consumer': kafkaConsumerBuilder,
   'web-ui': webUiBuilder,
   'docker-compose': dockerComposeBuilder,
+  process: processBuilder,
   sqlite: sqliteBuilder,
   mysql: mysqlBuilder,
   mongo: mongoBuilder,

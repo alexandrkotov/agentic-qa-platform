@@ -725,6 +725,15 @@ const FIELD_DEFS = {
     { key: 'ref', label: 'Branch / tag / commit (optional)', type: 'text', placeholder: 'main' },
     { key: 'composeFile', label: 'Compose file path (optional)', type: 'text', placeholder: 'docker-compose.yml' },
   ],
+  // `process` — a repo built from source and run as plain processes. Its
+  // installCommand and processes[] (name/cwd/buildCommand/startCommand/
+  // port/healthCheckPath objects) aren't covered by any FIELD_DEFS "type"
+  // below, same as docker-compose's postUpExec above — edit those in the
+  // descriptor's JSON file; the two plain-text fields are editable here.
+  'process': [
+    { key: 'repoUrl', label: 'Repo URL', type: 'text', placeholder: 'https://github.com/org/repo' },
+    { key: 'ref', label: 'Branch / tag / commit (optional)', type: 'text', placeholder: 'main' },
+  ],
   // path must resolve under this container's own targets/ mount — see
   // descriptor/components/sqlite.ts's resolveSafePath() for the actual
   // check; this is just where a human types it, not where it's enforced.
@@ -796,7 +805,10 @@ async function loadList() {
   const hasDockerCompose = await Promise.all(state.names.map(async (n) => {
     try {
       const d = await api('/api/descriptors/' + encodeURIComponent(n));
-      return (d.components || []).some((c) => c.type === 'docker-compose');
+      // A `process` component (git repo built from source and run as
+      // plain processes) is deployed through the same /deploy and /undeploy
+      // routes, so it is "deployable" here too.
+      return (d.components || []).some((c) => c.type === 'docker-compose' || c.type === 'process');
     } catch {
       return false;
     }
@@ -1708,8 +1720,8 @@ async function deployCurrentTarget(triggerBtn) {
   }
   const hasLeftovers = status.containerNames.length > 0;
   const message = hasLeftovers
-    ? `Found ${status.containerNames.length} existing container(s) for "${name}" already in Docker (running, or leftover from a previous deploy: ${status.containerNames.join(', ')}). They will be removed and the deploy will start from a clean slate. Continue?`
-    : `Deploy "${name}" from its own docker-compose.yml? This clones the repo (if not already cloned) and starts real containers via the Docker socket — no Claude call, but can take a few minutes on the first image pull.`;
+    ? `Found ${status.containerNames.length} existing container(s)/process(es) for "${name}" (running, or leftover from a previous deploy: ${status.containerNames.join(', ')}). They will be removed and the deploy will start from a clean slate. Continue?`
+    : `Deploy "${name}"? This clones the repo (if not already cloned) and starts the target — real containers via the Docker socket for a docker-compose target, or plain processes built from source for a process target. No Claude call, but can take a few minutes on the first run.`;
   if (!(await confirmModal(message, hasLeftovers ? 'danger' : 'time'))) return;
 
   await runDeployAction(

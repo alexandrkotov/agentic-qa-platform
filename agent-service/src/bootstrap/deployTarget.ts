@@ -5,6 +5,18 @@ import { connect } from 'node:net';
 import { runCommand } from '../util/runCommand.ts';
 import type { DockerComposeComponent } from '../descriptor/schema.ts';
 import { detectKafkaServices, type ComposeConfig as KafkaResolvedConfig } from './kafkaDetect.ts';
+import {
+  DeployTargetError,
+  DeployCancelledError,
+  checkCancelled,
+  sleep,
+  withLock,
+  activeDeploys,
+} from './deployCommon.ts';
+import { cloneOrUpdateRepo } from './gitClone.ts';
+
+// Re-exported: admin/server.ts and other callers have always imported these from here.
+export { DeployCancelledError, cancelDeploy } from './deployCommon.ts';
 
 // ---------------------------------------------------------------------------
 // Docker-outside-of-Docker (DooD) path mirroring — the load-bearing
@@ -28,30 +40,6 @@ import { detectKafkaServices, type ComposeConfig as KafkaResolvedConfig } from '
 // sqlite-file directory scan, but doesn't re-run the mount assertion
 // itself — see that file's own comment for why it doesn't need to.
 // ---------------------------------------------------------------------------
-
-class DeployTargetError extends Error {}
-
-/** Thrown (not a subclass of DeployTargetError — callers need to tell "user cancelled" apart from "genuinely failed") when a deploy's AbortSignal fires. */
-export class DeployCancelledError extends Error {}
-
-function checkCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DeployCancelledError('Deploy cancelled by user');
-}
-
-/** Abort-aware `setTimeout` — resolves immediately on cancellation instead of making the caller wait out the full delay before its own `checkCancelled()` can run. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolveSleep) => {
-    if (signal?.aborted) {
-      resolveSleep();
-      return;
-    }
-    const timer = setTimeout(resolveSleep, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      resolveSleep();
-    }, { once: true });
-  });
-}
 
 async function assertMirroredMount(): Promise<string> {
   const hostRoot = process.env.HOST_PROJECT_ROOT;
@@ -158,81 +146,6 @@ export function resolveTargetPaths(targetsDir: string, name: string): TargetPath
     resolvedConfigPath: join(base, '.aqap', 'resolved.json'),
     statePath: join(base, '.aqap', 'state.json'),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Clone / update
-// ---------------------------------------------------------------------------
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await readFile(join(path, '.git', 'HEAD'));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * `git fetch --depth 1` + `reset --hard FETCH_HEAD`, deliberately not
- * `git pull` — a third-party repo this project doesn't control can
- * force-push or rename its default branch at any time, and `git pull`
- * just refuses to proceed when that happens instead of giving us the
- * clone we actually asked for.
- */
-async function cloneOrUpdateRepo(
-  repoUrl: string,
-  ref: string | undefined,
-  repoDir: string,
-  onProgress?: (message: string) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const onLine = (line: string) => onProgress?.(line);
-
-  if (!(await pathExists(repoDir))) {
-    onProgress?.(`$ git clone --no-checkout -- ${repoUrl} ${repoDir}`);
-    const { code, output } = await runCommand(
-      'git',
-      ['clone', '--no-checkout', '--', repoUrl, repoDir],
-      process.cwd(),
-      process.env,
-      onLine,
-      signal,
-    );
-    checkCancelled(signal);
-    if (code !== 0) {
-      throw new DeployTargetError(`git clone failed (exit ${code}): ${output.slice(-800)}`);
-    }
-  }
-
-  const refArg = ref ?? 'HEAD';
-  onProgress?.(`$ git fetch --depth 1 origin ${refArg}`);
-  const fetch = await runCommand(
-    'git',
-    ['fetch', '--depth', '1', 'origin', refArg],
-    repoDir,
-    process.env,
-    onLine,
-    signal,
-  );
-  checkCancelled(signal);
-  if (fetch.code !== 0) {
-    throw new DeployTargetError(`git fetch failed (exit ${fetch.code}): ${fetch.output.slice(-800)}`);
-  }
-
-  onProgress?.('$ git reset --hard FETCH_HEAD');
-  const reset = await runCommand(
-    'git',
-    ['reset', '--hard', 'FETCH_HEAD'],
-    repoDir,
-    process.env,
-    onLine,
-    signal,
-  );
-  checkCancelled(signal);
-  if (reset.code !== 0) {
-    throw new DeployTargetError(`git reset failed (exit ${reset.code}): ${reset.output.slice(-800)}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -755,30 +668,6 @@ async function runPostUpExec(
 }
 
 // ---------------------------------------------------------------------------
-// In-process lock — deploy/undeploy of the SAME target must never
-// interleave (a concurrent `up` and `down` racing on the same compose
-// project is exactly the kind of thing that produces confusing partial
-// state). Rejects immediately rather than queuing: a second click on
-// "Deploy" while one is already running should read as "already in
-// progress", not silently wait its turn.
-// ---------------------------------------------------------------------------
-
-const locks = new Map<string, Promise<unknown>>();
-
-async function withLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  if (locks.has(name)) {
-    throw new DeployTargetError(`a deploy/undeploy for "${name}" is already in progress`);
-  }
-  const promise = fn();
-  locks.set(name, promise);
-  try {
-    return await promise;
-  } finally {
-    locks.delete(name);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
 
@@ -786,26 +675,6 @@ export interface DeployResult {
   paths: TargetPaths;
   projectName: string;
   ports: PortMapping[];
-}
-
-// ---------------------------------------------------------------------------
-// Cancellation — keyed by descriptor name so the Stop button's own
-// fire-and-forget /deploy/cancel route (admin/server.ts) can reach the
-// *specific* deploy an admin/server.ts route handler is awaiting, without
-// either side needing to share anything beyond the name. Registered for the
-// duration of deployTarget()'s own call (inside withLock, so there's at
-// most one entry per name at a time by construction) — a Stop click after
-// the deploy has already finished just finds nothing to cancel and no-ops.
-// ---------------------------------------------------------------------------
-
-const activeDeploys = new Map<string, AbortController>();
-
-/** True if a deploy for `name` was actually in flight and got signalled; false if there was nothing to cancel (already finished, or never started). */
-export function cancelDeploy(name: string): boolean {
-  const controller = activeDeploys.get(name);
-  if (!controller) return false;
-  controller.abort();
-  return true;
 }
 
 export async function deployTarget(

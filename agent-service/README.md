@@ -437,6 +437,34 @@ target's tested state, not just its test code.
 
 ---
 
+### A `process` component: targets that are not Docker-based
+
+The sibling of `docker-compose` for a target that has no compose file at all — a git repo that is
+built from source and run as plain child processes (the first one is
+[Electronic Catalog Maker](https://github.com/alexandrkotov/electronic-catalog-maker), a pnpm monorepo
+of static web apps). Like `docker-compose`, the Discovery Agent never explores it; it only records
+where the descriptor's other components (the `web-ui` entries pointing at the processes' ports)
+came from. The same "Deploy target" / "Remove" actions drive it, through
+[`src/bootstrap/deployProcessTarget.ts`](src/bootstrap/deployProcessTarget.ts): clone or refresh the
+repo (the shared [`gitClone.ts`](src/bootstrap/gitClone.ts)), run `installCommand` once, then for each
+entry of `processes[]` run its `buildCommand`, start its `startCommand` detached (output to
+`targets/<name>/.aqap/logs/<process>.log`) and wait until `healthCheckPath` answers before declaring
+the deploy done. Anything a previous deploy left running is stopped first, and anything started by a
+failed or cancelled deploy is stopped again, so a fixed port is never left held.
+
+Differences from the Docker path worth knowing:
+
+- **Ports are fixed by the descriptor**, not allocated per deploy: the processes run inside the
+  `workbench` container, so each `port` must also be published by `docker-compose.yml`'s `workbench`
+  service (today: `4300`) for a CI runner's own shell or a human on the host to reach it. The
+  descriptor's `web-ui` URLs use `host.docker.internal:<port>` — a `localhost` URL would be rewritten
+  to OrderFlow's own `frontend` service name by Discovery.
+- **No DooD mirrored-mount requirement** — nothing here asks a second Docker daemon to resolve a path.
+- **Listen on `0.0.0.0`**, not loopback, or the published port can't reach the process.
+  [`src/bootstrap/staticServer.mjs`](src/bootstrap/staticServer.mjs) is a dependency-free static file
+  server shipped for exactly the "serve a built `dist`/`site` folder" case.
+- **Reset is not available** (nothing persists); Deploy and Remove are.
+
 ## Provider Comparison (historical)
 
 A one-time comparison from early Discovery development, kept for context — not re-run since, and

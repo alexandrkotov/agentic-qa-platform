@@ -169,6 +169,7 @@ validated with zod) describing a target system as a list of typed components:
 | `kafka` | `brokers`, optional `sasl`/`tls` | Whole-broker exploration — topics, configs, sample messages, consumer groups, via [`tuannvm/kafka-mcp-server`](https://github.com/tuannvm/kafka-mcp-server) |
 | `kafka-consumer` | `brokers`, `topic`, optional `sampleSize` | One named topic only — message count, inferred payload shape, anomalies (same MCP server, narrower prompt) |
 | `docker-compose` | `repoUrl`, optional `ref`/`composeFile`/`postUpExec` | Nothing — deployment provenance only, see `agent-service/README.md` |
+| `process` | `repoUrl`, optional `ref`/`installCommand`, `processes[]` (`startCommand`, `port`, optional `buildCommand`/`cwd`/`healthCheckPath`) | Nothing — deployment provenance only, for a target that is built from source and run as plain processes instead of Docker, see `agent-service/README.md` |
 
 A [`registry`](agent-service/src/descriptor/registry.ts) maps each component type to a **builder**
 ([`agent-service/src/descriptor/components/`](agent-service/src/descriptor/components/)) — which

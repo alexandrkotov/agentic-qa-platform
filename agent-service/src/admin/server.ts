@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { lookup } from 'node:dns/promises';
 import { fileURLToPath } from 'node:url';
 import { SystemDescriptorSchema, parseSystemDescriptor } from '../descriptor/schema.ts';
-import type { SystemDescriptor, SystemComponent, DockerComposeComponent } from '../descriptor/schema.ts';
+import type { SystemDescriptor, SystemComponent, DockerComposeComponent, ProcessComponent } from '../descriptor/schema.ts';
 import { runDiscoveryForDescriptor } from '../bootstrap/discovery.ts';
 import { deployTarget, undeployTarget, cancelDeploy, DeployCancelledError, getTargetContainerNames, getRunningContainerNames, resolveTargetPaths } from '../bootstrap/deployTarget.ts';
+import { deployProcessTarget, undeployProcessTarget, getProcessTargetNames } from '../bootstrap/deployProcessTarget.ts';
 import { clearTargetData } from '../bootstrap/clearTargetData.ts';
 import type { DeployState, PortMapping } from '../bootstrap/deployTarget.ts';
 import { hasSetup, runSetup, setupScriptPath } from '../bootstrap/setupTarget.ts';
@@ -456,9 +457,34 @@ app.delete('/api/descriptors/:name', async (req, res) => {
 function findDockerComposeComponent(descriptor: SystemDescriptor): DockerComposeComponent {
   const found = descriptor.components.find((c): c is DockerComposeComponent => c.type === 'docker-compose');
   if (!found) {
-    throw Object.assign(new Error('Descriptor has no "docker-compose" component to deploy'), { status: 400 });
+    // A `process` component IS deployable, just not through this Docker-only
+    // path (Reset wipes Docker volumes/bind mounts — meaningless for a
+    // static site with no data of its own) — say so instead of the
+    // misleading "nothing to deploy".
+    const hasProcess = descriptor.components.some((c) => c.type === 'process');
+    throw Object.assign(
+      new Error(
+        hasProcess
+          ? 'This action is only available for "docker-compose" targets; "process" targets support deploy and undeploy only'
+          : 'Descriptor has no "docker-compose" component to deploy',
+      ),
+      { status: 400 },
+    );
   }
   return found;
+}
+
+/** What /deploy and /undeploy act on: a descriptor's one deployment-provenance component, whichever kind it is. */
+type DeployableComponent =
+  | { kind: 'docker-compose'; component: DockerComposeComponent }
+  | { kind: 'process'; component: ProcessComponent };
+
+function findDeployableComponent(descriptor: SystemDescriptor): DeployableComponent {
+  for (const c of descriptor.components) {
+    if (c.type === 'docker-compose') return { kind: 'docker-compose', component: c };
+    if (c.type === 'process') return { kind: 'process', component: c };
+  }
+  throw Object.assign(new Error('Descriptor has no "docker-compose" or "process" component to deploy'), { status: 400 });
 }
 
 // Backs two separate UI moments off the same signal (index.html): the
@@ -471,7 +497,13 @@ function findDockerComposeComponent(descriptor: SystemDescriptor): DockerCompose
 // don't become unqueryable just because its descriptor was edited/deleted.
 app.get('/api/descriptors/:name/deploy/status', async (req, res) => {
   try {
-    const containerNames = await getTargetContainerNames(req.params.name);
+    // Docker containers (compose targets) and still-running processes
+    // (`process` targets) answer the same question for the UI — "is
+    // anything of this target currently up?" — so they share one list.
+    const containerNames = [
+      ...(await getTargetContainerNames(req.params.name)),
+      ...(await getProcessTargetNames(req.params.name)),
+    ];
     res.json({ containerNames });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -482,7 +514,7 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
   try {
     const name = req.params.name;
     const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
-    const component = findDockerComposeComponent(descriptor);
+    const deployable = findDeployableComponent(descriptor);
 
     // Long-running (clone + potentially several GB of image pulls) with
     // previously zero feedback beyond a static "deploying…" status —
@@ -491,6 +523,15 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
+      if (deployable.kind === 'process') {
+        // No Kafka UI sync: a process target has no broker, and no Docker
+        // network for kafka-ui to be attached to or detached from.
+        const result = await deployProcessTarget(deployable.component, name, (message) => send({ type: 'progress', message }));
+        send({ type: 'done', projectName: result.projectName, ports: result.ports });
+        res.end();
+        return;
+      }
+      const component = deployable.component;
       // Kafka UI Multi-Cluster — detach kafka-ui from this target's own
       // network BEFORE deployTarget()'s own self-healing cleanup (a
       // redeploy of an already-live kafka-having target) tries to remove
@@ -542,16 +583,22 @@ app.post('/api/descriptors/:name/deploy/cancel', (req, res) => {
 app.post('/api/descriptors/:name/undeploy', async (req, res) => {
   try {
     const name = req.params.name;
-    // Confirms this descriptor really does describe a docker-compose deploy
-    // before touching anything — same shape check as the deploy route,
-    // even though undeployTarget() itself only needs the plain name.
+    // Confirms this descriptor really does describe a deployment before
+    // touching anything — same shape check as the deploy route, even
+    // though the undeploy functions themselves only need the plain name.
     const descriptor = parseSystemDescriptor(JSON.parse(await readFile(descriptorPath(name), 'utf-8')));
-    findDockerComposeComponent(descriptor);
+    const deployable = findDeployableComponent(descriptor);
 
     res.setHeader('Content-Type', 'application/x-ndjson');
     const send = (obj: unknown) => res.write(JSON.stringify(obj) + '\n');
 
     try {
+      if (deployable.kind === 'process') {
+        await undeployProcessTarget(name, (message) => send({ type: 'progress', message }));
+        send({ type: 'done' });
+        res.end();
+        return;
+      }
       // Detach kafka-ui from this target's network first — see the
       // matching comment on /deploy above.
       await syncKafkaUi((message) => send({ type: 'progress', message }), { excludeTarget: name });
@@ -930,9 +977,9 @@ app.post('/api/discovery/run', async (req, res) => {
     // their now-live URLs. Catching this here (free) avoids a wasted paid
     // Claude call for a run that could never produce anything but an empty
     // report.
-    if (descriptor.components.every((c) => c.type === 'docker-compose')) {
+    if (descriptor.components.every((c) => c.type === 'docker-compose' || c.type === 'process')) {
       res.status(400).json({
-        error: 'This descriptor only describes a deployment (docker-compose component) — deploy it, then add the components you want to explore before running discovery.',
+        error: 'This descriptor only describes a deployment (docker-compose/process component) — deploy it, then add the components you want to explore before running discovery.',
       });
       return;
     }

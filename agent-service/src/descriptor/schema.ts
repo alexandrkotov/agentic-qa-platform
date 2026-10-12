@@ -179,6 +179,62 @@ const DockerComposeComponentSchema = z.object({
 });
 
 /**
+ * Deployment provenance for a target that is NOT Docker-based: a git repo
+ * that gets cloned, built from source and run as plain child processes
+ * inside the `workbench` container itself (see
+ * bootstrap/deployProcessTarget.ts) — e.g. a pnpm monorepo of static web
+ * apps. Peer of DockerComposeComponentSchema in role: its own registry
+ * builder (descriptor/components/process.ts) contributes no MCP servers or
+ * tools, it only documents where the descriptor's *other* components (the
+ * web-ui entries pointing at these processes' ports) came from.
+ *
+ * Ports are FIXED by the descriptor, not allocated at deploy time like the
+ * Docker path does: the processes run inside `workbench`, whose published
+ * ports are fixed in docker-compose.yml, so a CI runner's own shell can
+ * reach them directly. The descriptor's web-ui baseUrls therefore use the
+ * same literal ports declared here.
+ */
+const ProcessSchema = z.object({
+  /** Keys the deploy result's port mapping and the per-process log file name. */
+  name: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/i, 'process name must be alphanumeric, "-" or "_"'),
+  /** Working directory for build/start, relative to the repo root — same guard as composeFile above, since it ends up in a spawn cwd. */
+  cwd: z
+    .string()
+    .refine((p) => !p.startsWith('/') && !p.split('/').includes('..'), {
+      message: 'cwd must be a relative path with no ".." segments',
+    })
+    .optional(),
+  /** Run once, to completion, before `startCommand` (e.g. a production build). argv array, never a shell string. */
+  buildCommand: z.array(z.string()).min(1).optional(),
+  /** The long-running command itself. argv array, never a shell string. */
+  startCommand: z.array(z.string()).min(1),
+  /** Fixed TCP port the process listens on (inside `workbench`, published 1:1 by docker-compose.yml). */
+  port: z.number().int().min(1).max(65535),
+  /** Path polled on localhost:<port> until it answers 2xx/3xx; defaults to "/". */
+  healthCheckPath: z
+    .string()
+    .refine((p) => p.startsWith('/'), { message: 'healthCheckPath must start with "/"' })
+    .optional(),
+});
+
+const ProcessComponentSchema = z.object({
+  type: z.literal('process'),
+  name: z.string().optional(),
+  /** http(s) clone URL only — becomes a `git clone` argument (same guard as docker-compose's repoUrl). */
+  repoUrl: z
+    .string()
+    .url()
+    .refine((u) => ['http:', 'https:'].includes(new URL(u).protocol), {
+      message: 'repoUrl must be an http(s) clone URL',
+    }),
+  /** Branch/tag/commit to pin the clone to; omitted means the repo's own default branch. */
+  ref: z.string().optional(),
+  /** Run once at the repo root after the clone is updated (e.g. ["pnpm", "install", "--frozen-lockfile"]). argv array, never a shell string. */
+  installCommand: z.array(z.string()).min(1).optional(),
+  processes: z.array(ProcessSchema).min(1),
+});
+
+/**
  * Same shape as PostgresComponentSchema, deliberately — a plain connection
  * string is all mysql.ts's own builder needs (it parses host/port/user/
  * password/database out of it itself, since the real `mysql` CLI takes
@@ -234,6 +290,8 @@ export type KafkaComponent = z.infer<typeof KafkaComponentSchema>;
 export type KafkaConsumerComponent = z.infer<typeof KafkaConsumerComponentSchema>;
 export type WebUiComponent = z.infer<typeof WebUiComponentSchema>;
 export type DockerComposeComponent = z.infer<typeof DockerComposeComponentSchema>;
+export type ProcessComponent = z.infer<typeof ProcessComponentSchema>;
+export type ProcessSpec = z.infer<typeof ProcessSchema>;
 export type SqliteComponent = z.infer<typeof SqliteComponentSchema>;
 
 const SystemComponentSchema = z.discriminatedUnion('type', [
@@ -243,6 +301,7 @@ const SystemComponentSchema = z.discriminatedUnion('type', [
   KafkaConsumerComponentSchema,
   WebUiComponentSchema,
   DockerComposeComponentSchema,
+  ProcessComponentSchema,
   SqliteComponentSchema,
   MysqlComponentSchema,
   MongoComponentSchema,

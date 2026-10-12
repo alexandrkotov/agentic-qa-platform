@@ -119,6 +119,21 @@ RUN npm install
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npx playwright install --with-deps chromium && chmod -R a+rwX /ms-playwright
 
+# Placed AFTER the (large, slow) Chromium layer above on purpose, so adding
+# or bumping it never invalidates that layer's build cache.
+# pnpm: the `process` component type (bootstrap/deployProcessTarget.ts)
+# builds a target straight from its git repo, and a pnpm monorepo (ECM) is
+# the first such target — its own CI uses `pnpm/action-setup` version 11, so
+# the same major here. Via corepack (already shipped with node:22) rather
+# than `npm i -g pnpm`: it pins the exact version and needs no extra registry
+# round trip at runtime. COREPACK_HOME is a shared, world-writable directory
+# for the same reason PLAYWRIGHT_BROWSERS_PATH is set above: this RUN executes as
+# root, but the container runs as the non-root "node" user whose own
+# ~/.cache is a different path — with the default location the prepared pnpm
+# would be invisible at runtime and silently re-downloaded on first use.
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack enable && corepack prepare pnpm@11 --activate && chmod -R a+rwX /opt/corepack
+
 COPY src/ src/
 
 # Container starts as root (default), but only long enough for the

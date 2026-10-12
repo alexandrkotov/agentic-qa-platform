@@ -145,7 +145,15 @@ services:
     build:
       context: ./agent-service
       dockerfile: Dockerfile.workbench
-    ports: ["4400:4400"]
+    # 4300: a fixed port for `process`-component targets (bootstrap/
+    # deployProcessTarget.ts) — those run as plain child processes INSIDE
+    # this container, not as separate Docker containers, so the only way for
+    # a CI runner's own shell (or a human on the host) to reach one is a port
+    # published here. Fixed rather than allocated per deploy like the
+    # docker-compose path does: the port belongs to one target (ECM's
+    # assembled static site) and its descriptor's web-ui URLs use the same
+    # literal number.
+    ports: ["4400:4400", "4300:4300"]
     env_file:
       - path: ./agent-service/.env
         required: false
