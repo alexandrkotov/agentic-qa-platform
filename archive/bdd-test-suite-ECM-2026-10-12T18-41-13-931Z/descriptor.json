@@ -1,0 +1,44 @@
+{
+  "name": "ECM",
+  "components": [
+    {
+      "type": "process",
+      "repoUrl": "https://github.com/alexandrkotov/electronic-catalog-maker.git",
+      "installCommand": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile"
+      ],
+      "processes": [
+        {
+          "name": "site",
+          "buildCommand": [
+            "bash",
+            "scripts/build-site.sh"
+          ],
+          "startCommand": [
+            "node",
+            "/usr/src/app/src/bootstrap/staticServer.mjs",
+            "--root",
+            "site",
+            "--port",
+            "4300"
+          ],
+          "port": 4300,
+          "healthCheckPath": "/editor/"
+        }
+      ]
+    },
+    {
+      "type": "web-ui",
+      "name": "site",
+      "baseUrl": "http://host.docker.internal:4300",
+      "routes": [
+        "/editor/",
+        "/viewer/",
+        "/composer/"
+      ]
+    }
+  ],
+  "extraInstructions": "HARD BUDGET — read this first. You have 70 tool calls in total and every call costs real money (the whole conversation is re-sent each time). Plan for AT MOST 36: about 14 on /editor/, 8 on /viewer/, 8 on /composer/ (the Grid Composer), then STOP exploring and output the JSON report. Running out of calls without producing the report is a total failure; a report written from partial exploration is valuable. Take one snapshot per page state — do not re-snapshot after trivial clicks, and do not open a dialog just to read it when its button name already tells you what it does.\nTarget: Electronic Catalog Maker (ECM), served as one static site: /editor/ (Editor), /viewer/ (Viewer), /composer/ (Grid Composer). A catalog is a single .ecatm file (a SQLite database with images embedded). Everything runs in the browser; there is no backend and no account.\nBrowser notes: (1) Right after every fresh page load run `delete window.showSaveFilePicker; delete window.showOpenFilePicker;` with browser_evaluate — otherwise Save and Open try to show the operating system's file dialogs, which cannot be operated here; with them removed, Save downloads a .ecatm and Open uses an ordinary file input. (2) You cannot upload files from disk. For a populated catalog open /editor/?src=/demo/furniture.ecatm or /viewer/?src=/demo/furniture.ecatm (pictures, hotspots, table rows). Other demos: /demo/living-room.ecatm (navigation hotspots between pictures), /demo/product-grid.ecatm (tile grid), /demo/quiz-citizenship-en.ecatm (quiz), /demo/diy-stool-en.ecatm (password-protected; password stool-2026). (3) The editor's New catalog button asks for the name in a native prompt dialog.\nWhat to capture: in the editor — the toolbar buttons and what each does, the forms for a new hotspot/link and table row (field names), the unsaved-changes marker, Save/undo/redo, search, folders, zoom/fit; in the viewer — selecting a hotspot highlights its table row and the reverse, search, zoom, cart/Buy if present; in the Grid Composer — what the wizard asks for step by step and which inputs it validates. Do not modify the bundled demo files."
+}
