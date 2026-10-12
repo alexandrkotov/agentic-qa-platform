@@ -439,6 +439,12 @@ target's tested state, not just its test code.
 
 ### A `process` component: targets that are not Docker-based
 
+> **A `process` target does NOT create any Docker container.** It runs as a plain process **inside
+> the platform's own `workbench` container** (`agentic-qa-platform-workbench-1`), so Docker Desktop
+> shows no separate container for it. It dies whenever `workbench` is restarted or rebuilt and has to
+> be deployed again. The admin UI says the same thing in a highlighted note under the Deploy target
+> select and in an "in workbench" badge on the descriptor list.
+
 The sibling of `docker-compose` for a target that has no compose file at all — a git repo that is
 built from source and run as plain child processes (the first one is
 [Electronic Catalog Maker](https://github.com/alexandrkotov/electronic-catalog-maker), a pnpm monorepo

@@ -527,7 +527,7 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
         // No Kafka UI sync: a process target has no broker, and no Docker
         // network for kafka-ui to be attached to or detached from.
         const result = await deployProcessTarget(deployable.component, name, (message) => send({ type: 'progress', message }));
-        send({ type: 'done', projectName: result.projectName, ports: result.ports });
+        send({ type: 'done', kind: 'process', projectName: result.projectName, ports: result.ports });
         res.end();
         return;
       }
@@ -543,6 +543,7 @@ app.post('/api/descriptors/:name/deploy', async (req, res) => {
       await syncKafkaUi((message) => send({ type: 'progress', message }));
       send({
         type: 'done',
+        kind: 'docker-compose',
         projectName: result.projectName,
         ports: result.ports,
       });

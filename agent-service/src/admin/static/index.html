@@ -155,6 +155,28 @@
   }
   #descriptor-list .descriptor-badge.badge-mute { background: var(--surface-2); color: var(--text-mute); }
   #descriptor-list .descriptor-badge.badge-good { background: var(--good-bg); color: var(--good); }
+  #descriptor-list .descriptor-badge.badge-warn { background: var(--warn-bg); color: var(--warn); }
+  /* Deploy target tile's "where does this actually run" notice. The
+     process variant is deliberately loud (thick warn-colored border, a
+     bold capitalised headline): a process target is NOT a Docker
+     container, and looking for one in Docker Desktop after a successful
+     deploy was a real, caught-live confusion. */
+  .deploy-kind-notice {
+    display: none; border-radius: 6px; padding: 0.55rem 0.65rem;
+    font-size: 0.78rem; line-height: 1.4;
+  }
+  .deploy-kind-notice.process {
+    display: block; background: var(--warn-bg); color: var(--text);
+    border: 2px solid var(--warn);
+  }
+  .deploy-kind-notice.process strong.headline {
+    display: block; color: var(--warn); font-size: 0.82rem; font-weight: 800;
+    letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 0.25rem;
+  }
+  .deploy-kind-notice.compose {
+    display: block; background: var(--accent-bg); color: var(--text);
+    border: 1px solid var(--accent);
+  }
   #descriptor-list .descriptor-delete-btn {
     flex-shrink: 0; border: none; background: none; color: var(--text-mute);
     cursor: pointer; padding: 0 0.65rem; font-size: 1rem; line-height: 1;
@@ -348,9 +370,13 @@
     <div class="side-tile">
       <div>
         <h2>Deploy target</h2>
-        <div class="subtitle">Spin up (or stop) a descriptor's own docker-compose.yml — free, but can take a few minutes on first pull</div>
+        <div class="subtitle">Start (or stop) a descriptor's own target: its docker-compose.yml, or a build from source — free, but can take a few minutes on first run</div>
       </div>
       <select id="deploy-descriptor-select"></select>
+      <!-- Says, per selected descriptor, WHERE the deployed target actually
+           lives. Filled by updateDeployKindNotice(); hidden until a
+           descriptor is selected. -->
+      <div id="deploy-kind-notice" class="deploy-kind-notice" role="note"></div>
       <div class="deploy-actions">
         <!-- disabled by default: matches "no docker-compose descriptor yet"
              until loadList()'s first pass resolves and corrects it, rather
@@ -802,17 +828,25 @@ async function loadList() {
   // things below: this list's own "deployable"/"regular" badge, and the
   // Deploy target section's own select. Used to be fetched twice
   // (independently, once per use) — merged into one pass, same result.
-  const hasDockerCompose = await Promise.all(state.names.map(async (n) => {
+  // A `process` component (git repo built from source and run as plain
+  // processes) is deployed through the same /deploy and /undeploy routes,
+  // so it is "deployable" here too. Which KIND decides where the target
+  // actually lives (own Docker containers vs. a plain process inside the
+  // Workbench container), so it is kept, not collapsed to a boolean — the
+  // first deployable component wins, same order the server's
+  // findDeployableComponent() uses.
+  const deployKinds = await Promise.all(state.names.map(async (n) => {
     try {
       const d = await api('/api/descriptors/' + encodeURIComponent(n));
-      // A `process` component (git repo built from source and run as
-      // plain processes) is deployed through the same /deploy and /undeploy
-      // routes, so it is "deployable" here too.
-      return (d.components || []).some((c) => c.type === 'docker-compose' || c.type === 'process');
+      const c = (d.components || []).find((x) => x.type === 'docker-compose' || x.type === 'process');
+      return c ? c.type : null;
     } catch {
-      return false;
+      return null;
     }
   }));
+  state.deployKinds = {};
+  state.names.forEach((n, i) => { state.deployKinds[n] = deployKinds[i]; });
+  const hasDockerCompose = deployKinds.map((k) => k !== null);
 
   // "AUTO-SETUP" badge — independent of hasDockerCompose above (a
   // descriptor's own bootstrap/setup/<name>.ts registration has nothing to
@@ -846,10 +880,23 @@ async function loadList() {
     const badge = document.createElement('span');
     badge.className = 'descriptor-badge' + (hasDockerCompose[i] ? '' : ' badge-mute');
     badge.textContent = hasDockerCompose[i] ? 'deployable' : 'unmanaged';
-    badge.title = hasDockerCompose[i]
-      ? 'Has a docker-compose component — Deploy target below can spin this up itself.'
-      : 'No docker-compose component — this app doesn\'t manage its lifecycle; Discovery just explores it wherever it already runs.';
+    badge.title = deployKinds[i] === 'process'
+      ? 'Has a process component — Deploy target below builds it from source and runs it inside the Workbench container (no Docker container of its own).'
+      : hasDockerCompose[i]
+        ? 'Has a docker-compose component — Deploy target below can spin this up itself.'
+        : 'No docker-compose component — this app doesn\'t manage its lifecycle; Discovery just explores it wherever it already runs.';
     badges.appendChild(badge);
+
+    // A process target is NOT a Docker container — it runs inside the
+    // Workbench container. Flagged right in the list (warn color, the
+    // page's "heads up" tone) so nobody goes looking for it in Docker.
+    if (deployKinds[i] === 'process') {
+      const wbBadge = document.createElement('span');
+      wbBadge.className = 'descriptor-badge badge-warn';
+      wbBadge.textContent = 'in workbench';
+      wbBadge.title = 'Runs as a plain process inside the Workbench container — it has no Docker container of its own and stops when Workbench restarts.';
+      badges.appendChild(wbBadge);
+    }
 
     // "AUTO-SETUP" — this descriptor has a registered first-run setup
     // script (bootstrap/setup/<name>.ts), so its wizard gets driven
@@ -904,8 +951,37 @@ async function loadList() {
   if (!deployActionBusy) {
     document.getElementById('deploy-btn').disabled = !deployTargetsAvailable;
   }
+  updateDeployKindNotice();
   await updateDeployRemoveLabel();
 }
+
+// The note under the Deploy target select that says WHERE the selected
+// target will actually live. A `process` target (built from source) gets
+// no Docker container of its own — it runs as a plain process inside the
+// Workbench container, which is not obvious from "Deploy" alone and
+// produced a real "where is the container?" question right after the
+// first live deploy. Static text only (no descriptor name is interpolated
+// into the HTML).
+function updateDeployKindNotice() {
+  const el = document.getElementById('deploy-kind-notice');
+  const name = document.getElementById('deploy-descriptor-select').value;
+  const kind = name ? (state.deployKinds || {})[name] : null;
+  el.className = 'deploy-kind-notice';
+  if (kind === 'process') {
+    el.classList.add('process');
+    el.innerHTML =
+      '<strong class="headline">Not a Docker container</strong>' +
+      'This target is built from source and runs as a plain process <strong>inside the platform\'s own ' +
+      'Workbench container</strong> (<code>agentic-qa-platform-workbench-1</code>). Docker Desktop shows no ' +
+      'separate container for it. It stops whenever Workbench is restarted or rebuilt — deploy it again then.';
+  } else if (kind === 'docker-compose') {
+    el.classList.add('compose');
+    el.innerHTML = 'Runs as its own Docker containers — look for a <code>bdd-target-…</code> project in Docker Desktop.';
+  } else {
+    el.innerHTML = '';
+  }
+}
+document.getElementById('deploy-descriptor-select').addEventListener('change', updateDeployKindNotice);
 
 // Whichever target the deploy-select currently names: "Remove" + enabled
 // enabled ("Remove") whenever Docker already has ANY containers for it
@@ -1721,7 +1797,9 @@ async function deployCurrentTarget(triggerBtn) {
   const hasLeftovers = status.containerNames.length > 0;
   const message = hasLeftovers
     ? `Found ${status.containerNames.length} existing container(s)/process(es) for "${name}" (running, or leftover from a previous deploy: ${status.containerNames.join(', ')}). They will be removed and the deploy will start from a clean slate. Continue?`
-    : `Deploy "${name}"? This clones the repo (if not already cloned) and starts the target — real containers via the Docker socket for a docker-compose target, or plain processes built from source for a process target. No Claude call, but can take a few minutes on the first run.`;
+    : (state.deployKinds || {})[name] === 'process'
+      ? `Deploy "${name}"? This clones the repo (if not already cloned), builds it from source and starts it as a plain process INSIDE the Workbench container — no Docker container is created for it. No Claude call, but can take a few minutes on the first run.`
+      : `Deploy "${name}"? This clones the repo (if not already cloned) and starts its real containers via the Docker socket. No Claude call, but can take a few minutes on the first run.`;
   if (!(await confirmModal(message, hasLeftovers ? 'danger' : 'time'))) return;
 
   await runDeployAction(
@@ -1735,9 +1813,21 @@ async function deployCurrentTarget(triggerBtn) {
     // host.docker.internal in the *text* (that's the address other
     // components/agents inside this stack would actually use), only the
     // href points at the real, human-openable address.
-    (evt) => 'Deployed. Ports: ' + evt.ports.map((p) =>
-      `${p.service}:${p.containerPort} → <a href="http://localhost:${p.publishedPort}" target="_blank" rel="noopener">host.docker.internal:${p.publishedPort}</a>`
-    ).join(', '),
+    (evt) => {
+      // A `process` target has no Docker container: say so right in the
+      // result line, and link plain localhost (it is the Workbench
+      // container's own published port, not a service on a Docker network).
+      const kind = evt.kind || (state.deployKinds || {})[name];
+      if (kind === 'process') {
+        return '<strong>Deployed as a plain process inside the Workbench container — NOT a Docker container, ' +
+          'so Docker Desktop will not list it.</strong> Open it: ' + evt.ports.map((p) =>
+            `${p.service} → <a href="http://localhost:${p.publishedPort}" target="_blank" rel="noopener">localhost:${p.publishedPort}</a>`
+          ).join(', ');
+      }
+      return 'Deployed. Ports: ' + evt.ports.map((p) =>
+        `${p.service}:${p.containerPort} → <a href="http://localhost:${p.publishedPort}" target="_blank" rel="noopener">host.docker.internal:${p.publishedPort}</a>`
+      ).join(', ');
+    },
     'deploy',
     'Deploy',
   );
@@ -1778,12 +1868,16 @@ document.getElementById('undeploy-btn').onclick = async () => {
   // deploy) is handled entirely by the branch above and returns before
   // reaching here, and it's disabled the rest of the time — so there's
   // only one real word for this whole branch now.
-  if (!(await confirmModal(`Remove "${name}"? This tears down its containers (volumes are kept, so the next deploy picks up where this one left off).`, 'time'))) return;
+  const isProcessTarget = (state.deployKinds || {})[name] === 'process';
+  const removeMessage = isProcessTarget
+    ? `Remove "${name}"? This stops its process inside the Workbench container (the cloned source is kept, so the next deploy is faster).`
+    : `Remove "${name}"? This tears down its containers (volumes are kept, so the next deploy picks up where this one left off).`;
+  if (!(await confirmModal(removeMessage, 'time'))) return;
   await runDeployAction(
     btn,
     `/api/descriptors/${encodeURIComponent(name)}/undeploy`,
     (n) => `Removing "${n}"…`,
-    () => 'Removed.',
+    () => (isProcessTarget ? 'Removed — the process inside the Workbench container was stopped.' : 'Removed.'),
     'undeploy',
     'Remove',
   );
