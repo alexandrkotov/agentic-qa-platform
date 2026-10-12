@@ -326,7 +326,12 @@ export function renderUiFlowDiagram(flow: { pages: UiPageFlow[] }): RenderedUiFl
     const pageId = ensureId(page.route);
     for (const t of page.transitions) {
       if (t.kind === 'navigation') {
-        edgeLines.push(`    ${pageId} -->|${sanitizeLabel(t.action)}| ${ensureId(t.to)}`);
+        // Quoted: an unquoted edge label breaks Mermaid's parser on
+        // parentheses and the like ("Checkout (n)" from a real ECM run).
+        // sanitizeLabel() already turns any double quote into a single one,
+        // and a literal pipe would close the label early, so it becomes a slash.
+        const edgeLabel = sanitizeLabel(t.action).replace(/\|/g, '/');
+        edgeLines.push(`    ${pageId} -->|"${edgeLabel}"| ${ensureId(t.to)}`);
       } else {
         const list = actionsByRoute.get(page.route) ?? [];
         list.push(t.action);
