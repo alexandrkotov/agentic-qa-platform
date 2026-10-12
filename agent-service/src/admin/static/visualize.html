@@ -379,7 +379,7 @@
   <section>
     <h2>UI Inventory <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
-      <button class="primary" id="uf-show-btn">Show</button>
+      <button class="primary" id="uf-show-btn" title="Loads the model already approved for this report, if there is one — free, no Claude call.">Show saved model</button>
       <button class="primary" id="uf-propose-btn" style="display:none">Generate UI inventory</button>
       <button class="primary" id="uf-compare-btn" style="display:none">Compare with another report…</button>
       <span id="uf-gen-status"></span>
@@ -406,7 +406,7 @@
   <section>
     <h2>Sequence flow <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
-      <button class="primary" id="seq-show-btn">Show</button>
+      <button class="primary" id="seq-show-btn" title="Loads the model already approved for this report, if there is one — free, no Claude call.">Show saved model</button>
       <button class="primary" id="seq-propose-btn" style="display:none">Generate sequence flow</button>
       <button class="primary" id="seq-compare-btn" style="display:none">Compare with another report…</button>
       <span id="seq-gen-status"></span>
@@ -430,7 +430,7 @@
   <section>
     <h2>Business workflow <span style="font-weight:400;color:var(--text-mute);font-size:0.78rem">(calls Claude — costs money)</span></h2>
     <div class="row">
-      <button class="primary" id="wf-show-btn">Show</button>
+      <button class="primary" id="wf-show-btn" title="Loads the model already approved for this report, if there is one — free, no Claude call.">Show saved model</button>
       <button class="primary" id="wf-propose-btn" style="display:none">Generate workflow model</button>
       <button class="primary" id="wf-compare-btn" style="display:none">Compare with another report…</button>
       <span id="wf-gen-status"></span>
@@ -823,6 +823,34 @@ const NO_API_MESSAGE =
   'No REST endpoints in this report. The target either exposes no REST API (for example a static, browser-only site) or none was found at discovery time.';
 const NO_DATABASE_MESSAGE =
   'No database structure in this report. The target either has no database (for example a static, browser-only site) or none was reachable at discovery time.';
+
+// The toggle button of the three Claude-backed sections (UI Inventory,
+// Sequence flow, Business workflow). Its label says what a click does RIGHT
+// NOW, instead of a bare Show/Hide that read as meaningless next to an
+// empty section:
+//   closed                     -> "Show saved model" (free: loads the model
+//                                 already approved for this report, if any)
+//   open, a model is on screen -> "Hide model"
+//   open, nothing saved yet    -> "No saved model yet" (disabled + title —
+//                                 Generate below is the way forward)
+// The open/closed state lives in data-open, not in the label text.
+function syncShowToggle(btnId, open, hasModel) {
+  const btn = document.getElementById(btnId);
+  btn.dataset.open = open ? '1' : '';
+  if (!open) {
+    btn.textContent = 'Show saved model';
+    btn.disabled = false;
+    btn.title = 'Loads the model already approved for this report, if there is one — free, no Claude call.';
+  } else if (hasModel) {
+    btn.textContent = 'Hide model';
+    btn.disabled = false;
+    btn.title = 'Collapses this section; the saved model stays saved.';
+  } else {
+    btn.textContent = 'No saved model yet';
+    btn.disabled = true;
+    btn.title = 'Nothing has been approved for this report yet — use the Generate button to create one.';
+  }
+}
 
 async function loadReportOptions(selectId) {
   const names = await api('/api/generate/reports');
@@ -1234,6 +1262,7 @@ document.getElementById('uf-propose-btn').onclick = async () => {
       body: JSON.stringify({ report }),
     });
     renderUiFlowEditor();
+    syncShowToggle('uf-show-btn', true, true);
     document.getElementById('uf-diagrams').innerHTML = '';
     setStatus(
       statusEl,
@@ -1293,7 +1322,7 @@ function collapseUiFlow() {
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
   document.getElementById('uf-approve-row').style.display = 'none';
-  document.getElementById('uf-show-btn').textContent = 'Show';
+  syncShowToggle('uf-show-btn', false, false);
   document.getElementById('uf-propose-btn').style.display = 'none';
   document.getElementById('uf-compare-btn').style.display = 'none';
   document.getElementById('uf-compare-btn').textContent = 'Compare with another report…';
@@ -1306,7 +1335,7 @@ function collapseUiFlow() {
 }
 
 async function expandUiFlow() {
-  document.getElementById('uf-show-btn').textContent = 'Hide';
+  syncShowToggle('uf-show-btn', true, false);
   document.getElementById('uf-propose-btn').style.display = '';
   document.getElementById('uf-compare-btn').style.display = '';
   const report = document.getElementById('report-select').value;
@@ -1319,6 +1348,7 @@ async function expandUiFlow() {
       return;
     }
     state.uiFlow = existing.approved;
+    syncShowToggle('uf-show-btn', true, true);
     renderUiFlowEditor();
     await renderUiFlowDiagrams(existing.rendered);
     setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
@@ -1328,7 +1358,7 @@ async function expandUiFlow() {
 }
 
 document.getElementById('uf-show-btn').onclick = () => {
-  if (document.getElementById('uf-show-btn').textContent === 'Hide') {
+  if (document.getElementById('uf-show-btn').dataset.open === '1') {
     collapseUiFlow();
     return;
   }
@@ -1340,7 +1370,7 @@ document.getElementById('uf-show-btn').onclick = () => {
 // "change" and "click" — see onArchReportChanged's comment for why "click"
 // is needed (re-picking the same value fires no "change" event at all).
 function onUiFlowReportChanged() {
-  if (document.getElementById('uf-show-btn').textContent !== 'Hide') return;
+  if (document.getElementById('uf-show-btn').dataset.open !== '1') return;
   if (document.getElementById('report-select').value === ufShownReport) return;
   collapseUiFlow();
 }
@@ -1440,6 +1470,7 @@ document.getElementById('seq-propose-btn').onclick = async () => {
       body: JSON.stringify({ report }),
     });
     renderSequenceEditor();
+    syncShowToggle('seq-show-btn', true, true);
     document.getElementById('seq-diagrams').innerHTML = '';
     setStatus(
       statusEl,
@@ -1502,7 +1533,7 @@ function collapseSequence() {
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
   document.getElementById('seq-approve-row').style.display = 'none';
-  document.getElementById('seq-show-btn').textContent = 'Show';
+  syncShowToggle('seq-show-btn', false, false);
   document.getElementById('seq-propose-btn').style.display = 'none';
   document.getElementById('seq-compare-btn').style.display = 'none';
   document.getElementById('seq-compare-btn').textContent = 'Compare with another report…';
@@ -1515,7 +1546,7 @@ function collapseSequence() {
 }
 
 async function expandSequence() {
-  document.getElementById('seq-show-btn').textContent = 'Hide';
+  syncShowToggle('seq-show-btn', true, false);
   document.getElementById('seq-propose-btn').style.display = '';
   document.getElementById('seq-compare-btn').style.display = '';
   const report = document.getElementById('report-select').value;
@@ -1528,6 +1559,7 @@ async function expandSequence() {
       return;
     }
     state.sequenceFlow = existing.approved;
+    syncShowToggle('seq-show-btn', true, true);
     renderSequenceEditor();
     await renderSequenceDiagrams(existing.rendered);
     setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
@@ -1537,7 +1569,7 @@ async function expandSequence() {
 }
 
 document.getElementById('seq-show-btn').onclick = () => {
-  if (document.getElementById('seq-show-btn').textContent === 'Hide') {
+  if (document.getElementById('seq-show-btn').dataset.open === '1') {
     collapseSequence();
     return;
   }
@@ -1545,7 +1577,7 @@ document.getElementById('seq-show-btn').onclick = () => {
 };
 
 function onSequenceReportChanged() {
-  if (document.getElementById('seq-show-btn').textContent !== 'Hide') return;
+  if (document.getElementById('seq-show-btn').dataset.open !== '1') return;
   if (document.getElementById('report-select').value === seqShownReport) return;
   collapseSequence();
 }
@@ -1639,6 +1671,7 @@ document.getElementById('wf-propose-btn').onclick = async () => {
       body: JSON.stringify({ report }),
     });
     renderWorkflowEditor();
+    syncShowToggle('wf-show-btn', true, true);
     document.getElementById('wf-diagrams').innerHTML = '';
     setStatus(
       statusEl,
@@ -1719,7 +1752,7 @@ function collapseWorkflow() {
   approveBtn.disabled = true;
   approveBtn.style.display = 'none';
   document.getElementById('wf-approve-row').style.display = 'none';
-  document.getElementById('wf-show-btn').textContent = 'Show';
+  syncShowToggle('wf-show-btn', false, false);
   document.getElementById('wf-propose-btn').style.display = 'none';
   document.getElementById('wf-compare-btn').style.display = 'none';
   document.getElementById('wf-compare-btn').textContent = 'Compare with another report…';
@@ -1732,7 +1765,7 @@ function collapseWorkflow() {
 }
 
 async function expandWorkflow() {
-  document.getElementById('wf-show-btn').textContent = 'Hide';
+  syncShowToggle('wf-show-btn', true, false);
   document.getElementById('wf-propose-btn').style.display = '';
   document.getElementById('wf-compare-btn').style.display = '';
   const report = document.getElementById('report-select').value;
@@ -1745,6 +1778,7 @@ async function expandWorkflow() {
       return;
     }
     state.workflow = existing.approved;
+    syncShowToggle('wf-show-btn', true, true);
     renderWorkflowEditor();
     await renderDiagrams(existing.rendered);
     setStatus(statusEl, 'Loaded previously approved model (' + existing.path + ').', 'ok');
@@ -1754,7 +1788,7 @@ async function expandWorkflow() {
 }
 
 document.getElementById('wf-show-btn').onclick = () => {
-  if (document.getElementById('wf-show-btn').textContent === 'Hide') {
+  if (document.getElementById('wf-show-btn').dataset.open === '1') {
     collapseWorkflow();
     return;
   }
@@ -1762,7 +1796,7 @@ document.getElementById('wf-show-btn').onclick = () => {
 };
 
 function onWorkflowReportChanged() {
-  if (document.getElementById('wf-show-btn').textContent !== 'Hide') return;
+  if (document.getElementById('wf-show-btn').dataset.open !== '1') return;
   if (document.getElementById('report-select').value === wfShownReport) return;
   collapseWorkflow();
 }
